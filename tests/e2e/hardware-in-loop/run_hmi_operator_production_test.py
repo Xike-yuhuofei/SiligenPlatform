@@ -30,7 +30,7 @@ from run_real_dxf_production_validation import (  # noqa: E402
     summarize_points_bbox,
     write_json,
 )
-from runtime_gateway_harness import TcpJsonClient, build_process_env, resolve_default_exe, wait_gateway_ready  # noqa: E402
+from runtime_gateway_harness import TcpJsonClient, VENDOR_DIR, resolve_default_exe, wait_gateway_ready  # noqa: E402
 
 
 DEFAULT_GATEWAY_EXE = resolve_default_exe("siligen_runtime_gateway.exe")
@@ -126,11 +126,84 @@ def resolve_listen_port(host: str, requested_port: int) -> int:
         return int(sock.getsockname()[1])
 
 
-def build_hmi_process_env() -> dict[str, str]:
+def _normalize_existing_path_entries(paths: list[Path]) -> list[str]:
+    entries: list[str] = []
+    seen: set[str] = set()
+    for candidate in paths:
+        resolved = candidate.resolve()
+        if not resolved.exists():
+            continue
+        normalized = os.path.normcase(str(resolved))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        entries.append(str(resolved))
+    return entries
+
+
+def build_gateway_launch_spec_payload(*, args: argparse.Namespace, effective_port: int) -> dict[str, Any]:
+    exe_path = args.gateway_exe.resolve()
+    config_path = args.config_path.resolve()
+    exe_dir = exe_path.parent
+    path_candidates = [exe_dir]
+    if exe_dir.parent.name.lower() == "bin":
+        sibling_lib_dir = exe_dir.parent.parent / "lib" / exe_dir.name
+        if sibling_lib_dir.exists():
+            path_candidates.append(sibling_lib_dir)
+    if VENDOR_DIR.exists():
+        path_candidates.append(VENDOR_DIR.resolve())
+
+    env_payload = {
+        "SILIGEN_TCP_SERVER_HOST": args.host,
+        "SILIGEN_TCP_SERVER_PORT": str(effective_port),
+    }
+    if VENDOR_DIR.exists():
+        env_payload["SILIGEN_MULTICARD_VENDOR_DIR"] = str(VENDOR_DIR.resolve())
+
+    return {
+        "executable": str(exe_path),
+        "cwd": str(ROOT.resolve()),
+        "args": ["--config", str(config_path), "--port", str(effective_port)],
+        "pathEntries": _normalize_existing_path_entries(path_candidates),
+        "env": env_payload,
+    }
+
+
+def write_gateway_launch_spec(
+    *,
+    args: argparse.Namespace,
+    effective_port: int,
+    spec_path: Path,
+) -> dict[str, Any]:
+    payload = build_gateway_launch_spec_payload(args=args, effective_port=effective_port)
+    spec_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+def build_launch_spec_process_env(spec_payload: dict[str, Any]) -> dict[str, str]:
+    env = os.environ.copy()
+    env_payload = spec_payload.get("env", {})
+    if isinstance(env_payload, dict):
+        env.update({str(key): str(value) for key, value in env_payload.items()})
+
+    path_entries_raw = spec_payload.get("pathEntries", [])
+    path_entries = [str(item).strip() for item in path_entries_raw if str(item).strip()]
+    existing = env.get("PATH", "")
+    if path_entries:
+        env["PATH"] = os.pathsep.join(path_entries + ([existing] if existing else []))
+    return env
+
+
+def build_hmi_process_env(*, gateway_launch_spec_path: Path, host: str, port: int) -> dict[str, str]:
     env = os.environ.copy()
     py_entries = [str(HMI_APPLICATION_ROOT), str(HMI_SOURCE_ROOT)]
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = os.pathsep.join(py_entries + ([existing] if existing else []))
+    env["SILIGEN_GATEWAY_LAUNCH_SPEC"] = str(gateway_launch_spec_path.resolve())
+    env["SILIGEN_GATEWAY_AUTOSTART"] = "1"
+    env["SILIGEN_TCP_SERVER_HOST"] = host
+    env["SILIGEN_TCP_SERVER_PORT"] = str(port)
+    env.pop("SILIGEN_GATEWAY_EXE", None)
     return env
 
 
@@ -807,6 +880,7 @@ def build_report_markdown(report: dict[str, Any]) -> str:
             f"- HMI：`{artifacts.get('hmi_stdout_log', '')}`",
             f"- runtime：`{artifacts.get('gateway_stdout_log', '')}`",
             f"- gateway：`{artifacts.get('gateway_stderr_log', '')}`",
+            f"- gateway launch spec：`{artifacts.get('gateway_launch_spec', '')}`",
             f"- report：`{artifacts.get('report_json', '')}` / `{artifacts.get('report_markdown', '')}`",
             f"- coord-status-history：`{artifacts.get('coord_status_history', '')}`",
             f"- staged screenshots：`{artifacts.get('hmi_screenshot_dir', '')}`",
@@ -850,6 +924,7 @@ def main() -> int:
     gateway_log_copy_path = report_dir / "tcp_server.log"
     gateway_stdout_path = report_dir / "gateway-stdout.log"
     gateway_stderr_path = report_dir / "gateway-stderr.log"
+    gateway_launch_spec_path = report_dir / "gateway-launch.json"
 
     steps: list[dict[str, str]] = []
     artifacts: dict[str, Any] = {}
@@ -871,6 +946,7 @@ def main() -> int:
     hmi_stderr = ""
     hmi_exit_code = 1
     hmi_command: list[str] = []
+    gateway_launch_spec_payload: dict[str, Any] = {}
     gateway_log_path = ROOT / "logs" / "tcp_server.log"
     gateway_log_offset = gateway_log_path.stat().st_size if gateway_log_path.exists() else 0
     gateway_stdout_stream = gateway_stdout_path.open("w", encoding="utf-8")
@@ -900,14 +976,24 @@ def main() -> int:
             ),
         )
 
+        gateway_launch_spec_payload = write_gateway_launch_spec(
+            args=args,
+            effective_port=effective_port,
+            spec_path=gateway_launch_spec_path,
+        )
+        add_step(steps, "gateway-launch-spec", "passed", str(gateway_launch_spec_path))
+
         gateway_process = subprocess.Popen(
-            [str(args.gateway_exe), "--config", str(args.config_path), "--port", str(effective_port)],
-            cwd=str(ROOT),
+            [
+                str(gateway_launch_spec_payload["executable"]),
+                *[str(item) for item in gateway_launch_spec_payload.get("args", [])],
+            ],
+            cwd=str(gateway_launch_spec_payload.get("cwd") or ROOT),
             stdout=gateway_stdout_stream,
             stderr=gateway_stderr_stream,
             text=True,
             encoding="utf-8",
-            env=build_process_env(args.gateway_exe),
+            env=build_launch_spec_process_env(gateway_launch_spec_payload),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         add_step(steps, "gateway-launch", "passed", f"pid={gateway_process.pid}")
@@ -930,7 +1016,11 @@ def main() -> int:
             stderr=hmi_stderr_stream,
             text=True,
             encoding="utf-8",
-            env=build_hmi_process_env(),
+            env=build_hmi_process_env(
+                gateway_launch_spec_path=gateway_launch_spec_path,
+                host=args.host,
+                port=effective_port,
+            ),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         add_step(steps, "hmi-launch", "passed", f"pid={hmi_process.pid}")
@@ -1152,6 +1242,7 @@ def main() -> int:
                 "gateway_stdout_log": str(gateway_stdout_path),
                 "gateway_stderr_log": str(gateway_stderr_path),
                 "gateway_log_copy": str(gateway_log_copy_path),
+                "gateway_launch_spec": str(gateway_launch_spec_path),
                 "job_status_history": str(job_status_json_path),
                 "machine_status_history": str(machine_status_json_path),
                 "coord_status_history": str(coord_status_json_path),
