@@ -12,15 +12,40 @@ operator_runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(operator_runner)
 
 
+def test_default_max_glue_points_is_5000() -> None:
+    assert operator_runner.DEFAULT_MAX_GLUE_POINTS == 5000
+
+
+def test_finalize_process_log_capture_reads_file_backed_hmi_output(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "hmi-stdout.log"
+    stderr_path = tmp_path / "hmi-stderr.log"
+    stdout_stream = stdout_path.open("w", encoding="utf-8")
+    stderr_stream = stderr_path.open("w", encoding="utf-8")
+    stdout_stream.write("OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-1\n")
+    stderr_stream.write("SUPERVISOR_DIAG online_ready=true\n")
+
+    stdout_stream, stderr_stream, stdout_text, stderr_text = operator_runner.finalize_process_log_capture(
+        stdout_stream=stdout_stream,
+        stderr_stream=stderr_stream,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
+
+    assert stdout_stream is None
+    assert stderr_stream is None
+    assert "stage=preview-ready" in stdout_text
+    assert "online_ready=true" in stderr_text
+
+
 def test_summarize_operator_output_requires_formal_stage_sequence_and_staged_screenshots() -> None:
     output = "\n".join(
         [
-            "OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-1 plan_id=plan-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 snapshot_hash=hash-1 confirmed_snapshot_hash=null snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
-            "OPERATOR_CONTEXT stage=preview-refreshed artifact_id=artifact-1 plan_id=plan-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 snapshot_hash=hash-1 confirmed_snapshot_hash=null snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
-            "OPERATOR_CONTEXT stage=production-started artifact_id=artifact-1 plan_id=plan-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=job-1 target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=生产运行中 preview_confirmed=true",
-            "OPERATOR_CONTEXT stage=production-running artifact_id=artifact-1 plan_id=plan-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=job-1 target_count=1 completed_count=0/1 global_progress_percent=12 current_operation=生产运行中 preview_confirmed=true",
-            "OPERATOR_CONTEXT stage=production-completed artifact_id=artifact-1 plan_id=plan-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=null target_count=1 completed_count=1/1 global_progress_percent=100 current_operation=完成 preview_confirmed=true",
-            "OPERATOR_CONTEXT stage=next-job-ready artifact_id=artifact-1 plan_id=plan-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=null target_count=1 completed_count=1/1 global_progress_percent=100 current_operation=完成 preview_confirmed=true",
+            "OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=null snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
+            "OPERATOR_CONTEXT stage=preview-refreshed artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=null snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
+            "OPERATOR_CONTEXT stage=production-started artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=confirmed preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=job-1 target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=生产运行中 preview_confirmed=true",
+            "OPERATOR_CONTEXT stage=production-running artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=confirmed preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=job-1 target_count=1 completed_count=0/1 global_progress_percent=12 current_operation=生产运行中 preview_confirmed=true",
+            "OPERATOR_CONTEXT stage=production-completed artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=confirmed preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=null target_count=1 completed_count=1/1 global_progress_percent=100 current_operation=完成 preview_confirmed=true",
+            "OPERATOR_CONTEXT stage=next-job-ready artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=null target_count=1 completed_count=1/1 global_progress_percent=100 current_operation=完成 preview_confirmed=true",
             "HMI_SCREENSHOT stage=production-running path=D:/reports/01-production-running.png",
             "HMI_SCREENSHOT stage=production-completed path=D:/reports/02-production-completed.png",
             "HMI_SCREENSHOT stage=next-job-ready path=D:/reports/03-next-job-ready.png",
@@ -32,6 +57,7 @@ def test_summarize_operator_output_requires_formal_stage_sequence_and_staged_scr
     assert summary["contract_ok"] is True
     assert tuple(summary["operator_context_stages"]) == operator_runner.REQUIRED_OPERATOR_STAGES
     assert summary["preview_confirmed"] is True
+    assert summary["plan_fingerprint"] == "fp-1"
     assert summary["screenshots_by_stage"]["production-running"].endswith("01-production-running.png")
 
 
@@ -39,7 +65,7 @@ def test_summarize_operator_output_fail_closes_on_partial_preview_evidence() -> 
     output = "\n".join(
         [
             "FAIL: Timed out waiting for operator preview becomes ready without recipe selection",
-            "OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-1 plan_id=null preview_source=null preview_kind=null glue_point_count=0 snapshot_hash=null confirmed_snapshot_hash=null snapshot_ready=false job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
+            "OPERATOR_CONTEXT stage=preview-ready-failed artifact_id=artifact-1 plan_id=null plan_fingerprint=null preview_source=null preview_kind=null glue_point_count=0 preview_gate_state=failed preview_gate_error=preview_timeout snapshot_hash=null confirmed_snapshot_hash=null snapshot_ready=false job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
         ]
     )
 
@@ -47,12 +73,16 @@ def test_summarize_operator_output_fail_closes_on_partial_preview_evidence() -> 
 
     assert summary["contract_ok"] is False
     assert summary["stage_sequence_ok"] is False
+    assert summary["failure_stages"] == ["preview-ready-failed"]
+    assert summary["preview_gate_state"] == "failed"
+    assert summary["preview_gate_error"] == "preview_timeout"
     assert "required stage sequence" in summary["contract_error"]
 
 
 def test_evaluate_operator_execution_requires_next_job_ready_stage() -> None:
     summary = {
         "stage_sequence_ok": False,
+        "failure_stages": [],
         "preview_source": "planned_glue_snapshot",
         "preview_kind": "glue_points",
         "preview_confirmed": True,

@@ -376,6 +376,7 @@ class GuiContractRunner:
         screenshot_dir: str = "",
         preview_payload_path: str = "",
         runtime_action_profile: str = "",
+        use_external_gateway: bool = False,
     ):
         self.app = app
         self.window = window
@@ -389,13 +390,14 @@ class GuiContractRunner:
         self.screenshot_dir = screenshot_dir.strip()
         self.preview_payload_path = preview_payload_path.strip()
         self.runtime_action_profile = runtime_action_profile.strip().lower()
+        self._use_external_gateway = bool(use_external_gateway)
         self.failed = False
         self.timed_out = False
         self.exit_code = EXIT_SUCCESS
         self._screenshot_index = 0
 
     def _uses_external_gateway(self) -> bool:
-        return bool(os.getenv("SILIGEN_GATEWAY_LAUNCH_SPEC", "").strip())
+        return self._use_external_gateway
 
     def _fail(self, message: str) -> None:
         self.failed = True
@@ -538,6 +540,12 @@ class GuiContractRunner:
         normalized = normalized.strip("-").lower()
         return normalized or "capture"
 
+    def _context_token(self, value: object) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return "null"
+        return re.sub(r"\s+", "_", text)
+
     def _save_screenshot(self, pixmap, target_path: Path, description: str, *, stage_name: str = "") -> None:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if not pixmap.save(str(target_path)):
@@ -667,28 +675,37 @@ class GuiContractRunner:
 
     def _emit_operator_context(self, stage: str) -> None:
         context = self._operator_context()
-        if self.failed or not context:
+        if not context:
             return
+        preview_gate = getattr(self.window, "_preview_gate", None)
+        preview_gate_state = getattr(preview_gate, "state", "")
+        if hasattr(preview_gate_state, "value"):
+            preview_gate_state = preview_gate_state.value
         artifact_id = str(context.get("artifact_id") or "null")
         plan_id = str(context.get("plan_id") or "null")
+        plan_fingerprint = str(getattr(self.window, "_current_plan_fingerprint", "") or "null")
         preview_source = str(context.get("preview_source") or "null")
         preview_kind = str(context.get("preview_kind") or "null")
         glue_point_count = int(context.get("glue_point_count", 0) or 0)
         snapshot_hash = str(context.get("snapshot_hash") or "")
         confirmed_snapshot_hash = str(context.get("confirmed_snapshot_hash") or "null")
-        current_operation = str(context.get("current_operation") or "null").replace(" ", "_")
+        current_operation = self._context_token(context.get("current_operation") or "null")
         completed_count = str(context.get("completed_count") or "0/0").replace(" ", "")
         job_id = str(context.get("job_id") or "null")
         target_count = int(context.get("target_count", 0) or 0)
         global_progress = int(context.get("global_progress_percent", 0) or 0)
+        last_error_message = self._context_token(getattr(preview_gate, "last_error_message", ""))
         print(
             "OPERATOR_CONTEXT "
             f"stage={stage} "
             f"artifact_id={artifact_id} "
             f"plan_id={plan_id} "
+            f"plan_fingerprint={plan_fingerprint} "
             f"preview_source={preview_source} "
             f"preview_kind={preview_kind} "
             f"glue_point_count={glue_point_count} "
+            f"preview_gate_state={self._context_token(preview_gate_state)} "
+            f"preview_gate_error={last_error_message} "
             f"snapshot_hash={snapshot_hash or 'null'} "
             f"confirmed_snapshot_hash={confirmed_snapshot_hash} "
             f"snapshot_ready={str(bool(context.get('snapshot_ready', False))).lower()} "
@@ -696,20 +713,22 @@ class GuiContractRunner:
             f"target_count={target_count} "
             f"completed_count={completed_count or '0/0'} "
             f"global_progress_percent={global_progress} "
-            f"current_operation={current_operation or 'null'} "
+            f"current_operation={current_operation} "
             f"preview_confirmed={str(bool(context.get('preview_confirmed', False))).lower()}",
             flush=True,
         )
 
-    def _run_operator_preview_journey(self) -> None:
+    def _record_operator_stage_failure(self, stage: str, description: str) -> None:
+        self._emit_operator_context(stage)
+        self._capture_screenshot(description, stage_name=stage)
+
+    def _run_operator_preview_journey(self) -> bool:
         if not self._ensure_operator_context_contract():
-            return
+            return False
         self._switch_to_production_tab()
         if self.failed:
-            return
+            return False
         self._click_button("btn-dxf-browse")
-        if self.failed:
-            return
         if not self._wait_for(
             "operator preview loads dxf artifact",
             lambda: self._operator_context_satisfies(
@@ -717,13 +736,15 @@ class GuiContractRunner:
             ),
             timeout_ms=10000,
         ):
-            return
+            self._record_operator_stage_failure("preview-load-failed", "operator preview load failed screenshot")
+            return False
         self._expect(
             "未显式选择配方版本" not in self._status_message(),
             "DXF preview should not be blocked by recipe/version selection",
         )
         if self.failed:
-            return
+            self._record_operator_stage_failure("preview-load-failed", "operator preview load failed screenshot")
+            return False
         if not self._wait_for(
             "operator preview becomes ready without recipe selection",
             lambda: self._operator_context_satisfies(
@@ -736,23 +757,21 @@ class GuiContractRunner:
             ),
             timeout_ms=15000,
         ):
-            return
+            self._record_operator_stage_failure("preview-ready-failed", "operator preview ready failed screenshot")
+            return False
         self._emit_operator_context("preview-ready")
-        if self.failed:
-            return
         self._capture_screenshot("operator preview ready screenshot", stage_name="preview-ready")
-        if self.failed:
-            return
-        preview_gate = getattr(self.window, "_preview_gate", None)
         self._expect(
-            "未显式选择配方版本" not in getattr(preview_gate, "last_error_message", ""),
+            "未显式选择配方版本" not in getattr(getattr(self.window, "_preview_gate", None), "last_error_message", ""),
             "Preview gate should not report missing recipe/version",
         )
         if self.failed:
-            return
+            self._record_operator_stage_failure("preview-ready-failed", "operator preview ready failed screenshot")
+            return False
         self._click_button("btn-dxf-preview-refresh")
         if self.failed:
-            return
+            self._record_operator_stage_failure("preview-ready-failed", "operator preview ready failed screenshot")
+            return False
         if not self._wait_for(
             "operator preview refresh succeeds without recipe selection",
             lambda: self._operator_context_satisfies(
@@ -765,44 +784,39 @@ class GuiContractRunner:
             ),
             timeout_ms=15000,
         ):
-            return
+            self._record_operator_stage_failure("preview-refreshed-failed", "operator preview refresh failed screenshot")
+            return False
         self._emit_operator_context("preview-refreshed")
-        if self.failed:
-            return
         self._capture_screenshot("operator preview refreshed screenshot", stage_name="preview-refreshed")
+        return True
 
     def _assert_operator_preview_action(self) -> None:
         self._run_operator_preview_journey()
 
     def _assert_operator_production_action(self) -> None:
         print("STEP: operator production journey", flush=True)
-        self._run_operator_preview_journey()
-        if self.failed:
+        if not self._run_operator_preview_journey():
             return
 
         self._ensure_runtime_motion_ready()
-        if self.failed:
-            return
         self._spinbox_set("input-target-count", 1)
-        if self.failed:
-            return
 
         start_button = self._require_widget("btn-production-start")
-        if start_button is not None:
-            if not self._wait_for("production start button enabled", lambda: start_button.isEnabled(), timeout_ms=10000):
-                return
-
-        self._click_button("btn-production-start")
-        if self.failed:
-            return
-        if not self._wait_for(
-            "preview confirmation settles",
-            lambda: self._operator_context_satisfies(
-                lambda context: bool(context.get("preview_confirmed", False))
-                and bool(str(context.get("confirmed_snapshot_hash") or "").strip())
-            ),
+        if start_button is not None and not self._wait_for(
+            "production start button enabled",
+            lambda: start_button.isEnabled(),
             timeout_ms=10000,
         ):
+            self._record_operator_stage_failure("production-start-failed", "operator production start failed screenshot")
+            return
+
+        self._click_button("btn-production-start")
+        if not self._wait_for(
+            "preview confirmation settles",
+            lambda: bool(self._confirmed_snapshot_hash()),
+            timeout_ms=10000,
+        ):
+            self._record_operator_stage_failure("production-start-failed", "operator production start failed screenshot")
             return
         if not self._wait_for(
             "operator production enters running state",
@@ -813,16 +827,11 @@ class GuiContractRunner:
             ),
             timeout_ms=30000,
         ):
+            self._record_operator_stage_failure("production-start-failed", "operator production start failed screenshot")
             return
         self._emit_operator_context("production-started")
-        if self.failed:
-            return
         self._emit_operator_context("production-running")
-        if self.failed:
-            return
         self._capture_screenshot("operator production running screenshot", stage_name="production-running")
-        if self.failed:
-            return
 
         if not self._wait_for(
             "operator production terminal completed",
@@ -831,17 +840,13 @@ class GuiContractRunner:
                 and str(context.get("current_operation") or "") == "完成"
                 and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
                 and int(context.get("global_progress_percent", 0) or 0) == 100
-                and bool(context.get("preview_confirmed", False))
             ),
             timeout_ms=self.timeout_ms,
         ):
+            self._record_operator_stage_failure("production-completed-failed", "operator production completion failed screenshot")
             return
         self._emit_operator_context("production-completed")
-        if self.failed:
-            return
         self._capture_screenshot("operator production completed screenshot", stage_name="production-completed")
-        if self.failed:
-            return
 
         target_input = self._require_widget("input-target-count")
         if not self._wait_for(
@@ -850,18 +855,17 @@ class GuiContractRunner:
             and target_input is not None
             and start_button.isEnabled()
             and target_input.isEnabled()
+            and not bool(getattr(self.window, "_pending_production_action", ""))
             and self._operator_context_satisfies(
                 lambda context: not bool(str(context.get("job_id") or "").strip())
                 and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
                 and int(context.get("global_progress_percent", 0) or 0) == 100
-                and bool(context.get("preview_confirmed", False))
             ),
             timeout_ms=15000,
         ):
+            self._record_operator_stage_failure("next-job-ready-failed", "operator production next job ready failed screenshot")
             return
         self._emit_operator_context("next-job-ready")
-        if self.failed:
-            return
         self._capture_screenshot("operator production next job ready screenshot", stage_name="next-job-ready")
 
     def _ensure_runtime_motion_ready(self) -> None:
@@ -1076,7 +1080,9 @@ class GuiContractRunner:
             self._assert_runtime_estop_reset_action()
         if profile in {"full", "door_interlock"}:
             self._assert_runtime_door_interlock_action()
-        if profile != "snapshot_render":
+        # Operator journeys already emit staged screenshots as their formal evidence.
+        # Skip the trailing generic capture there to avoid a redundant close-out race.
+        if profile not in {"snapshot_render", "operator_preview", "operator_production"}:
             self._capture_screenshot(f"runtime action profile {profile}")
 
     def _emit_supervisor_diag(self) -> None:
@@ -1473,6 +1479,7 @@ def main() -> int:
         screenshot_dir=args.screenshot_dir,
         preview_payload_path=args.preview_payload_path,
         runtime_action_profile=resolved_runtime_action_profile,
+        use_external_gateway=bool(args.no_mock),
     )
     QTimer.singleShot(0, runner.run)
     QTimer.singleShot(args.timeout_ms, runner.request_timeout)

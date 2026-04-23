@@ -33,7 +33,7 @@ class PreviewSnapshotWorkerTest(unittest.TestCase):
             WorkerFakeProtocol.calls,
             [
                 ("dxf.plan.prepare", "artifact-1", 20.0, False, 20.0, 300.0),
-                ("dxf.preview.snapshot", "plan-1", 4000, 300.0),
+                ("dxf.preview.snapshot", "plan-1", 4000, 5000, 300.0),
             ],
         )
         self.assertTrue(emitted)

@@ -97,6 +97,7 @@ class PreviewSnapshotWorker(QThread):
                         ok, payload, error = protocol.dxf_preview_snapshot(
                             plan_id=plan_id,
                             max_polyline_points=4000,
+                            max_glue_points=5000,
                             timeout=DXF_OPEN_AUTO_PREVIEW_TIMEOUT_S,
                         )
                         snapshot_elapsed_ms = int(round((time.perf_counter() - snapshot_started_at) * 1000.0))
