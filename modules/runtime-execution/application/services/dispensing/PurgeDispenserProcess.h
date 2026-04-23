@@ -1,8 +1,8 @@
 #pragma once
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "domain/dispensing/ports/IValvePort.h"
-#include "domain/dispensing/domain-services/SupplyStabilizationPolicy.h"
+#include "services/dispensing/SupplyStabilizationPolicy.h"
+#include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
@@ -10,24 +10,16 @@
 #include <memory>
 #include <string>
 
-namespace Siligen::Domain::Dispensing::DomainServices {
+namespace Siligen::RuntimeExecution::Application::Services::Dispensing {
 
-using Siligen::Shared::Types::Result;
-using Siligen::Shared::Types::uint32;
-using Siligen::Domain::Dispensing::DomainServices::SupplyStabilizationPolicy;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Dispensing::Ports::DispenserValveState;
 using Siligen::Domain::Dispensing::Ports::DispenserValveStatus;
 using Siligen::Domain::Dispensing::Ports::IValvePort;
 using Siligen::Domain::Dispensing::Ports::SupplyValveState;
+using Siligen::Shared::Types::Result;
+using Siligen::Shared::Types::uint32;
 
-/**
- * @brief 排胶请求参数（胶路建压/稳压由领域层负责）
- *
- * 说明:
- * - 供胶阀稳压时间默认参考 docs/plans/2026-01-19-purge-dispenser-usecase-plan.md
- * - supply_stabilization_ms 为 0 时使用配置默认值
- */
 struct PurgeDispenserRequest {
     bool manage_supply = true;
     bool wait_for_completion = true;
@@ -39,9 +31,6 @@ struct PurgeDispenserRequest {
     std::string GetValidationError() const noexcept;
 };
 
-/**
- * @brief 排胶执行结果
- */
 struct PurgeDispenserResponse {
     DispenserValveState dispenser_state;
     SupplyValveState supply_state = SupplyValveState::Closed;
@@ -49,9 +38,6 @@ struct PurgeDispenserResponse {
     bool completed = false;
 };
 
-/**
- * @brief 排胶流程领域服务（建压/稳压+排胶时序）
- */
 class PurgeDispenserProcess final {
    public:
     PurgeDispenserProcess(std::shared_ptr<IValvePort> valve_port,
@@ -66,4 +52,4 @@ class PurgeDispenserProcess final {
     Result<DispenserValveState> WaitForCompletion(uint32 timeout_ms, uint32 poll_interval_ms) noexcept;
 };
 
-}  // namespace Siligen::Domain::Dispensing::DomainServices
+}  // namespace Siligen::RuntimeExecution::Application::Services::Dispensing

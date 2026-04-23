@@ -177,8 +177,8 @@ if(NOT TARGET siligen_runtime_execution_application)
         services/motion/MotionStatusServiceImpl.cpp
         services/motion/interpolation/ValidatedInterpolationPort.cpp
         services/calibration/CalibrationExecutionService.cpp
-        services/dispensing/DispenseCompensationService.cpp
         services/dispensing/DispensingController.cpp
+        services/dispensing/PurgeDispenserProcess.cpp
         services/dispensing/DispensingProcessPortFactory.cpp
         services/dispensing/DispensingProcessService.cpp
         services/dispensing/SupplyStabilizationPolicy.cpp
@@ -188,6 +188,7 @@ if(NOT TARGET siligen_runtime_execution_application)
         usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
         usecases/dispensing/DispensingExecutionUseCase.Control.cpp
         usecases/dispensing/DispensingExecutionUseCase.Async.cpp
+        usecases/dispensing/valve/ValveUseCases.cpp
         usecases/dispensing/DispensingWorkflowUseCase.cpp
     )
 endif()

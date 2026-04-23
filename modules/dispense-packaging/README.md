@@ -48,8 +48,8 @@
   `WorkflowExecutionAssemblyRequest`。`application/include/application/services/dispensing/WorkflowPlanningAssemblyTypes.h`
   当前已恢复为 canonical DTO owner；workflow/application 中同名头仅保留 compat
   forwarder。内部 stage 类型当前只作为
-  `application/services/dispensing/PlanningAssemblyResidualFacade.cpp` 与
-  `PlanningAssemblyResidual*.cpp` 私有实现的本地细节存在，不再保留独立 public 头，
+  `application/services/dispensing/PlanningAssemblyServices.cpp` 与
+  `PlanningAssembly*.cpp` 私有实现的本地细节存在，不再保留独立 public 头，
   也不再作为 workflow-facing seam 的公开类型面。
 - `DispensingExecutionPlan` 保留为 `ExecutionPackage` 的 M8 owner backing type；
   `DispensingRuntimeOverrides`、`DispensingRuntimeParams`、
@@ -60,9 +60,8 @@
 - `domain/dispensing/CMakeLists.txt` 当前 owner/core 口径已收敛为
   `siligen_dispense_packaging_domain_dispensing` header/contract surface；
   runtime/motion fat include 依赖仅允许经 module-local
-  `siligen_dispense_packaging_domain_dispensing_planning_residual_headers` 与
-  `siligen_dispense_packaging_domain_dispensing_execution_residual_headers`
-  提供给 residual/internal target，不得再挂在 owner/core target 上；
+  `siligen_dispense_packaging_domain_dispensing_planning_residual_headers`
+  提供给 planning residual/internal target，不得再挂在 owner/core target 上；
   legacy DXF planning concrete 仅保留在
   `siligen_dispense_packaging_planning_legacy_dxf_quarantine_support` 测试支撑 target，
   `UnifiedTrajectoryPlannerService` wrapper 已删除，残余 DXF 主线在
@@ -72,16 +71,15 @@
   `ContourOptimizationService.cpp` 这一条 quarantine seam；
   原 wrapper 行为证据由 `modules/process-path/tests/unit/application/services/process_path/ProcessPathFacadeTest.cpp`
   与 `modules/process-path/tests/integration/ProcessPathToMotionPlanningIntegrationTest.cpp`
-  承接；
-  execution/process-control/valve/CMP concrete 仅保留在
-  `siligen_dispense_packaging_execution_residual`。不得恢复 workflow domain target、
+  承接。
+  execution/process-control/valve/CMP concrete 已全部迁出 `M8` 并物理删除；不得恢复 workflow domain target、
   raw workflow include root
   或 raw runtime contract include root 暴露。
 - `tests/` 当前已把 owner boundary / workflow seam / residual acceptance /
-  planning residual regression / execution residual regression / shared-adjacent
+  planning residual regression / shared-adjacent
   regression 分 lane；`unit` 不再混入显式 residual topology 守护。
 - owner-facing canonical roots 已收敛，但 `domain/dispensing/` 下仍保留
-  planning / execution residual targets，属于迁移中事实，不应误记为“所有 live
+  planning residual target，属于迁移中事实，不应误记为“所有 live
   实现都已完成 owner 归位”。
 
 ## Phase 4 Closeout 口径
@@ -96,8 +94,7 @@
   boundary/workflow seam gate，也不再承载 `DispensePackagingResidualAcceptanceTest.cpp`
   这类结构治理守护。
 - planning / execution residual 与 shared-adjacent 回归当前分别通过
-  `siligen_dispense_packaging_planning_residual_regression_tests`、
-  `siligen_dispense_packaging_execution_residual_regression_tests`、
+  `siligen_dispense_packaging_planning_residual_regression_tests` 与
   `siligen_dispense_packaging_shared_adjacent_regression_tests` 执行；这些目标用于
   邻接稳定性守护，不构成 `M8` owner closeout 证据。
 - 本阶段额外下游消费证据包括 `siligen_planner_cli` 与 `siligen_unit_tests`

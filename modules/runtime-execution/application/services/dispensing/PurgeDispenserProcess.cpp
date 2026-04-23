@@ -5,7 +5,7 @@
 #include <thread>
 #include <utility>
 
-namespace Siligen::Domain::Dispensing::DomainServices {
+namespace Siligen::RuntimeExecution::Application::Services::Dispensing {
 
 namespace {
 constexpr uint32 kMinPollIntervalMs = 10;
@@ -165,4 +165,4 @@ Result<DispenserValveState> PurgeDispenserProcess::WaitForCompletion(uint32 time
     }
 }
 
-}  // namespace Siligen::Domain::Dispensing::DomainServices
+}  // namespace Siligen::RuntimeExecution::Application::Services::Dispensing

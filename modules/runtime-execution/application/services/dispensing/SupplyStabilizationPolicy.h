@@ -19,8 +19,8 @@ using Siligen::Domain::Configuration::Ports::IConfigurationPort;
  *
  * 规则:
  * - 若提供覆盖值，则在允许范围内直接使用
- * - 否则使用配置中的默认值
- * - 若配置不可用或无效，回退到默认值
+ * - 否则必须使用配置中的显式稳压时间
+ * - 配置端口缺失、读取失败或值无效时直接失败
  */
 class SupplyStabilizationPolicy final {
    public:
@@ -29,11 +29,8 @@ class SupplyStabilizationPolicy final {
 
     static bool IsOverrideValid(uint32 override_ms) noexcept;
 
-    static constexpr uint32 DefaultMs() noexcept { return kDefaultMs; }
-
    private:
     static constexpr uint32 kMaxMs = 5000;
-    static constexpr uint32 kDefaultMs = 500;
 };
 
 }  // namespace Siligen::RuntimeExecution::Application::Services::Dispensing

@@ -1,5 +1,5 @@
-#include "dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"
-#include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/valve/ValveCommandUseCase.h"
+#include "runtime_execution/application/usecases/dispensing/valve/ValveQueryUseCase.h"
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -87,6 +88,10 @@ class FakeConnectionPort final : public DeviceConnectionPort {
 
 class FakeConfigurationPort final : public IConfigurationPort {
    public:
+    FakeConfigurationPort() {
+        dispensing_.supply_stabilization_ms = 10;
+    }
+
     Result<Siligen::Domain::Configuration::Ports::SystemConfig> LoadConfiguration() override {
         return NotImplemented<Siligen::Domain::Configuration::Ports::SystemConfig>("LoadConfiguration");
     }
@@ -100,7 +105,7 @@ class FakeConfigurationPort final : public IConfigurationPort {
     }
 
     Result<Siligen::Domain::Configuration::Ports::DispensingConfig> GetDispensingConfig() const override {
-        return Result<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success({});
+        return Result<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success(dispensing_);
     }
 
     Result<void> SetDispensingConfig(const Siligen::Domain::Configuration::Ports::DispensingConfig&) override {
@@ -185,7 +190,81 @@ class FakeConfigurationPort final : public IConfigurationPort {
         return Result<T>::Failure(
             Error(ErrorCode::NOT_IMPLEMENTED, std::string(method) + " not implemented"));
     }
+
+    Siligen::Domain::Configuration::Ports::DispensingConfig dispensing_{};
 };
+
+class FakeValvePort final : public IValvePort {
+   public:
+    Result<DispenserValveState> StartDispenser(const DispenserValveParams&) noexcept override {
+        return Result<DispenserValveState>::Success(dispenser_state_);
+    }
+
+    Result<DispenserValveState> OpenDispenser() noexcept override {
+        return Result<DispenserValveState>::Success(dispenser_state_);
+    }
+
+    Result<void> CloseDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<DispenserValveState> StartPositionTriggeredDispenser(const PositionTriggeredDispenserParams&) noexcept override {
+        return Result<DispenserValveState>::Success(dispenser_state_);
+    }
+
+    Result<void> StopDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<void> PauseDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<void> ResumeDispenser() noexcept override {
+        return Result<void>::Success();
+    }
+
+    Result<DispenserValveState> GetDispenserStatus() noexcept override {
+        if (dispenser_status_should_fail_) {
+            return Result<DispenserValveState>::Failure(
+                Error(ErrorCode::HARDWARE_ERROR, "dispenser status read failure", "FakeValvePort"));
+        }
+        return Result<DispenserValveState>::Success(dispenser_state_);
+    }
+
+    Result<SupplyValveState> OpenSupply() noexcept override {
+        supply_status_detail_.state = SupplyValveState::Open;
+        return Result<SupplyValveState>::Success(SupplyValveState::Open);
+    }
+
+    Result<SupplyValveState> CloseSupply() noexcept override {
+        supply_status_detail_.state = SupplyValveState::Closed;
+        return Result<SupplyValveState>::Success(SupplyValveState::Closed);
+    }
+
+    Result<SupplyValveStatusDetail> GetSupplyStatus() noexcept override {
+        if (supply_status_should_fail_) {
+            return Result<SupplyValveStatusDetail>::Failure(
+                Error(ErrorCode::HARDWARE_ERROR, "supply status read failure", "FakeValvePort"));
+        }
+        return Result<SupplyValveStatusDetail>::Success(supply_status_detail_);
+    }
+
+    DispenserValveState dispenser_state_{};
+    SupplyValveStatusDetail supply_status_detail_{};
+    bool dispenser_status_should_fail_{false};
+    bool supply_status_should_fail_{false};
+};
+
+DispenserValveParams BuildValidDispenserParams() {
+    DispenserValveParams params;
+    params.count = 1;
+    params.intervalMs = 1000;
+    params.durationMs = 100;
+    return params;
+}
+
+}  // namespace
 
 TEST(ValveUseCasesTest, StopDispenserRejectsWhenValvePortUnavailable) {
     auto connection_port = std::make_shared<FakeConnectionPort>();
@@ -222,4 +301,45 @@ TEST(ValveUseCasesTest, QueryRejectsWhenValvePortUnavailable) {
     EXPECT_EQ(supply_result.GetError().GetCode(), ErrorCode::PORT_NOT_INITIALIZED);
 }
 
-}  // namespace
+TEST(ValveUseCasesTest, StartDispenserRejectsWhenSupplyValveNotOpen) {
+    auto connection_port = std::make_shared<FakeConnectionPort>();
+    auto valve_port = std::make_shared<FakeValvePort>();
+    valve_port->supply_status_detail_.state = SupplyValveState::Closed;
+    valve_port->dispenser_state_.status = DispenserValveStatus::Idle;
+
+    ValveCommandUseCase use_case(valve_port, std::make_shared<FakeConfigurationPort>(), connection_port);
+    auto result = use_case.StartDispenser(BuildValidDispenserParams());
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("failure_stage=check_valve_safety_supply_open"), std::string::npos);
+}
+
+TEST(ValveUseCasesTest, OpenSupplyValveRejectsWhenDispenserStatusHasError) {
+    auto connection_port = std::make_shared<FakeConnectionPort>();
+    auto valve_port = std::make_shared<FakeValvePort>();
+    valve_port->dispenser_state_.status = DispenserValveStatus::Error;
+    valve_port->dispenser_state_.errorMessage = "dispenser_error";
+    valve_port->supply_status_detail_.state = SupplyValveState::Closed;
+
+    ValveCommandUseCase use_case(valve_port, std::make_shared<FakeConfigurationPort>(), connection_port);
+    auto result = use_case.OpenSupplyValve();
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::HARDWARE_ERROR);
+    EXPECT_NE(result.GetError().GetMessage().find("failure_stage=check_valve_safety_dispenser_status"), std::string::npos);
+}
+
+TEST(ValveUseCasesTest, ResumeDispenserRejectsWhenSupplyValveNotOpen) {
+    auto connection_port = std::make_shared<FakeConnectionPort>();
+    auto valve_port = std::make_shared<FakeValvePort>();
+    valve_port->dispenser_state_.status = DispenserValveStatus::Paused;
+    valve_port->supply_status_detail_.state = SupplyValveState::Closed;
+
+    ValveCommandUseCase use_case(valve_port, std::make_shared<FakeConfigurationPort>(), connection_port);
+    auto result = use_case.ResumeDispenser();
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("failure_stage=check_valve_safety_supply_open"), std::string::npos);
+}

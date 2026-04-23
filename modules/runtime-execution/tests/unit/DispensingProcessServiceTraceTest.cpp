@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
+#include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "services/dispensing/DispensingProcessService.h"
 #include "shared/types/Error.h"
 
 #include <atomic>
+#include <string>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +28,7 @@ using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
+using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareProgramSpan;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch;
 using Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode;
@@ -83,6 +86,120 @@ Result<T> NotImplemented(const char* method) {
 
 Result<void> NotImplementedVoid(const char* method) {
     return Result<void>::Failure(Error(ErrorCode::PORT_NOT_INITIALIZED, method));
+}
+
+class FakeConfigurationPort final : public IConfigurationPort {
+   public:
+    explicit FakeConfigurationPort(int stabilization_ms = 1) {
+        dispensing_.supply_stabilization_ms = stabilization_ms;
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::SystemConfig> LoadConfiguration() override {
+        return NotImplemented<Siligen::Domain::Configuration::Ports::SystemConfig>("LoadConfiguration");
+    }
+
+    Result<void> SaveConfiguration(const Siligen::Domain::Configuration::Ports::SystemConfig&) override {
+        return NotImplementedVoid("SaveConfiguration");
+    }
+
+    Result<void> ReloadConfiguration() override {
+        return NotImplementedVoid("ReloadConfiguration");
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::DispensingConfig> GetDispensingConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DispensingConfig>::Success(dispensing_);
+    }
+
+    Result<void> SetDispensingConfig(
+        const Siligen::Domain::Configuration::Ports::DispensingConfig&) override {
+        return NotImplementedVoid("SetDispensingConfig");
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::DxfImportConfig> GetDxfImportConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DxfImportConfig>::Success(
+            Siligen::Domain::Configuration::Ports::DxfImportConfig());
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig> GetDxfTrajectoryConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig>::Success(
+            Siligen::Domain::Configuration::Ports::DxfTrajectoryConfig());
+    }
+
+    Result<Siligen::Shared::Types::DiagnosticsConfig> GetDiagnosticsConfig() const override {
+        return NotImplemented<Siligen::Shared::Types::DiagnosticsConfig>("GetDiagnosticsConfig");
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::MachineConfig> GetMachineConfig() const override {
+        return Result<Siligen::Domain::Configuration::Ports::MachineConfig>::Success(
+            Siligen::Domain::Configuration::Ports::MachineConfig());
+    }
+
+    Result<void> SetMachineConfig(
+        const Siligen::Domain::Configuration::Ports::MachineConfig&) override {
+        return NotImplementedVoid("SetMachineConfig");
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::HomingConfig> GetHomingConfig(int) const override {
+        return NotImplemented<Siligen::Domain::Configuration::Ports::HomingConfig>("GetHomingConfig");
+    }
+
+    Result<void> SetHomingConfig(int, const Siligen::Domain::Configuration::Ports::HomingConfig&) override {
+        return NotImplementedVoid("SetHomingConfig");
+    }
+
+    Result<std::vector<Siligen::Domain::Configuration::Ports::HomingConfig>> GetAllHomingConfigs() const override {
+        return NotImplemented<std::vector<Siligen::Domain::Configuration::Ports::HomingConfig>>("GetAllHomingConfigs");
+    }
+
+    Result<Siligen::Domain::Configuration::Ports::ValveSupplyConfig> GetValveSupplyConfig() const override {
+        return NotImplemented<Siligen::Domain::Configuration::Ports::ValveSupplyConfig>("GetValveSupplyConfig");
+    }
+
+    Result<Siligen::Shared::Types::DispenserValveConfig> GetDispenserValveConfig() const override {
+        return Result<Siligen::Shared::Types::DispenserValveConfig>::Success(
+            Siligen::Shared::Types::DispenserValveConfig());
+    }
+
+    Result<Siligen::Shared::Types::ValveCoordinationConfig> GetValveCoordinationConfig() const override {
+        return Result<Siligen::Shared::Types::ValveCoordinationConfig>::Success(
+            Siligen::Shared::Types::ValveCoordinationConfig());
+    }
+
+    Result<Siligen::Shared::Types::VelocityTraceConfig> GetVelocityTraceConfig() const override {
+        return NotImplemented<Siligen::Shared::Types::VelocityTraceConfig>("GetVelocityTraceConfig");
+    }
+
+    Result<bool> ValidateConfiguration() const override {
+        return Result<bool>::Success(true);
+    }
+
+    Result<std::vector<std::string>> GetValidationErrors() const override {
+        return Result<std::vector<std::string>>::Success({});
+    }
+
+    Result<void> BackupConfiguration(const std::string&) override {
+        return NotImplementedVoid("BackupConfiguration");
+    }
+
+    Result<void> RestoreConfiguration(const std::string&) override {
+        return NotImplementedVoid("RestoreConfiguration");
+    }
+
+    Result<Siligen::Shared::Types::HardwareMode> GetHardwareMode() const override {
+        return Result<Siligen::Shared::Types::HardwareMode>::Success(Siligen::Shared::Types::HardwareMode::Mock);
+    }
+
+    Result<Siligen::Shared::Types::HardwareConfiguration> GetHardwareConfiguration() const override {
+        return Result<Siligen::Shared::Types::HardwareConfiguration>::Success(
+            Siligen::Shared::Types::HardwareConfiguration());
+    }
+
+   private:
+    Siligen::Domain::Configuration::Ports::DispensingConfig dispensing_{};
+};
+
+std::shared_ptr<IConfigurationPort> MakeSupplyStabilizationConfigPort(int stabilization_ms = 1) {
+    return std::make_shared<FakeConfigurationPort>(stabilization_ms);
 }
 
 class FakeValvePort final : public Siligen::Domain::Dispensing::Ports::IValvePort,
@@ -1080,13 +1197,14 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalKeepsDispatchOrderWit
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalRunsStationaryPointShotWithoutCmpPath) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
         std::vector<Point2D>{Point2D{0.0f, 0.0f}, Point2D{5.0f, 5.0f}, Point2D{5.0f, 5.0f}});
     DispensingProcessService service(valve_port,
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildStationaryPointExecutionPlan();
     auto params = BuildRuntimeParams();
@@ -1119,6 +1237,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalRunsStationaryPointSh
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesProfileCompareSingleTrackForDispensingPath) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
         std::vector<Point2D>{Point2D{0.0f, 0.0f},
                              Point2D{10.0f, 0.0f},
@@ -1130,7 +1249,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesProfileCompareSin
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();
@@ -1181,6 +1300,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesProfileCompareSin
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalMapsDiagonalProfileCompareToAxisPositionInsteadOfPathLength) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
         std::vector<Point2D>{Point2D{0.0f, 0.0f},
                              Point2D{10.0f, 0.0f},
@@ -1195,7 +1315,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalMapsDiagonalProfileCo
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildDiagonalProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();
@@ -1271,6 +1391,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalRejectsProfileCompare
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalSelectsYAxisForPureYProfileComparePath) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
         std::vector<Point2D>{Point2D{0.0f, 0.0f},
                              Point2D{0.0f, 10.0f},
@@ -1282,7 +1403,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalSelectsYAxisForPureYP
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildPureYProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();
@@ -1318,6 +1439,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalSelectsYAxisForPureYP
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesMultipleProfileCompareSpansForAxisSwitchPath) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
     auto motion_state_port = std::make_shared<SpanAwareMotionStatePort>(
         interpolation_port,
         std::vector<Point2D>{Point2D{0.0f, 0.0f},
@@ -1327,7 +1449,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesMultipleProfileCo
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildOrthogonalTurnProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();
@@ -1547,6 +1669,7 @@ TEST(DispensingProcessServiceTraceTest,
      ExecutePlanInternalUsesControllerSegmentDurationForSlowSecondProfileCompareSpan) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
 
     const CoordinateSystemStatus settled_status{
         CoordinateSystemState::IDLE,
@@ -1599,7 +1722,7 @@ TEST(DispensingProcessServiceTraceTest,
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildOrthogonalTurnProfileCompareExecutionPlan();
     plan.interpolation_points[1].velocity = 20.0f;
@@ -1642,6 +1765,7 @@ TEST(DispensingProcessServiceTraceTest,
      ExecutePlanInternalUsesPreviousSpanEndForProfileCompareLeadInDurationEstimate) {
     auto valve_port = std::make_shared<FakeValvePort>();
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto config_port = MakeSupplyStabilizationConfigPort();
 
     const CoordinateSystemStatus settled_status{
         CoordinateSystemState::IDLE,
@@ -1704,7 +1828,7 @@ TEST(DispensingProcessServiceTraceTest,
                                      interpolation_port,
                                      motion_state_port,
                                      nullptr,
-                                     nullptr);
+                                     config_port);
 
     auto plan = BuildLeadInGapProfileCompareExecutionPlan();
     auto params = BuildRuntimeParams();

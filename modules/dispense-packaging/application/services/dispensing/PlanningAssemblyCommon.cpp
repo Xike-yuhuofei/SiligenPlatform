@@ -1,4 +1,4 @@
-#include "application/services/dispensing/PlanningAssemblyResidualInternals.h"
+#include "application/services/dispensing/PlanningAssemblyInternals.h"
 
 #include "domain/dispensing/planning/domain-services/CurveFlatteningService.h"
 #include "process_path/contracts/GeometryUtils.h"

@@ -20,7 +20,6 @@ set(DISPENSE_PACKAGING_UNIT_TEST_SOURCES
     unit/application/usecases/dispensing/PlanningRequestTest.cpp
     unit/application/usecases/dispensing/PlanningUseCaseExportPortTest.cpp
     unit/application/usecases/dispensing/PlanningFailureSurfaceTest.cpp
-    unit/application/usecases/dispensing/valve/ValveUseCasesTest.cpp
 )
 
 set(DISPENSE_PACKAGING_OPTIONAL_TEST_SOURCES
@@ -34,12 +33,6 @@ set(DISPENSE_PACKAGING_RESIDUAL_REGRESSION_TEST_SOURCES
 set(DISPENSE_PACKAGING_PLANNING_RESIDUAL_REGRESSION_TEST_SOURCES
     regression/domain/dispensing/planning/ContourPathOptimizerTest.cpp
     unit/domain/dispensing/LegacyDxfPlannerQuarantineAuditTest.cpp
-)
-
-set(DISPENSE_PACKAGING_EXECUTION_RESIDUAL_REGRESSION_TEST_SOURCES
-    regression/domain/dispensing/execution/PurgeDispenserProcessTest.cpp
-    regression/domain/dispensing/execution/ValveCoordinationServiceTest.cpp
-    regression/domain/dispensing/execution/DispensingControllerTest.cpp
 )
 
 foreach(test_source IN LISTS DISPENSE_PACKAGING_OPTIONAL_TEST_SOURCES)
@@ -71,10 +64,6 @@ add_executable(
     ${DISPENSE_PACKAGING_PLANNING_RESIDUAL_REGRESSION_TEST_SOURCES}
 )
 add_executable(
-    siligen_dispense_packaging_execution_residual_regression_tests
-    ${DISPENSE_PACKAGING_EXECUTION_RESIDUAL_REGRESSION_TEST_SOURCES}
-)
-add_executable(
     siligen_dispense_packaging_shared_adjacent_regression_tests
     regression/shared/types/TrajectoryTriggerUtilsTest.cpp
 )
@@ -85,7 +74,6 @@ if(TARGET GTest::gtest_main)
     target_link_libraries(siligen_dispense_packaging_workflow_seam_tests PRIVATE GTest::gtest_main)
     target_link_libraries(siligen_dispense_packaging_residual_regression_tests PRIVATE GTest::gtest_main)
     target_link_libraries(siligen_dispense_packaging_planning_residual_regression_tests PRIVATE GTest::gtest_main)
-    target_link_libraries(siligen_dispense_packaging_execution_residual_regression_tests PRIVATE GTest::gtest_main)
     target_link_libraries(siligen_dispense_packaging_shared_adjacent_regression_tests PRIVATE GTest::gtest_main)
 elseif(TARGET gtest_main)
     target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE gtest_main)
@@ -93,7 +81,6 @@ elseif(TARGET gtest_main)
     target_link_libraries(siligen_dispense_packaging_workflow_seam_tests PRIVATE gtest_main)
     target_link_libraries(siligen_dispense_packaging_residual_regression_tests PRIVATE gtest_main)
     target_link_libraries(siligen_dispense_packaging_planning_residual_regression_tests PRIVATE gtest_main)
-    target_link_libraries(siligen_dispense_packaging_execution_residual_regression_tests PRIVATE gtest_main)
     target_link_libraries(siligen_dispense_packaging_shared_adjacent_regression_tests PRIVATE gtest_main)
 else()
     message(FATAL_ERROR "GoogleTest target not found")
@@ -114,9 +101,6 @@ target_link_libraries(siligen_dispense_packaging_planning_legacy_dxf_quarantine_
     siligen_process_path_application_public
     ${SILIGEN_DISPENSE_PACKAGING_TEST_MOTION_PLANNING_APP_TARGET}
 )
-target_link_libraries(siligen_dispense_packaging_planning_legacy_dxf_quarantine_support PRIVATE
-    siligen_dispense_packaging_execution_residual
-)
 target_compile_features(siligen_dispense_packaging_planning_legacy_dxf_quarantine_support PUBLIC cxx_std_17)
 
 target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE
@@ -126,8 +110,6 @@ target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE
     siligen_process_path_application_public
     ${SILIGEN_DISPENSE_PACKAGING_TEST_MOTION_PLANNING_APP_TARGET}
     siligen_dispense_packaging_planning_owner_residual
-    siligen_dispense_packaging_execution_residual
-    siligen_valve_core
     siligen_types
     siligen_utils
 )
@@ -151,11 +133,6 @@ target_link_libraries(siligen_dispense_packaging_planning_residual_regression_te
     siligen_types
     siligen_utils
 )
-target_link_libraries(siligen_dispense_packaging_execution_residual_regression_tests PRIVATE
-    siligen_dispense_packaging_execution_residual
-    siligen_types
-    siligen_utils
-)
 target_link_libraries(siligen_dispense_packaging_shared_adjacent_regression_tests PRIVATE
     siligen_types
     siligen_utils
@@ -165,7 +142,6 @@ target_compile_features(siligen_dispense_packaging_boundary_tests PRIVATE cxx_st
 target_compile_features(siligen_dispense_packaging_workflow_seam_tests PRIVATE cxx_std_17)
 target_compile_features(siligen_dispense_packaging_residual_regression_tests PRIVATE cxx_std_17)
 target_compile_features(siligen_dispense_packaging_planning_residual_regression_tests PRIVATE cxx_std_17)
-target_compile_features(siligen_dispense_packaging_execution_residual_regression_tests PRIVATE cxx_std_17)
 target_compile_features(siligen_dispense_packaging_shared_adjacent_regression_tests PRIVATE cxx_std_17)
 
 if(COMMAND siligen_add_test_with_runtime_environment)
@@ -190,10 +166,6 @@ if(COMMAND siligen_add_test_with_runtime_environment)
         siligen_dispense_packaging_planning_residual_regression_tests
     )
     siligen_add_test_with_runtime_environment(
-        siligen_dispense_packaging_execution_residual_regression_tests
-        siligen_dispense_packaging_execution_residual_regression_tests
-    )
-    siligen_add_test_with_runtime_environment(
         siligen_dispense_packaging_shared_adjacent_regression_tests
         siligen_dispense_packaging_shared_adjacent_regression_tests
     )
@@ -208,10 +180,6 @@ else()
     add_test(
         NAME siligen_dispense_packaging_planning_residual_regression_tests
         COMMAND siligen_dispense_packaging_planning_residual_regression_tests
-    )
-    add_test(
-        NAME siligen_dispense_packaging_execution_residual_regression_tests
-        COMMAND siligen_dispense_packaging_execution_residual_regression_tests
     )
     add_test(
         NAME siligen_dispense_packaging_shared_adjacent_regression_tests

@@ -1,10 +1,12 @@
 #include "TriggerPlanner.h"
-#include "DispenseCompensationService.h"
+#include "runtime_execution/contracts/dispensing/DispenseCompensationRules.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace Siligen::Domain::Dispensing::DomainServices {
+
+using Siligen::RuntimeExecution::Contracts::Dispensing::AdjustPulseWidthMs;
 
 namespace {
 constexpr float32 kEpsilon = 1e-6f;
@@ -69,9 +71,8 @@ Result<TriggerPlanResult> TriggerPlanner::Plan(float32 segment_length_mm,
     }
 
     if (!result.commands.empty()) {
-        DispenseCompensationService compensation_service;
         for (auto& cmd : result.commands) {
-            uint32 adjusted_pulse = compensation_service.AdjustPulseWidthMs(
+            uint32 adjusted_pulse = AdjustPulseWidthMs(
                 static_cast<uint32>(std::llround(cmd.estimated_duration_ms)),
                 compensation,
                 false);

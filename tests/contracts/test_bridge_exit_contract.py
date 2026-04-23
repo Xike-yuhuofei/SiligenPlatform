@@ -181,8 +181,77 @@ class BridgeExitContractTest(unittest.TestCase):
             WORKSPACE_ROOT / "modules" / "dispense-packaging" / "application" / "CMakeLists.txt"
         )
         self.assertIn("services/dispensing/PlanningAssemblyServices.cpp", dispense_packaging_application)
-        self.assertIn("services/dispensing/PlanningAssemblyResidualFacade.cpp", dispense_packaging_application)
+        self.assertIn("add_library(siligen_dispense_packaging_application_planning STATIC", dispense_packaging_application)
+        self.assertNotIn("services/dispensing/PlanningAssemblyResidualFacade.cpp", dispense_packaging_application)
         self.assertNotIn("siligen_workflow_application_headers", dispense_packaging_application)
+        self.assertNotIn("siligen_valve_core", dispense_packaging_application)
+
+        dispense_packaging_domain = _read(
+            WORKSPACE_ROOT / "modules" / "dispense-packaging" / "domain" / "dispensing" / "CMakeLists.txt"
+        )
+        self.assertIn(
+            "siligen_dispense_packaging_domain_dispensing_planning_residual_headers",
+            dispense_packaging_domain,
+        )
+        self.assertNotIn("siligen_dispense_packaging_domain_dispensing_execution_residual_headers", dispense_packaging_domain)
+        self.assertNotIn("siligen_dispense_packaging_execution_residual", dispense_packaging_domain)
+        self.assertNotIn("siligen_dispense_packaging_compensation_residual", dispense_packaging_domain)
+
+        for relative in (
+            "apps/runtime-service/CMakeLists.txt",
+            "apps/runtime-gateway/transport-gateway/CMakeLists.txt",
+            "apps/planner-cli/CMakeLists.txt",
+        ):
+            self.assertNotIn("siligen_valve_core", _read(WORKSPACE_ROOT / relative), msg=f"{relative} must not link siligen_valve_core")
+
+        for relative in (
+            "apps/runtime-service/container/ApplicationContainer.Dispensing.cpp",
+            "apps/runtime-service/container/ApplicationContainer.System.cpp",
+            "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h",
+            "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpDispensingFacade.h",
+            "apps/planner-cli/CommandHandlers.Connection.cpp",
+            "apps/planner-cli/CommandHandlers.Dispensing.cpp",
+        ):
+            content = _read(WORKSPACE_ROOT / relative)
+            self.assertNotIn(
+                'dispense_packaging/application/usecases/dispensing/valve/',
+                content,
+                msg=f"{relative} must not include M8 valve surface",
+            )
+            self.assertIn(
+                'runtime_execution/application/usecases/dispensing/valve/',
+                content,
+                msg=f"{relative} must include M9 valve surface",
+            )
+
+        device_adapter = _read(
+            WORKSPACE_ROOT
+            / "modules"
+            / "runtime-execution"
+            / "adapters"
+            / "device"
+            / "src"
+            / "adapters"
+            / "dispensing"
+            / "dispenser"
+            / "ValveAdapter.Dispenser.cpp"
+        )
+        self.assertIn("runtime_execution/contracts/dispensing/DispenseCompensationRules.h", device_adapter)
+        self.assertNotIn("DispenseCompensationService.h", device_adapter)
+
+        for relative in (
+            "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h",
+            "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h",
+            "modules/dispense-packaging/application/usecases/dispensing/valve/ValveUseCases.cpp",
+            "modules/dispense-packaging/domain/dispensing/domain-services/DispenseCompensationService.cpp",
+            "modules/dispense-packaging/domain/dispensing/domain-services/PurgeDispenserProcess.cpp",
+            "modules/dispense-packaging/domain/dispensing/domain-services/ValveCoordinationService.cpp",
+            "modules/dispense-packaging/domain/dispensing/domain-services/DispensingController.cpp",
+            "modules/dispense-packaging/domain/dispensing/domain-services/DispensingProcessService.cpp",
+            "modules/dispense-packaging/domain/dispensing/domain-services/SupplyStabilizationPolicy.cpp",
+            "modules/dispense-packaging/domain/dispensing/domain-services/CMPTriggerService.cpp",
+        ):
+            self.assertFalse((WORKSPACE_ROOT / relative).exists(), msg=f"M8 execution residual must be deleted: {relative}")
 
         for relative, forbidden in (
             ("modules/job-ingest/CMakeLists.txt", "siligen_workflow_application_public"),

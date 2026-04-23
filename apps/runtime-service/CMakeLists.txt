@@ -89,7 +89,6 @@ target_link_libraries(siligen_runtime_process_bootstrap PUBLIC
     siligen_device_adapters
     siligen_device_contracts
     siligen_dispense_packaging_application_public
-    siligen_valve_core
     siligen_module_dxf_geometry
     siligen_job_ingest_application_public
     siligen_motion_planning_application_public

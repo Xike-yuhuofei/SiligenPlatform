@@ -20,17 +20,27 @@ Result<uint32> SupplyStabilizationPolicy::Resolve(
         return Result<uint32>::Success(*override_ms);
     }
 
-    if (config_port) {
-        auto config_result = config_port->GetDispensingConfig();
-        if (config_result.IsSuccess()) {
-            const auto& config = config_result.Value();
-            if (config.supply_stabilization_ms > 0) {
-                return Result<uint32>::Success(static_cast<uint32>(config.supply_stabilization_ms));
-            }
-        }
+    if (!config_port) {
+        return Result<uint32>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED,
+                  "供胶阀稳压配置端口未初始化",
+                  "SupplyStabilizationPolicy"));
     }
 
-    return Result<uint32>::Success(kDefaultMs);
+    auto config_result = config_port->GetDispensingConfig();
+    if (config_result.IsError()) {
+        return Result<uint32>::Failure(config_result.GetError());
+    }
+
+    const auto configured_ms = config_result.Value().supply_stabilization_ms;
+    if (configured_ms <= 0 || configured_ms > static_cast<decltype(configured_ms)>(kMaxMs)) {
+        return Result<uint32>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER,
+                  "供胶阀稳压时间必须在1-5000ms范围内且由配置显式提供",
+                  "SupplyStabilizationPolicy"));
+    }
+
+    return Result<uint32>::Success(static_cast<uint32>(configured_ms));
 }
 
 }  // namespace Siligen::RuntimeExecution::Application::Services::Dispensing

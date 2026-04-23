@@ -2,7 +2,7 @@
 #define MODULE_NAME "ValveAdapter"
 
 #include "ValveAdapter.h"
-#include "../../../../../../../dispense-packaging/domain/dispensing/domain-services/DispenseCompensationService.h"
+#include "runtime_execution/contracts/dispensing/DispenseCompensationRules.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <algorithm>
@@ -22,6 +22,8 @@ using DispenserCapability = Siligen::Device::Contracts::Capabilities::DispenserC
 using DispenserCommand = Siligen::Device::Contracts::Commands::DispenserCommand;
 using DispenserCommandKind = Siligen::Device::Contracts::Commands::DispenserCommandKind;
 using DeviceDispenserState = Siligen::Device::Contracts::State::DispenserState;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ApplyPositionCompensation;
+using Siligen::RuntimeExecution::Contracts::Dispensing::ApplyTimedCompensation;
 using SharedKernelError = Siligen::SharedKernel::Error;
 using SharedKernelErrorCode = Siligen::SharedKernel::ErrorCode;
 
@@ -159,9 +161,7 @@ Result<DispenserValveState> ValveAdapter::StartDispenser(
         const auto start_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
             system_start_time.time_since_epoch()).count();
 
-        Domain::Dispensing::DomainServices::DispenseCompensationService compensation_service;
-        const auto adjusted_params =
-            compensation_service.ApplyTimedCompensation(params, compensation_profile_, false);
+        const auto adjusted_params = ApplyTimedCompensation(params, compensation_profile_, false);
 
         dispenser_state_.status = DispenserValveStatus::Running;
         dispenser_state_.completedCount = 0;
@@ -356,9 +356,7 @@ Result<DispenserValveState> ValveAdapter::StartPositionTriggeredDispenser(
         ResetDispenserHardwareState("StartPositionTriggeredDispenser", false);
         ResetProfileCompareTrackingState();
 
-        Domain::Dispensing::DomainServices::DispenseCompensationService compensation_service;
-        const auto adjusted_params =
-            compensation_service.ApplyPositionCompensation(params, compensation_profile_, false);
+        const auto adjusted_params = ApplyPositionCompensation(params, compensation_profile_, false);
 
         if (compensation_profile_.retract_enabled) {
             const int retract_result = CallMC_SetCmpLevel(false);

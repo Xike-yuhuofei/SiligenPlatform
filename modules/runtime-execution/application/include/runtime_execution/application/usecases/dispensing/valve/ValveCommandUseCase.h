@@ -1,7 +1,7 @@
 #pragma once
 
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
-#include "dispense_packaging/contracts/IValvePort.h"
+#include "runtime_execution/contracts/dispensing/IValvePort.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Result.h"
 

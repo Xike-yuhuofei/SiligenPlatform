@@ -109,10 +109,25 @@ TEST(DispensePackagingBoundaryTest, LegacyExecutionProviderAndTestsAreRemovedFro
         repo_root / "modules/workflow/domain/domain/dispensing/domain-services/DispensingProcessService.h"));
     EXPECT_FALSE(fs::exists(
         repo_root / "modules/workflow/domain/domain/dispensing/domain-services/DispensingProcessService.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/regression/domain/dispensing/execution/PurgeDispenserProcessTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/regression/domain/dispensing/execution/ValveCoordinationServiceTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/regression/domain/dispensing/execution/DispensingControllerTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/unit/application/usecases/dispensing/valve/ValveUseCasesTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/application/include/dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"));
 
     EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/DispensingProcessPortFactoryTest.cpp"));
     EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/DispensingProcessServiceTraceTest.cpp"));
     EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/DispensingProcessServiceWaitForMotionCompleteTest.cpp"));
+    EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/dispensing/DispensingControllerTest.cpp"));
+    EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/dispensing/PurgeDispenserProcessTest.cpp"));
+    EXPECT_TRUE(fs::exists(repo_root / "modules/runtime-execution/tests/unit/dispensing/ValveUseCasesTest.cpp"));
 }
 
 TEST(DispensePackagingBoundaryTest, PlanningUseCaseAndPortsAreOwnedByDispensePackagingApplication) {
@@ -256,6 +271,12 @@ TEST(DispensePackagingBoundaryTest, ForeignPlanningAndExecutionTestsAreHostedByO
         repo_root / "modules/dispense-packaging/tests/unit/application/usecases/dispensing/PlanningFailureSurfaceTest.cpp"));
     EXPECT_TRUE(fs::exists(
         repo_root / "modules/runtime-execution/tests/unit/dispensing/DispensingWorkflowUseCaseTest.cpp"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/runtime-execution/tests/unit/dispensing/DispensingControllerTest.cpp"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/runtime-execution/tests/unit/dispensing/PurgeDispenserProcessTest.cpp"));
+    EXPECT_TRUE(fs::exists(
+        repo_root / "modules/runtime-execution/tests/unit/dispensing/ValveUseCasesTest.cpp"));
 
     EXPECT_FALSE(fs::exists(
         repo_root / "modules/workflow/tests/canonical/unit/dispensing/PlanningRequestTest.cpp"));
@@ -265,6 +286,14 @@ TEST(DispensePackagingBoundaryTest, ForeignPlanningAndExecutionTestsAreHostedByO
         repo_root / "modules/workflow/tests/integration/PlanningFailureSurfaceTest.cpp"));
     EXPECT_FALSE(fs::exists(
         repo_root / "modules/workflow/tests/integration/DispensingWorkflowUseCaseTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/regression/domain/dispensing/execution/DispensingControllerTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/regression/domain/dispensing/execution/PurgeDispenserProcessTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/regression/domain/dispensing/execution/ValveCoordinationServiceTest.cpp"));
+    EXPECT_FALSE(fs::exists(
+        repo_root / "modules/dispense-packaging/tests/unit/application/usecases/dispensing/valve/ValveUseCasesTest.cpp"));
 }
 
 TEST(DispensePackagingBoundaryTest, ExecutionPackageUsesPlanOnlyBackingTypeAndRuntimeContractsOwnRuntimeTypes) {
