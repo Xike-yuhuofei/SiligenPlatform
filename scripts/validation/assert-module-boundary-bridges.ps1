@@ -247,15 +247,7 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "runtime/recipes/RecipeFileRepository.cpp"
-    },
-    @{
-        path = "apps/runtime-service/CMakeLists.txt"
         pattern = "siligen_workflow_adapters_public"
-    },
-    @{
-        path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "siligen_recipe_lifecycle_application_public"
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
@@ -276,10 +268,6 @@ $requiredBridgeReferences = @(
     @{
         path = "apps/planner-cli/CMakeLists.txt"
         pattern = "siligen_runtime_execution_application_public"
-    },
-    @{
-        path = "apps/planner-cli/CMakeLists.txt"
-        pattern = "siligen_recipe_lifecycle_application_public"
     },
     @{
         path = "apps/planner-cli/CMakeLists.txt"
@@ -315,10 +303,6 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
-        pattern = "siligen_recipe_lifecycle_application_public"
-    },
-    @{
-        path = "apps/runtime-gateway/transport-gateway/CMakeLists.txt"
         pattern = "siligen_job_ingest_application_public"
     },
     @{
@@ -339,39 +323,11 @@ $requiredBridgeReferences = @(
     },
     @{
         path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "siligen_recipe_lifecycle_serialization_public"
-    },
-    @{
-        path = "apps/runtime-service/CMakeLists.txt"
-        pattern = "siligen_recipe_lifecycle_domain_public"
-    },
-    @{
-        path = "apps/runtime-service/CMakeLists.txt"
         pattern = "siligen_trace_diagnostics_contracts_public"
     },
     @{
-        path = "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
-        pattern = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/RecipeBundleSerializer.h"
-        pattern = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/RecipeFileRepository.cpp"
-        pattern = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/ParameterSchemaFileProvider.cpp"
-        pattern = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/TemplateFileRepository.cpp"
-        pattern = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/AuditFileRepository.cpp"
-        pattern = '#include "recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"'
+        path = "CMakeLists.txt"
+        pattern = "BUILD_SECURITY_MODULE has been retired."
     },
     @{
         path = "modules/runtime-execution/application/CMakeLists.txt"
@@ -405,12 +361,6 @@ $directWorkflowTargets = @(
     "siligen_workflow_runtime_consumer_public"
 )
 
-$recipeCanonicalUseCaseHeaderDir = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
-    "modules/recipe-lifecycle/application/include/recipe_lifecycle/application/usecases/recipes"
-$recipeSourceUseCaseHeaderDir = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
-    "modules/recipe-lifecycle/application/usecases/recipes"
-$recipeCanonicalSerializerHeader = Resolve-AbsolutePath -BasePath $repoRoot -PathValue `
-    "modules/recipe-lifecycle/adapters/include/recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
 $allowedHardwareDiagnosticsQuarantineReferences = @(
     @{
         pattern = '#include "domain/diagnostics/ports/ITestRecordRepository.h"'
@@ -588,6 +538,24 @@ $forbiddenCompatReferences = @(
         pattern = "modules/runtime-execution/contracts/device"
         rule_id = "shared-contracts-still-points-to-runtime-device-contracts"
         detail = "shared/contracts must resolve siligen_device_contracts from shared/contracts/device canonical root"
+    },
+    @{
+        path = "CMakeLists.txt"
+        pattern = 'option(BUILD_SECURITY_MODULE "构建安全模块" OFF)'
+        rule_id = "root-still-defines-retired-security-module-option"
+        detail = "root CMake must not keep the retired BUILD_SECURITY_MODULE option"
+    },
+    @{
+        path = "CMakeLists.txt"
+        pattern = "add_library(security_module STATIC"
+        rule_id = "root-still-defines-retired-security-module-target"
+        detail = "root CMake must not define the retired security_module target"
+    },
+    @{
+        path = "CMakeLists.txt"
+        pattern = "SILIGEN_RUNTIME_HOST_CANONICAL_DIR"
+        rule_id = "root-still-uses-retired-runtime-host-canonical-dir"
+        detail = "root CMake must not keep the retired runtime host canonical source root after security_module removal"
     }
 )
 
@@ -1341,12 +1309,6 @@ $forbiddenOwnershipReferences = @(
         detail = "runtime process bootstrap must include runtime_execution/contracts/dispensing/ITaskSchedulerPort.h"
     },
     @{
-        path = "apps/planner-cli/CommandHandlers.Recipe.cpp"
-        pattern = '#include "application/usecases/recipes/'
-        rule_id = "planner-cli-still-includes-legacy-recipe-usecases"
-        detail = "planner-cli recipe consumer must include recipe_lifecycle/application/usecases/recipes/* public headers"
-    },
-    @{
         path = "apps/runtime-gateway/transport-gateway/include/siligen/gateway/tcp/tcp_facade_builder.h"
         pattern = '#include "application/usecases/recipes/'
         rule_id = "gateway-builder-still-includes-legacy-recipe-usecases"
@@ -1401,52 +1363,10 @@ $forbiddenOwnershipReferences = @(
         detail = "TcpMotionFacade must hold the Stage B MotionControlUseCase entry instead of per-use-case workflow motion dependencies"
     },
     @{
-        path = "apps/runtime-gateway/transport-gateway/src/facades/tcp/TcpRecipeFacade.h"
-        pattern = '#include "application/usecases/recipes/'
-        rule_id = "gateway-facade-still-includes-legacy-recipe-usecases"
-        detail = "transport-gateway recipe facade must include recipe_lifecycle/application/usecases/recipes/* public headers"
-    },
-    @{
-        path = "apps/runtime-service/container/ApplicationContainer.Recipes.cpp"
-        pattern = '#include "application/usecases/recipes/'
-        rule_id = "runtime-bootstrap-still-includes-legacy-recipe-usecases"
-        detail = "runtime bootstrap recipe container must include recipe_lifecycle/application/usecases/recipes/* public headers"
-    },
-    @{
         path = "apps/runtime-gateway/transport-gateway/src/tcp/TcpCommandDispatcher.cpp"
         pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
         rule_id = "gateway-dispatcher-still-includes-legacy-recipe-serializer"
-        detail = "transport-gateway dispatcher must include recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/RecipeBundleSerializer.h"
-        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-bootstrap-recipe-serializer-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/RecipeFileRepository.cpp"
-        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-bootstrap-recipe-repository-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/ParameterSchemaFileProvider.cpp"
-        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-bootstrap-parameter-schema-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/TemplateFileRepository.cpp"
-        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-bootstrap-template-repository-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
-    },
-    @{
-        path = "apps/runtime-service/runtime/recipes/AuditFileRepository.cpp"
-        pattern = '#include "workflow/adapters/recipes/serialization/RecipeJsonSerializer.h"'
-        rule_id = "runtime-bootstrap-audit-repository-still-includes-legacy-json-header"
-        detail = "runtime bootstrap recipe persistence must include recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
+        detail = "transport-gateway dispatcher must not include the deleted workflow recipe serializer path"
     }
 )
 
@@ -1489,12 +1409,72 @@ $requiredDeletedFiles = @(
     @{
         path = "modules/workflow/domain/include/domain/recipes/serialization/RecipeJsonSerializer.h"
         rule_id = "workflow-recipe-serializer-header-still-exists"
-        detail = "workflow recipe serializer public header must be deleted after cutover to recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h"
+        detail = "workflow recipe serializer public header must stay deleted after recipe manager retirement"
     },
     @{
         path = "modules/workflow/domain/domain/recipes/serialization/RecipeJsonSerializer.cpp"
         rule_id = "workflow-recipe-serializer-impl-still-exists"
-        detail = "workflow recipe serializer implementation must be deleted after cutover to modules/recipe-lifecycle/adapters/serialization/RecipeJsonSerializer.cpp"
+        detail = "workflow recipe serializer implementation must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "modules/recipe-lifecycle"
+        rule_id = "recipe-lifecycle-module-still-exists"
+        detail = "modules/recipe-lifecycle must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "apps/runtime-service/container/ApplicationContainer.Recipes.cpp"
+        rule_id = "runtime-service-recipe-container-still-exists"
+        detail = "runtime-service recipe container must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "apps/runtime-service/runtime/recipes"
+        rule_id = "runtime-service-recipe-persistence-root-still-exists"
+        detail = "runtime-service recipe persistence root must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "shared/contracts/application/commands/recipe.command-set.json"
+        rule_id = "recipe-command-contract-still-exists"
+        detail = "recipe command contract must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "shared/contracts/application/queries/recipe.query-set.json"
+        rule_id = "recipe-query-contract-still-exists"
+        detail = "recipe query contract must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "shared/contracts/application/fixtures/requests/recipe.get.request.json"
+        rule_id = "recipe-get-request-fixture-still-exists"
+        detail = "recipe.get request fixture must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "shared/contracts/application/fixtures/responses/recipe.get.success.json"
+        rule_id = "recipe-get-response-fixture-still-exists"
+        detail = "recipe.get response fixture must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "shared/contracts/application/fixtures/requests/recipe.import.request.json"
+        rule_id = "recipe-import-request-fixture-still-exists"
+        detail = "recipe.import request fixture must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "shared/contracts/application/fixtures/responses/recipe.import.conflicts.success.json"
+        rule_id = "recipe-import-response-fixture-still-exists"
+        detail = "recipe.import response fixture must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "tests/e2e/hardware-in-loop/recipe_runtime_support.py"
+        rule_id = "hil-recipe-runtime-support-still-exists"
+        detail = "HIL recipe runtime support helper must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "data/recipes"
+        rule_id = "recipe-data-root-still-exists"
+        detail = "data/recipes must stay deleted after recipe manager retirement"
+    },
+    @{
+        path = "data/schemas/recipes"
+        rule_id = "recipe-schema-root-still-exists"
+        detail = "data/schemas/recipes must stay deleted after recipe manager retirement"
     },
     @{
         path = "modules/process-path/contracts/include/process_path/contracts/IDXFPathSourcePort.h"
@@ -2416,70 +2396,6 @@ foreach ($searchRule in $forbiddenScopedSearches) {
             file = $Matches.path
             line = [int]$Matches.line
             detail = $searchRule.detail
-        })
-    }
-}
-
-if (-not (Test-Path $recipeCanonicalUseCaseHeaderDir)) {
-    $findings.Add([pscustomobject]@{
-        rule_id = "missing-canonical-recipe-header-dir"
-        severity = "error"
-        target = $recipeCanonicalUseCaseHeaderDir
-        file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeCanonicalUseCaseHeaderDir
-        line = 0
-        detail = "canonical recipe-lifecycle application public header directory does not exist"
-    })
-} else {
-    foreach ($header in Get-ChildItem -Path $recipeCanonicalUseCaseHeaderDir -File) {
-        $matches = Select-String -Path $header.FullName -Pattern ([regex]::Escape('application/usecases/recipes/'))
-        foreach ($match in $matches) {
-            $findings.Add([pscustomobject]@{
-                rule_id = "canonical-recipe-header-still-wraps-legacy-path"
-                severity = "error"
-                target = "application/usecases/recipes/"
-                file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $header.FullName
-                line = $match.LineNumber
-                detail = "canonical recipe-lifecycle public headers must own declarations and must not forward back to source-local application/usecases/recipes paths"
-            })
-        }
-    }
-}
-
-if (Test-Path $recipeSourceUseCaseHeaderDir) {
-    foreach ($header in Get-ChildItem -Path $recipeCanonicalUseCaseHeaderDir -File) {
-        $sourceDuplicate = Join-Path $recipeSourceUseCaseHeaderDir $header.Name
-        if (Test-Path $sourceDuplicate) {
-            $findings.Add([pscustomobject]@{
-                rule_id = "recipe-source-dir-duplicates-public-header"
-                severity = "error"
-                target = $header.Name
-                file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $sourceDuplicate
-                line = 0
-                detail = "recipe-lifecycle source dir must not duplicate canonical public headers"
-            })
-        }
-    }
-}
-
-if (-not (Test-Path $recipeCanonicalSerializerHeader)) {
-    $findings.Add([pscustomobject]@{
-        rule_id = "missing-canonical-recipe-serializer-header"
-        severity = "error"
-        target = $recipeCanonicalSerializerHeader
-        file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeCanonicalSerializerHeader
-        line = 0
-        detail = "canonical recipe-lifecycle serializer public header does not exist"
-    })
-} else {
-    $matches = Select-String -Path $recipeCanonicalSerializerHeader -Pattern ([regex]::Escape('domain/recipes/serialization/RecipeJsonSerializer.h'))
-    foreach ($match in $matches) {
-        $findings.Add([pscustomobject]@{
-            rule_id = "canonical-recipe-serializer-header-still-wraps-legacy-path"
-            severity = "error"
-            target = 'domain/recipes/serialization/RecipeJsonSerializer.h'
-            file = Get-RelativeRepoPath -BasePath $repoRoot -TargetPath $recipeCanonicalSerializerHeader
-            line = $match.LineNumber
-            detail = "canonical recipe-lifecycle serializer public header must own declarations and must not forward back to the workflow serializer path"
         })
     }
 }

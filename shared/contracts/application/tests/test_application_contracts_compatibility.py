@@ -113,7 +113,7 @@ def test_known_compatibility_gaps_are_recorded():
     overrides = load_json(CONTRACTS / "mappings" / "compatibility-overrides.json")
     ids = {item["id"] for item in overrides["overrides"]}
     assert "dxf-info-total-segments-gap" not in ids
-    assert "recipe-request-aliases" in ids
+    assert "recipe-request-aliases" not in ids
 
     hmi_ui = HMI_MAIN_WINDOW.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
@@ -141,31 +141,6 @@ def test_known_compatibility_gaps_are_recorded():
     assert '"total_length"' in dxf_info_body
     assert '"bounds"' in dxf_info_body
     assert '"total_segments"' in dxf_info_body
-
-
-def test_recipe_aliases_are_explicit():
-    operations = load_operations()
-    alias_methods = {
-        method
-        for method, op in operations.items()
-        if "compatibility" in op and op["compatibility"].get("requestAliases")
-    }
-    expected = {
-        "recipe.get",
-        "recipe.update",
-        "recipe.archive",
-        "recipe.draft.create",
-        "recipe.draft.update",
-        "recipe.publish",
-        "recipe.versions",
-        "recipe.version.create",
-        "recipe.version.compare",
-        "recipe.version.activate",
-        "recipe.audit",
-        "recipe.export",
-        "recipe.import",
-    }
-    assert expected.issubset(alias_methods)
 
 
 def test_dxf_preview_and_job_contract():
@@ -246,8 +221,8 @@ def test_dxf_preview_and_job_contract():
     plan_prepare_notes = "\n".join(plan_prepare.get("compatibility", {}).get("notes", []))
     assert "current production baseline" in plan_prepare_notes
     assert "point_flying_carrier_policy" in plan_prepare_notes
-    assert "published recipe version" in plan_prepare_notes
-    assert "activeVersionId" in plan_prepare_notes
+    assert "published recipe version" not in plan_prepare_notes
+    assert "activeVersionId" not in plan_prepare_notes
     job_start_notes = "\n".join(operations["dxf.job.start"].get("compatibility", {}).get("notes", []))
     assert "回退最近一次 prepared plan" not in job_start_notes
 
@@ -657,7 +632,6 @@ def main():
       lambda: test_tcp_methods_match_contracts(operations),
       test_fixtures,
       test_known_compatibility_gaps_are_recorded,
-      test_recipe_aliases_are_explicit,
       test_dxf_preview_and_job_contract,
       test_status_contract_describes_backend_interlock_authority,
       test_status_contract_exposes_effective_interlocks_and_supervision,

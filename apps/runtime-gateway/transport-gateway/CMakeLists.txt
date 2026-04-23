@@ -42,7 +42,6 @@ target_compile_features(siligen_transport_gateway_protocol PUBLIC cxx_std_17)
 add_library(siligen_transport_gateway STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/facades/tcp/TcpDispensingFacade.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/facades/tcp/TcpMotionFacade.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/facades/tcp/TcpRecipeFacade.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/facades/tcp/TcpSystemFacade.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/tcp/MockIoControlService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/tcp/JsonProtocol.cpp
@@ -70,8 +69,6 @@ target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_dispense_packaging_application_public
     siligen_valve_core
     siligen_job_ingest_application_public
-    siligen_recipe_lifecycle_application_public
-    siligen_recipe_lifecycle_serialization_public
     siligen_runtime_execution_application_public
     siligen_process_planning_contracts_public
     siligen_shared

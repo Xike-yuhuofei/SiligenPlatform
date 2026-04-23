@@ -1,6 +1,6 @@
 # Modules Owner Boundary
 
-更新时间：`2026-04-10`
+更新时间：`2026-04-23`
 
 本文是 `modules/` owner 边界的当前正式收束页。  
 它只保留仍然有效的稳定结论；历史评审过程、证据强度审查和初版判断已下沉到 [history/module-boundary/](./history/module-boundary/)。
@@ -10,7 +10,7 @@
 - `modules/` 仍然是业务 owner 根，`apps/` 只负责宿主/装配，`shared/` 只负责稳定公共层
 - 当前主要问题不是根级规则缺失，而是若干模块的 owner 落地与实现收口未完成
 - 当前优先级最高的边界问题集中在 `hmi-application`、`dispense-packaging`、`runtime-execution`
-- `workflow` 仍处于兼容聚合与部分事实入口并存的状态，尚未完全收回到纯 orchestration 边界
+- `workflow` 默认 build slice 已收口为 `M0` canonical/orchestration owner；当前主要问题是正式文档口径与 root 失真分支未同步，而不是 live compat aggregation 仍在默认主线上承载 owner 事实
 - `motion-planning` 对 `process-path` 仍存在明确领域模型穿透；问题核心是 consumer 没停在 `process-path` 的 contract/application surface
 
 ## 2. 当前优先级
@@ -23,7 +23,7 @@
 
 ### `P1`
 
-- `workflow`：尚未回到纯 orchestration / port 层
+- `workflow`：正式文档与治理 Oracle 仍有历史漂移；root 已退役 optional `security` 分支需从默认 owner 叙述中剥离
 - `process-path` 与 `motion-planning`：存在明确领域模型穿透
 
 ### `P2`

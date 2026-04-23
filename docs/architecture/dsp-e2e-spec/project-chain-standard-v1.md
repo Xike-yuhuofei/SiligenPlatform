@@ -113,7 +113,6 @@
 | B05 | 单阀/供胶调试链 | `dispenser.*`、`purge`、`supply.*` -> 阀/供胶状态变化 | 当前单阀、供胶、purge 调试链，用于维护与调试，不等于 DXF 正式点胶执行。 | 点胶时序规划链 |
 | B06 | 状态回流监督链 | runtime/device/raw io -> `status` / `effective_interlocks` / `supervision` / `alarms` | 当前 HMI、smoke、诊断统一观察面的权威状态链，用于能力门禁、在线判定和错误诊断。 | 规划链、板卡程序链 |
 | B07 | 告警处置链 | `alarms.list` / `alarms.acknowledge` / `alarms.clear` -> 告警视图与清理结果 | 当前运行态告警查询与处置链。 | 急停复位链、归档链 |
-| B08 | 配方生命周期链 | `recipe.*` 请求 -> recipe/version/audit/bundle 结果 | 当前配方的查询、建模、草稿、发布、激活、比对、导入导出与审计链。 | DXF 任务执行链 |
 
 ## 7. C 类：观测与工程支撑链
 

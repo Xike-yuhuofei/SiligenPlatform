@@ -35,7 +35,7 @@ shared/*
 | `apps/* -> modules/*` 私有实现目录 | app 只能消费模块 public surface，不能越过边界直连 owner 内部实现 |
 | `apps/hmi-app -> modules/runtime-execution` 设备适配或执行内部实现 | UI 不直接依赖硬件适配或执行实现 |
 | `apps/* -> shared/*` 之外的历史根 | 已退出根不得重新进入默认依赖图 |
-| `modules/runtime-execution -> recipe-lifecycle` 规则实现的隐式反向承接 | runtime-execution 当前 owner 已收紧为执行域与 host core，不再吸入 recipe owner |
+| 任意 live 代码 -> 已退役 recipe management surface（`modules/recipe-lifecycle`、`recipe.*`、`data/recipes`、`data/schemas/recipes`） | recipe manager 已退役；DXF 固定参数 owner 已收敛到 runtime `production_baseline`，不得恢复 recipe owner 链，也不得重新引入 recipe serializer / CRUD surface |
 | `modules/workflow -> recipe / runtime / engineering concrete` | workflow 只保留 orchestration / port 边界，不能重新聚合 foreign concrete |
 | `modules/dxf-geometry -> motion-planning` trajectory concrete owner 回流 | trajectory owner 已迁到 `modules/motion-planning/` |
 | `modules/* -> foreign module` 非公开头、私有源码目录或 app-local wiring | 跨 owner 依赖必须可审计、可替换 |

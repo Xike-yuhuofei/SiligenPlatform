@@ -41,22 +41,7 @@ enum class CommandType {
     DXF_DISPENSE,
     DXF_PREVIEW,
     DXF_PREVIEW_SNAPSHOT,
-    DXF_AUGMENT,
-    RECIPE_CREATE,
-    RECIPE_UPDATE,
-    RECIPE_DRAFT_CREATE,
-    RECIPE_DRAFT_UPDATE,
-    RECIPE_PUBLISH,
-    RECIPE_LIST,
-    RECIPE_GET,
-    RECIPE_LIST_VERSIONS,
-    RECIPE_ARCHIVE,
-    RECIPE_VERSION_CREATE,
-    RECIPE_VERSION_COMPARE,
-    RECIPE_VERSION_ACTIVATE,
-    RECIPE_AUDIT,
-    RECIPE_EXPORT,
-    RECIPE_IMPORT
+    DXF_AUGMENT
 };
 
 struct CommandLineConfig {
@@ -143,24 +128,6 @@ struct CommandLineConfig {
     bool planning_report = false;
     std::string planning_report_path;
     size_t preview_max_points = 0;
-
-    std::string recipe_id;
-    std::string recipe_name;
-    std::string recipe_description;
-    std::vector<std::string> recipe_tags;
-    std::string recipe_status;
-    std::string recipe_query;
-    std::string recipe_tag;
-    std::string template_id;
-    std::string version_id;
-    std::string base_version_id;
-    std::string version_label;
-    std::string change_note;
-    std::string actor = "cli";
-    std::vector<std::string> recipe_params;
-    std::string export_path;
-    std::string import_path;
-    std::string conflict_resolution;
 };
 
 class CommandLineParser {
@@ -169,7 +136,6 @@ class CommandLineParser {
 
    private:
     static RunMode ParseMode(const std::string& mode_str);
-    static bool ParseStringList(const std::string& raw, std::vector<std::string>& values);
 };
 
 }  // namespace Siligen::Application

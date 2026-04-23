@@ -25,7 +25,6 @@ from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication, QListWidget, QWidget
 
 import ui.main_window as main_window_module  # noqa: E402
-import ui.recipe_config_widget as recipe_config_widget_module  # noqa: E402
 from tools.mock_server import MockRequestHandler, MockState, MockTcpServer  # noqa: E402
 
 
@@ -46,8 +45,6 @@ SUPPORTED_RUNTIME_ACTION_PROFILES = (
     "door_interlock",
 )
 OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES = ("full", "operator_preview", "operator_production")
-MOCK_RECIPE_ID = "recipe-mock-001"
-MOCK_VERSION_ID = "version-mock-001"
 REQUIRED_OPERATOR_CONTEXT_FIELDS = (
     "artifact_id",
     "plan_id",
@@ -70,10 +67,6 @@ def canonical_preview_sample() -> Path:
     return Path(__file__).resolve().parents[5] / "samples" / "dxf" / "rect_diag.dxf"
 
 
-def uses_real_recipe_context(runtime_action_profile: str) -> bool:
-    return runtime_action_profile.strip().lower() in OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES
-
-
 def requires_explicit_dxf_browse_path(runtime_action_profile: str) -> bool:
     return runtime_action_profile.strip().lower() in OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES
 
@@ -84,7 +77,7 @@ def resolve_runtime_action_request(
     runtime_action_profile: str,
     preview_payload_path: str,
     dxf_browse_path: str,
-) -> tuple[str, bool, str]:
+) -> tuple[str, str]:
     normalized_profile = str(runtime_action_profile or "").strip().lower()
     normalized_preview_payload_path = str(preview_payload_path or "").strip()
     normalized_dxf_browse_path = str(dxf_browse_path or "").strip()
@@ -96,7 +89,7 @@ def resolve_runtime_action_request(
             raise ValueError("--runtime-action-profile requires --exercise-runtime-actions")
         if normalized_dxf_browse_path:
             raise ValueError("--dxf-browse-path requires --exercise-runtime-actions")
-        return "", False, ""
+        return "", ""
 
     if not normalized_profile:
         normalized_profile = "full"
@@ -119,7 +112,7 @@ def resolve_runtime_action_request(
             raise ValueError(f"--dxf-browse-path does not exist: {resolved_dxf_path}")
         normalized_dxf_browse_path = str(resolved_dxf_path)
 
-    return normalized_profile, uses_real_recipe_context(normalized_profile), normalized_dxf_browse_path
+    return normalized_profile, normalized_dxf_browse_path
 
 
 def find_by_testid(root: QWidget, testid: str) -> Optional[QWidget]:
@@ -283,10 +276,6 @@ def patch_modal_dialogs() -> Iterator[None]:
     original_warning = main_window_module.QMessageBox.warning
     original_information = main_window_module.QMessageBox.information
     original_question = main_window_module.QMessageBox.question
-    recipe_original_critical = recipe_config_widget_module.QMessageBox.critical
-    recipe_original_warning = recipe_config_widget_module.QMessageBox.warning
-    recipe_original_information = recipe_config_widget_module.QMessageBox.information
-    recipe_original_question = recipe_config_widget_module.QMessageBox.question
 
     def _dialog_noop(*_args, **_kwargs):
         return main_window_module.QMessageBox.Ok
@@ -298,10 +287,6 @@ def patch_modal_dialogs() -> Iterator[None]:
     main_window_module.QMessageBox.warning = _dialog_noop
     main_window_module.QMessageBox.information = _dialog_noop
     main_window_module.QMessageBox.question = _dialog_yes
-    recipe_config_widget_module.QMessageBox.critical = _dialog_noop
-    recipe_config_widget_module.QMessageBox.warning = _dialog_noop
-    recipe_config_widget_module.QMessageBox.information = _dialog_noop
-    recipe_config_widget_module.QMessageBox.question = _dialog_yes
     try:
         yield
     finally:
@@ -309,45 +294,6 @@ def patch_modal_dialogs() -> Iterator[None]:
         main_window_module.QMessageBox.warning = original_warning
         main_window_module.QMessageBox.information = original_information
         main_window_module.QMessageBox.question = original_question
-        recipe_config_widget_module.QMessageBox.critical = recipe_original_critical
-        recipe_config_widget_module.QMessageBox.warning = recipe_original_warning
-        recipe_config_widget_module.QMessageBox.information = recipe_original_information
-        recipe_config_widget_module.QMessageBox.question = recipe_original_question
-
-
-@contextmanager
-def patch_recipe_context_loading() -> Iterator[None]:
-    original_load_recipe_context = recipe_config_widget_module.RecipeConfigWidget._load_recipe_context
-    original_current_recipe_selection = recipe_config_widget_module.RecipeConfigWidget.current_recipe_selection
-    original_show_error = recipe_config_widget_module.RecipeConfigWidget._show_error
-
-    def _patched_load_recipe_context(self) -> None:
-        self._current_recipe_id = MOCK_RECIPE_ID
-        self._current_version_id = MOCK_VERSION_ID
-        owner = getattr(self, "_planning_context_owner", None)
-        if owner is not None:
-            owner.sync_recipe_catalog([{"id": MOCK_RECIPE_ID, "activeVersionId": MOCK_VERSION_ID}])
-            owner.select_recipe(MOCK_RECIPE_ID, selection_origin="ui_test_patch")
-            owner.sync_recipe_versions(
-                MOCK_RECIPE_ID,
-                [{"id": MOCK_VERSION_ID, "status": "published"}],
-            )
-            owner.select_version(MOCK_VERSION_ID, selection_origin="ui_test_patch")
-
-    def _patched_current_recipe_selection(self):
-        recipe_id = getattr(self, "_current_recipe_id", "") or MOCK_RECIPE_ID
-        version_id = getattr(self, "_current_version_id", "") or MOCK_VERSION_ID
-        return recipe_id, version_id
-
-    recipe_config_widget_module.RecipeConfigWidget._load_recipe_context = _patched_load_recipe_context
-    recipe_config_widget_module.RecipeConfigWidget.current_recipe_selection = _patched_current_recipe_selection
-    recipe_config_widget_module.RecipeConfigWidget._show_error = lambda self, _msg: None
-    try:
-        yield
-    finally:
-        recipe_config_widget_module.RecipeConfigWidget._load_recipe_context = original_load_recipe_context
-        recipe_config_widget_module.RecipeConfigWidget.current_recipe_selection = original_current_recipe_selection
-        recipe_config_widget_module.RecipeConfigWidget._show_error = original_show_error
 
 
 def start_mock_server(host: str, port: int, verbose: bool) -> Tuple[MockTcpServer, int]:
@@ -608,15 +554,6 @@ class GuiContractRunner:
     def _canonical_preview_sample(self) -> Path:
         return canonical_preview_sample()
 
-    def _switch_to_recipe_tab(self) -> None:
-        tabs = getattr(self.window, "_main_tabs", None)
-        recipe_tab = getattr(self.window, "_recipe_tab", None)
-        self._expect(tabs is not None and recipe_tab is not None, "Recipe tab should be available")
-        if tabs is None or recipe_tab is None:
-            return
-        tabs.setCurrentWidget(recipe_tab)
-        QTest.qWait(100)
-
     def _switch_to_production_tab(self) -> None:
         tabs = getattr(self.window, "_main_tabs", None)
         production_tab = getattr(self.window, "_production_tab", None)
@@ -625,11 +562,6 @@ class GuiContractRunner:
             return
         tabs.setCurrentWidget(production_tab)
         QTest.qWait(100)
-
-    def _recipe_widget(self):
-        recipe_widget = getattr(self.window, "_recipe_config_widget", None)
-        self._expect(recipe_widget is not None, "Recipe config widget should exist")
-        return recipe_widget
 
     def _click_list_item(
         self,
@@ -724,13 +656,13 @@ class GuiContractRunner:
             return False
         self._expect(
             "未显式选择配方版本" not in self._status_message(),
-            "DXF preview should not be blocked by recipe/version selection",
+            "DXF preview should not be blocked by retired configuration gating",
         )
         if self.failed:
             self._record_operator_stage_failure("preview-load-failed", "operator preview load failed screenshot")
             return False
         if not self._wait_for(
-            "operator preview becomes ready without recipe selection",
+            "operator preview becomes ready without retired configuration selection",
             lambda: self._operator_context_satisfies(
                 lambda context: bool(context.get("snapshot_ready", False))
                 and str(context.get("preview_source") or "") == "planned_glue_snapshot"
@@ -747,7 +679,7 @@ class GuiContractRunner:
         self._capture_screenshot("operator preview ready screenshot", stage_name="preview-ready")
         self._expect(
             "未显式选择配方版本" not in getattr(getattr(self.window, "_preview_gate", None), "last_error_message", ""),
-            "Preview gate should not report missing recipe/version",
+            "Preview gate should not report retired configuration gating errors",
         )
         if self.failed:
             self._record_operator_stage_failure("preview-ready-failed", "operator preview ready failed screenshot")
@@ -757,7 +689,7 @@ class GuiContractRunner:
             self._record_operator_stage_failure("preview-ready-failed", "operator preview ready failed screenshot")
             return False
         if not self._wait_for(
-            "operator preview refresh succeeds without recipe selection",
+            "operator preview refresh succeeds without retired configuration selection",
             lambda: self._operator_context_satisfies(
                 lambda context: bool(context.get("snapshot_ready", False))
                 and str(context.get("preview_source") or "") == "planned_glue_snapshot"
@@ -1171,9 +1103,10 @@ class GuiContractRunner:
 
         tabs = self._require_widget("main-tabs")
         if tabs is not None and hasattr(tabs, "count"):
-            self._expect(tabs.count() >= 4, "Main tab container should expose the core workspaces")
+            self._expect(tabs.count() >= 3, "Main tab container should expose the core workspaces")
             labels = [tabs.tabText(index) for index in range(tabs.count())]
             self._expect("仿真观察" not in labels, "Main tab container should not expose the sim observer tab")
+            self._expect("配置" not in labels, "Main tab container should not expose the retired configuration workspace")
 
     def _assert_offline_contract(self) -> None:
         print("STEP: offline contract", flush=True)
@@ -1381,14 +1314,11 @@ def build_window(
     host: str,
     port: int,
     *,
-    patch_recipe_context: bool = True,
     dxf_browse_path: str = "",
 ) -> MainWindow:
     stack = ExitStack()
     stack.enter_context(patch_headless_preview())
     stack.enter_context(patch_modal_dialogs())
-    if patch_recipe_context:
-        stack.enter_context(patch_recipe_context_loading())
     if dxf_browse_path:
         stack.enter_context(patch_dxf_browse_dialog(dxf_browse_path))
     if launch_mode == "online":
@@ -1424,7 +1354,7 @@ def main() -> int:
     parser.add_argument("--runtime-action-profile", default="")
     args = parser.parse_args()
     try:
-        resolved_runtime_action_profile, real_operator_journey, resolved_dxf_browse_path = resolve_runtime_action_request(
+        resolved_runtime_action_profile, resolved_dxf_browse_path = resolve_runtime_action_request(
             exercise_runtime_actions=bool(args.exercise_runtime_actions),
             runtime_action_profile=args.runtime_action_profile,
             preview_payload_path=args.preview_payload_path,
@@ -1444,7 +1374,6 @@ def main() -> int:
         args.mode,
         args.host,
         port,
-        patch_recipe_context=not real_operator_journey,
         dxf_browse_path=resolved_dxf_browse_path,
     )
     window.show()

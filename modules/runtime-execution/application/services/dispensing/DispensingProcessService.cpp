@@ -1747,6 +1747,14 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
                               compare_status.error_message,
                               "DispensingProcessService"));
                 }
+                auto observe_status_result = actual_trace_collector.ObserveStatus(
+                    1U,
+                    span,
+                    *options.expected_trace,
+                    compare_status);
+                if (observe_status_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(observe_status_result.GetError());
+                }
                 if (compare_status.completed_trigger_count != span.schedule_span.expected_trigger_count) {
                     return Result<DispensingExecutionReport>::Failure(
                         Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,

@@ -69,16 +69,6 @@ class ITestRecordRepository;
 }  // namespace Ports
 }  // namespace Diagnostics
 
-namespace Recipes {
-namespace Ports {
-class IRecipeRepositoryPort;
-class ITemplateRepositoryPort;
-class IAuditRepositoryPort;
-class IParameterSchemaPort;
-class IRecipeBundleSerializerPort;
-}  // namespace Ports
-}  // namespace Recipes
-
 }  // namespace Domain
 
 namespace ProcessPath {
@@ -117,13 +107,7 @@ struct InfrastructureBindings {
     std::shared_ptr<Domain::System::Ports::IEventPublisherPort> event_port;
     std::shared_ptr<Domain::Safety::Ports::IInterlockSignalPort> interlock_signal_port;
     std::shared_ptr<ProcessPath::Contracts::IPathSourcePort> path_source_port;
-    std::shared_ptr<Domain::Recipes::Ports::IRecipeRepositoryPort> recipe_repository;
-    std::shared_ptr<Domain::Recipes::Ports::ITemplateRepositoryPort> template_repository;
-    std::shared_ptr<Domain::Recipes::Ports::IAuditRepositoryPort> audit_repository;
-    std::shared_ptr<Domain::Recipes::Ports::IParameterSchemaPort> parameter_schema_port;
-    std::shared_ptr<Domain::Recipes::Ports::IRecipeBundleSerializerPort> recipe_bundle_serializer_port;
 
-    std::string recipe_base_dir;
     std::shared_ptr<void> multicard_instance;
 };
 

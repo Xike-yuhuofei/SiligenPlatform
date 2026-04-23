@@ -1507,6 +1507,82 @@ void SeedAuthorityMetadata(
     plan_record.authority_trigger_layout.plan_fingerprint = plan_record.response.plan_fingerprint;
     plan_record.authority_trigger_layout.authority_ready = true;
     plan_record.authority_trigger_layout.binding_ready = true;
+    plan_record.authority_trigger_layout.state =
+        Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState::BindingReady;
+}
+
+void SeedAuthorityTriggerLayoutFromExecutionPackage(
+    DispensingWorkflowUseCase::PlanRecord& plan_record,
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package) {
+    const auto& execution_plan = execution_package.execution_plan;
+    const auto& owner_program = execution_plan.profile_compare_program;
+
+    plan_record.authority_trigger_layout.trigger_points.clear();
+    plan_record.authority_trigger_layout.bindings.clear();
+    plan_record.authority_trigger_layout.spans.clear();
+    plan_record.authority_trigger_layout.trigger_points.reserve(owner_program.trigger_points.size());
+    plan_record.authority_trigger_layout.bindings.reserve(owner_program.trigger_points.size());
+    plan_record.authority_trigger_layout.spans.reserve(owner_program.spans.size());
+
+    for (std::size_t span_index = 0; span_index < owner_program.spans.size(); ++span_index) {
+        const auto& owner_span = owner_program.spans[span_index];
+        Siligen::Domain::Dispensing::ValueObjects::DispenseSpan span;
+        span.span_id = "span-" + std::to_string(span_index);
+        span.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        span.component_id = "component-0";
+        span.component_index = 0U;
+        span.order_index = span_index;
+        span.total_length_mm = owner_span.end_profile_position_mm - owner_span.start_profile_position_mm;
+        span.validation_state = Siligen::Domain::Dispensing::ValueObjects::SpacingValidationClassification::Pass;
+        span.anchor_constraints_satisfied = true;
+        plan_record.authority_trigger_layout.spans.push_back(std::move(span));
+    }
+
+    for (std::size_t trigger_index = 0; trigger_index < owner_program.trigger_points.size(); ++trigger_index) {
+        const auto& owner_trigger = owner_program.trigger_points[trigger_index];
+        std::size_t span_index = 0U;
+        for (; span_index < owner_program.spans.size(); ++span_index) {
+            const auto& owner_span = owner_program.spans[span_index];
+            if (trigger_index >= owner_span.trigger_begin_index && trigger_index <= owner_span.trigger_end_index) {
+                break;
+            }
+        }
+        if (span_index >= owner_program.spans.size()) {
+            span_index = owner_program.spans.empty() ? 0U : owner_program.spans.size() - 1U;
+        }
+
+        const auto& owner_span = owner_program.spans[span_index];
+        Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint trigger_point;
+        trigger_point.trigger_id = "trigger-" + std::to_string(trigger_index);
+        trigger_point.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        trigger_point.span_ref = plan_record.authority_trigger_layout.spans[span_index].span_id;
+        trigger_point.sequence_index_global = trigger_index;
+        trigger_point.sequence_index_span = trigger_index - owner_span.trigger_begin_index;
+        trigger_point.distance_mm_global = owner_trigger.profile_position_mm;
+        trigger_point.distance_mm_span = owner_trigger.profile_position_mm - owner_span.start_profile_position_mm;
+        trigger_point.position = owner_trigger.trigger_position_mm;
+        trigger_point.source_segment_index = trigger_index > 0U ? trigger_index - 1U : 0U;
+        plan_record.authority_trigger_layout.trigger_points.push_back(trigger_point);
+
+        Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding binding;
+        binding.binding_id =
+            plan_record.authority_trigger_layout.layout_id + "-binding-" + std::to_string(trigger_index);
+        binding.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        binding.trigger_ref = trigger_point.trigger_id;
+        binding.interpolation_index = trigger_index;
+        binding.execution_position =
+            trigger_index < execution_plan.interpolation_points.size()
+            ? execution_plan.interpolation_points[trigger_index].position
+            : owner_trigger.trigger_position_mm;
+        binding.match_error_mm = 0.0f;
+        binding.monotonic = true;
+        binding.bound = true;
+        plan_record.authority_trigger_layout.bindings.push_back(binding);
+    }
+
+    if (!owner_program.trigger_points.empty()) {
+        plan_record.response.total_length_mm = owner_program.trigger_points.back().profile_position_mm;
+    }
 }
 
 void SeedAuthorityTriggerPoints(
@@ -1699,7 +1775,7 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     plan_record.execution_assembly.execution_package = plan_record.execution_launch.execution_package;
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     ApplyOwnerExecutionContractState(plan_record);
-    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    SeedAuthorityTriggerLayoutFromExecutionPackage(plan_record, *plan_record.execution_launch.execution_package);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     use_case.plans_[plan_id] = plan_record;
 }
@@ -1795,7 +1871,7 @@ void ConfigurePointFlyingShotPlan(DispensingWorkflowUseCase::PlanRecord& plan_re
     plan_record.glue_points = {Point2D{5.0f, 5.0f}};
     plan_record.response.total_length_mm = 3.0f;
     plan_record.authority_trigger_layout.trigger_points.clear();
-    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    SeedAuthorityTriggerLayoutFromExecutionPackage(plan_record, *package);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     ApplyOwnerExecutionContractState(plan_record);
 }
@@ -1816,7 +1892,7 @@ void ConfigureAxisSwitchProfileComparePlan(DispensingWorkflowUseCase::PlanRecord
     plan_record.response.point_count = static_cast<std::uint32_t>(plan_record.execution_trajectory_points.size());
     plan_record.authority_trigger_layout.branch_revisit_split_applied = false;
     plan_record.authority_trigger_layout.spans.clear();
-    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    SeedAuthorityTriggerLayoutFromExecutionPackage(plan_record, *package);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     ApplyOwnerExecutionContractState(plan_record);
 }
@@ -1882,7 +1958,7 @@ void ConfigureInterpolationAnchoredProfileComparePlan(DispensingWorkflowUseCase:
     plan_record.response.point_count = static_cast<std::uint32_t>(plan_record.execution_trajectory_points.size());
     plan_record.authority_trigger_layout.branch_revisit_split_applied = false;
     plan_record.authority_trigger_layout.spans.clear();
-    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
+    SeedAuthorityTriggerLayoutFromExecutionPackage(plan_record, *package);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     ApplyOwnerExecutionContractState(plan_record);
 }

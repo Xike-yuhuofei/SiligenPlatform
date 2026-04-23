@@ -119,7 +119,7 @@ def test_known_compatibility_gaps_are_recorded():
     overrides = load_json(CONTRACTS / "mappings" / "compatibility-overrides.json")
     ids = {item["id"] for item in overrides["overrides"]}
     assert "dxf-info-total-segments-gap" not in ids
-    assert "recipe-request-aliases" in ids
+    assert "recipe-request-aliases" not in ids
 
     hmi_ui = HMI_MAIN_WINDOW.read_text(encoding="utf-8")
     tcp_source = TCP_DISPATCHER.read_text(encoding="utf-8")
@@ -149,31 +149,6 @@ def test_known_compatibility_gaps_are_recorded():
     assert '"total_segments"' in dxf_info_body
 
 
-def test_recipe_aliases_are_explicit():
-    operations = load_operations()
-    alias_methods = {
-        method
-        for method, op in operations.items()
-        if "compatibility" in op and op["compatibility"].get("requestAliases")
-    }
-    expected = {
-        "recipe.get",
-        "recipe.update",
-        "recipe.archive",
-        "recipe.draft.create",
-        "recipe.draft.update",
-        "recipe.publish",
-        "recipe.versions",
-        "recipe.version.create",
-        "recipe.version.compare",
-        "recipe.version.activate",
-        "recipe.audit",
-        "recipe.export",
-        "recipe.import",
-    }
-    assert expected.issubset(alias_methods)
-
-
 def test_dxf_preview_and_job_contract():
     operations = load_operations()
     assert "dxf.load" not in operations
@@ -183,6 +158,7 @@ def test_dxf_preview_and_job_contract():
     assert "dxf.plan.prepare" in operations
     assert "dxf.job.start" in operations
     assert "dxf.job.status" in operations
+    assert "dxf.job.traceability" in operations
 
     artifact_create = operations["dxf.artifact.create"]
     assert "formal_compare_gate" in artifact_create["resultSchema"]["required"]
@@ -241,6 +217,14 @@ def test_dxf_preview_and_job_contract():
     assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(set(dxf_job_status["required"]))
     assert "active_task_id" not in dxf_job_status["required"]
     assert "active_task_id" not in dxf_job_status["properties"]
+
+    job_traceability = operations["dxf.job.traceability"]
+    assert job_traceability["resultRef"].endswith("#/definitions/dxfJobTraceability")
+    assert job_traceability["paramsSchema"]["required"] == ["job_id"]
+    dxf_job_traceability = states["definitions"]["dxfJobTraceability"]
+    assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"}.issubset(
+        set(dxf_job_traceability["required"])
+    )
 
     artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
@@ -636,7 +620,6 @@ def main():
       lambda: test_tcp_methods_match_contracts(operations),
       test_fixtures,
       test_known_compatibility_gaps_are_recorded,
-      test_recipe_aliases_are_explicit,
       test_dxf_preview_and_job_contract,
       test_core_estop_reset_contract_and_disconnect_semantics,
       test_manual_precondition_error_codes_are_contracted,

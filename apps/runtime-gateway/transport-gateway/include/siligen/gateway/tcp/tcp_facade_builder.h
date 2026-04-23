@@ -4,16 +4,6 @@
 
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveCommandUseCase.h"
 #include "dispense_packaging/application/usecases/dispensing/valve/ValveQueryUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/CompareRecipeVersionsUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/CreateDraftVersionUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/CreateRecipeUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/CreateVersionFromPublishedUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/ExportRecipeBundlePayloadUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/ImportRecipeBundlePayloadUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/RecipeCommandUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/RecipeQueryUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/UpdateDraftVersionUseCase.h"
-#include "recipe_lifecycle/application/usecases/recipes/UpdateRecipeUseCase.h"
 #include "runtime_execution/application/usecases/system/EmergencyStopUseCase.h"
 #include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 #include "runtime_execution/application/services/motion/DefaultMotionValidationService.h"
@@ -29,7 +19,6 @@
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 #include "facades/tcp/TcpDispensingFacade.h"
 #include "facades/tcp/TcpMotionFacade.h"
-#include "facades/tcp/TcpRecipeFacade.h"
 #include "facades/tcp/TcpSystemFacade.h"
 #include "runtime_execution/application/usecases/motion/safety/MotionSafetyUseCase.h"
 
@@ -76,18 +65,6 @@ TcpFacadeBundle BuildTcpFacadeBundle(Resolver& resolver) {
         resolver.template Resolve<Siligen::JobIngest::Contracts::IUploadFilePort>(),
         resolver.template Resolve<Application::UseCases::Dispensing::PlanningUseCase>(),
         resolver.template Resolve<Application::UseCases::Dispensing::DispensingWorkflowUseCase>());
-
-    bundle.recipe = std::make_shared<Application::Facades::Tcp::TcpRecipeFacade>(
-        resolver.template Resolve<Application::UseCases::Recipes::CreateRecipeUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::UpdateRecipeUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::CreateDraftVersionUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::UpdateDraftVersionUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::RecipeCommandUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::RecipeQueryUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::CreateVersionFromPublishedUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::CompareRecipeVersionsUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::ExportRecipeBundlePayloadUseCase>(),
-        resolver.template Resolve<Application::UseCases::Recipes::ImportRecipeBundlePayloadUseCase>());
 
     return bundle;
 }

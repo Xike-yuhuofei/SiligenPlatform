@@ -44,6 +44,9 @@ class CurrentChainValidationContractTest(unittest.TestCase):
         self.assertNotIn("ensure_published_recipe_version(", text)
         self.assertNotIn('"recipe_id":', text)
         self.assertNotIn('"version_id":', text)
+        self.assertNotIn("isolated-empty-recipe-workspace", text)
+        self.assertNotIn("source_recipe_root", text)
+        self.assertNotIn("source_schema_root", text)
         self.assertIn("production_baseline_metadata(", text)
         self.assertIn('"dispensing_speed_mm_s": 10.0', text)
 
@@ -54,6 +57,15 @@ class CurrentChainValidationContractTest(unittest.TestCase):
         self.assertNotIn("--recipe-id", text)
         self.assertNotIn("--version-id", text)
         self.assertNotIn("AllowSkipOnActiveRecipe", text)
+
+    def test_workspace_validation_does_not_forward_legacy_recipe_cli(self) -> None:
+        text = (WORKSPACE_ROOT / "shared" / "testing" / "test-kit" / "src" / "test_kit" / "workspace_validation.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("CANONICAL_RECIPE_ID", text)
+        self.assertNotIn("CANONICAL_VERSION_ID", text)
+        self.assertNotIn("--recipe-id", text)
+        self.assertNotIn("--version-id", text)
 
 
 if __name__ == "__main__":

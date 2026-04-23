@@ -8,7 +8,6 @@
 - `container/`：`ApplicationContainer*` 进程级组合根
 - `factories/`：基础设施适配器工厂
 - `runtime/configuration/`：配置解析、`WorkspaceAssetPaths`、interlock/config validator
-- `runtime/recipes/`：recipe repository / file storage / schema provider 的 app-local wiring
 - `runtime/status/`：runtime status export assembler；透传 supervision snapshot authority，并追加只读 enrichment
 - `runtime/storage/files/`：本地文件存储适配
 - `runtime/supervision/`：runtime supervision 的 app-local backend / sync wiring
@@ -27,16 +26,15 @@
   - `runtime_process_bootstrap/diagnostics/{aggregates,ports,value-objects}/*`（hardware-test diagnostics app-local quarantine surface）
   - `runtime_process_bootstrap/storage/ports/IFileStoragePort.h`（upload storage app-local quarantine surface）
 
-`runtime_process_bootstrap/*` 当前承载 bootstrap 入口、hardware-test diagnostics 与 upload storage 的 app-local quarantine surface；recipe serializer 的 canonical public surface 来自 `recipe_lifecycle/adapters/serialization/RecipeJsonSerializer.h`，不在本目录下暴露。
+`runtime_process_bootstrap/*` 当前承载 bootstrap 入口、hardware-test diagnostics 与 upload storage 的 app-local quarantine surface，不再暴露已退役管理面的 public surface。
 
 ## 边界约束
 
-- recipe 规则 owner 与 serializer owner 已迁到 [`modules/recipe-lifecycle`](D:/Projects/SiligenSuite/modules/recipe-lifecycle/README.md)；`runtime-service` 只消费其 public surface，不持有 recipe 规则或 serializer owner。
 - 跨模块稳定事件发布契约统一来自 [`shared/contracts/runtime`](D:/Projects/SiligenSuite/shared/contracts/runtime/README.md)，代码统一从 `runtime/contracts/system/IEventPublisherPort.h` 引入。
 - generic diagnostics sink 统一来自 `modules/trace-diagnostics/contracts/include/trace_diagnostics/contracts/{IDiagnosticsPort,DiagnosticTypes}.h`；本目录下的 `runtime_process_bootstrap/diagnostics/**` 仅承接 hardware-test diagnostics 的 app-local bootstrap surface。
 - `runtime_process_bootstrap/storage/ports/IFileStoragePort.h` 只承接 runtime-service host-local upload storage wiring；不得再把该 seam 放回 `modules/process-planning/**` 或 `shared/**`。
 - `modules/runtime-execution/runtime/host` 只保留 host core；本目录只负责 app-local composition / infrastructure wiring。
-- `workflow`、`recipe-lifecycle`、`runtime-execution`、`job-ingest`、`dxf-geometry` 等模块能力只允许通过各自 canonical public surface 接入，不得再回退到旧 workflow compat path。
+- `workflow`、`runtime-execution`、`job-ingest`、`dxf-geometry` 等模块能力只允许通过各自 canonical public surface 接入，不得再回退到旧 workflow compat path。
 
 ## 调用方
 

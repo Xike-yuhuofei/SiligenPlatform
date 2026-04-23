@@ -187,48 +187,87 @@ def test_evaluate_operator_execution_requires_next_job_ready_stage() -> None:
     assert any(issue["type"] == "恢复类" for issue in result["issues"])
 
 
-def test_traceability_conclusion_is_insufficient_when_coord_history_is_empty() -> None:
+def test_traceability_conclusion_reads_runtime_job_traceability_verdict() -> None:
     traceability = operator_runner.evaluate_traceability_correspondence(
-        snapshot_result={
-            "preview_source": "planned_glue_snapshot",
-            "preview_kind": "glue_points",
-            "glue_point_count": 2,
-            "glue_points": [
-                {"x": 0.0, "y": 0.0},
-                {"x": 10.0, "y": 10.0},
-            ],
+        job_id="job-1",
+        job_traceability={
+            "job_id": "job-1",
+            "terminal_state": "completed",
+            "expected_trace": [{"trigger_sequence_id": 1}, {"trigger_sequence_id": 2}],
+            "actual_trace": [{"trigger_sequence_id": 1}, {"trigger_sequence_id": 2}],
+            "mismatches": [],
+            "verdict": "passed",
+            "verdict_reason": "",
+            "strict_one_to_one_proven": True,
         },
-        final_job_status={
-            "state": "completed",
-            "overall_progress_percent": 100,
-            "completed_count": 1,
-            "target_count": 1,
-        },
-        log_summary={
-            "execution_mode": "profile_compare",
-            "profile_compare_request_summary": {
-                "request_count": 1,
-                "sum_business_trigger_count": 2,
-                "sum_start_boundary_trigger_count": 0,
-                "sum_future_compare_count": 2,
-            },
-            "cmp_pulse_once": {"count": 0},
-            "supply_close": {"count": 1},
-            "execution_complete": {"count": 1},
-        },
-        machine_status_history=[
-            {
-                "position": {"x": 0.0, "y": 0.0},
-            },
-            {
-                "position": {"x": 9.0, "y": 9.0},
-            },
-        ],
-        coord_status_history=[],
-        min_axis_coverage_ratio=0.80,
-        snapshot_readback_error="",
     )
 
-    assert traceability["summary_alignment_status"] == "passed"
-    assert traceability["status"] == "insufficient_evidence"
-    assert "coord-status-history" in traceability["reason"]
+    assert traceability["status"] == "passed"
+    assert traceability["strict_one_to_one_proven"] is True
+    assert traceability["expected_trace_count"] == 2
+    assert traceability["actual_trace_count"] == 2
+    assert traceability["mismatch_count"] == 0
+
+
+def test_build_report_markdown_explicitly_marks_runtime_log_gap() -> None:
+    report = {
+        "test_goal": ["goal"],
+        "scope": {
+            "dxf_file": "Demo-1.dxf",
+            "hmi_entry": "ui_qtest.py",
+        },
+        "operator_execution": {
+            "status": "passed",
+            "issues": [],
+        },
+        "traceability_correspondence": {
+            "status": "failed",
+            "reason": "runtime dxf.job.traceability returned failed",
+            "expected_trace_count": 2,
+            "actual_trace_count": 1,
+            "mismatch_count": 1,
+            "terminal_state": "completed",
+        },
+        "control_script_capability": {
+            "entry_script": "ui_qtest.py",
+            "covers_production_start": True,
+            "status": "allow",
+            "gaps": [],
+        },
+        "artifacts": {
+            "hmi_stdout_log": "D:/reports/hmi-stdout.log",
+            "runtime_log_note": "当前 runner 直接启动 runtime gateway，无独立 runtime 进程日志；请以 gateway stdout/stderr 与 tcp_server.log 为准。",
+            "gateway_stdout_log": "D:/reports/gateway-stdout.log",
+            "gateway_stderr_log": "D:/reports/gateway-stderr.log",
+            "gateway_log_copy": "D:/reports/tcp_server.log",
+            "gateway_launch_spec": "D:/reports/gateway-launch.json",
+            "job_traceability": "D:/reports/job-traceability.json",
+            "report_json": "D:/reports/report.json",
+            "report_markdown": "D:/reports/report.md",
+            "coord_status_history": "D:/reports/coord-status-history.json",
+            "hmi_screenshot_dir": "D:/reports/screenshots",
+        },
+        "observer_poll_errors": [],
+    }
+
+    markdown = operator_runner.build_report_markdown(report)
+
+    assert "当前 runner 直接启动 runtime gateway，无独立 runtime 进程日志" in markdown
+    assert "- gateway stdout：`D:/reports/gateway-stdout.log`" in markdown
+    assert "- gateway stderr：`D:/reports/gateway-stderr.log`" in markdown
+    assert "- gateway tcp log：`D:/reports/tcp_server.log`" in markdown
+    assert "- dxf.job.traceability：`D:/reports/job-traceability.json`" in markdown
+    assert "runtime strict traceability 已明确失败" in markdown
+    assert "- runtime：`D:/reports/gateway-stdout.log`" not in markdown
+
+
+def test_format_runtime_evidence_prefers_explicit_runtime_logs() -> None:
+    rendered = operator_runner.format_runtime_evidence(
+        {
+            "runtime_stdout_log": "D:/reports/runtime-stdout.log",
+            "runtime_stderr_log": "D:/reports/runtime-stderr.log",
+            "runtime_log_note": "should not be used",
+        }
+    )
+
+    assert rendered == "`D:/reports/runtime-stdout.log` / `D:/reports/runtime-stderr.log`"

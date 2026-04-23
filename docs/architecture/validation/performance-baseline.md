@@ -19,7 +19,7 @@
 - Python：`3.12.1`
 - CPU：`16` 逻辑核
 - 采样脚本：`tests/performance/collect_baselines.py`
-- 采样脚本当前必须显式传入已发布 `--recipe-id/--version-id`
+- 采样脚本当前按 runtime-owned `production_baseline` 单轨运行，不接受显式 `--recipe-id/--version-id`
 - 原始报告：`tests/reports/performance/2026-03-25-baseline.json`
 - 冻结快照：`tests/reports/performance/2026-03-25-baseline.md`
 - 最新快照：`tests/reports/performance/latest.json`、`tests/reports/performance/latest.md`
@@ -79,9 +79,7 @@
 ## 5. 重复执行
 
 ```powershell
-python tests\performance\collect_baselines.py `
-  --recipe-id recipe-7d1b00f4-6a99 `
-  --version-id version-fea9ce29-f963
+python tests\performance\collect_baselines.py
 ```
 
 ## 6. 监控建议

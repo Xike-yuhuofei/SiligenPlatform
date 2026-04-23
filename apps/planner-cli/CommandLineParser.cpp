@@ -1,16 +1,11 @@
 #include "CommandLineParser.h"
 
-#include "shared/Strings/StringManipulator.h"
-
-#include <iostream>
 #include <sstream>
 #include <stdexcept>
 
 namespace Siligen::Application {
 
 namespace {
-
-using Siligen::StringManipulator;
 
 [[noreturn]] void ThrowUsage(const std::string& message) {
     throw std::runtime_error(message);
@@ -41,25 +36,6 @@ void AssignNumber(const std::string& flag, const std::string& raw, T& value) {
     if (!TryParseNumber(raw, value)) {
         ThrowUsage("参数无效: " + flag + "=" + raw);
     }
-}
-
-CommandType ParseRecipeAction(const std::string& action) {
-    if (action == "create") return CommandType::RECIPE_CREATE;
-    if (action == "update") return CommandType::RECIPE_UPDATE;
-    if (action == "draft") return CommandType::RECIPE_DRAFT_CREATE;
-    if (action == "draft-update") return CommandType::RECIPE_DRAFT_UPDATE;
-    if (action == "publish") return CommandType::RECIPE_PUBLISH;
-    if (action == "list") return CommandType::RECIPE_LIST;
-    if (action == "get") return CommandType::RECIPE_GET;
-    if (action == "versions") return CommandType::RECIPE_LIST_VERSIONS;
-    if (action == "archive") return CommandType::RECIPE_ARCHIVE;
-    if (action == "version-create") return CommandType::RECIPE_VERSION_CREATE;
-    if (action == "compare") return CommandType::RECIPE_VERSION_COMPARE;
-    if (action == "rollback" || action == "activate") return CommandType::RECIPE_VERSION_ACTIVATE;
-    if (action == "audit") return CommandType::RECIPE_AUDIT;
-    if (action == "export") return CommandType::RECIPE_EXPORT;
-    if (action == "import") return CommandType::RECIPE_IMPORT;
-    ThrowUsage("recipe 不支持的操作: " + action);
 }
 
 void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int& index, bool& command_set) {
@@ -165,15 +141,6 @@ void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int&
         command_set = true;
         return;
     }
-    if (arg == "recipe" || arg == "recipes") {
-        if (index + 1 >= argc) {
-            ThrowUsage("recipe 需要指定子命令");
-        }
-        const std::string action = argv[++index];
-        config.command = ParseRecipeAction(action);
-        command_set = true;
-        return;
-    }
 }
 
 }  // namespace
@@ -184,19 +151,6 @@ RunMode CommandLineParser::ParseMode(const std::string& mode_str) {
     if (mode_str == "status") return RunMode::STATUS;
     if (mode_str == "dxf-dispense") return RunMode::DXF_DISPENSE;
     return RunMode::NONE;
-}
-
-bool CommandLineParser::ParseStringList(const std::string& raw, std::vector<std::string>& values) {
-    std::istringstream stream(raw);
-    std::string token;
-    values.clear();
-    while (std::getline(stream, token, ',')) {
-        token = StringManipulator::Trim(token);
-        if (!token.empty()) {
-            values.push_back(token);
-        }
-    }
-    return !values.empty();
 }
 
 CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
@@ -524,76 +478,6 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
         }
         if (const auto value = ConsumeValue(arg, "--purge-key-channel", argc, argv, i); !value.empty()) {
             AssignNumber("--purge-key-channel", value, config.purge_key_channel);
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--recipe-id", argc, argv, i); !value.empty()) {
-            config.recipe_id = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--name", argc, argv, i); !value.empty()) {
-            config.recipe_name = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--description", argc, argv, i); !value.empty()) {
-            config.recipe_description = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--tags", argc, argv, i); !value.empty()) {
-            if (!ParseStringList(value, config.recipe_tags)) {
-                ThrowUsage("参数无效: --tags=" + value);
-            }
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--recipe-status", argc, argv, i); !value.empty()) {
-            config.recipe_status = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--recipe-query", argc, argv, i); !value.empty()) {
-            config.recipe_query = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--recipe-tag", argc, argv, i); !value.empty()) {
-            config.recipe_tag = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--template-id", argc, argv, i); !value.empty()) {
-            config.template_id = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--version-id", argc, argv, i); !value.empty()) {
-            config.version_id = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--base-version-id", argc, argv, i); !value.empty()) {
-            config.base_version_id = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--version-label", argc, argv, i); !value.empty()) {
-            config.version_label = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--change-note", argc, argv, i); !value.empty()) {
-            config.change_note = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--actor", argc, argv, i); !value.empty()) {
-            config.actor = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--param", argc, argv, i); !value.empty()) {
-            config.recipe_params.push_back(value);
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--export-file", argc, argv, i); !value.empty()) {
-            config.export_path = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--import-file", argc, argv, i); !value.empty()) {
-            config.import_path = value;
-            continue;
-        }
-        if (const auto value = ConsumeValue(arg, "--resolution", argc, argv, i); !value.empty()) {
-            config.conflict_resolution = value;
             continue;
         }
 

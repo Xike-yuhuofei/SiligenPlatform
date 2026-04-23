@@ -60,7 +60,7 @@ class OfflineSmokeRunner:
             self._check(not self.window._system_panel.isEnabled(), "System panel should be disabled")
             self._check(not self.window._motion_control_panel.isEnabled(), "Motion panel should be disabled")
             self._check(not self.window._dispenser_control_panel.isEnabled(), "Dispenser panel should be disabled")
-            self._check(not self.window._recipe_tab.isEnabled(), "Recipe tab should be disabled")
+            self._check(self.window._main_tabs.count() == 3, "Main tabs should only expose production/setup/alarm")
 
             print("STEP: neutral offline messages", flush=True)
             self.window._on_move_to()
@@ -70,7 +70,7 @@ class OfflineSmokeRunner:
             self.window._dxf_filepath = "C:/mock/test.dxf"
             self.window._on_dxf_load()
             QTest.qWait(50)
-            self._expect_status("Offline 模式下不可用: DXF加载", "DXF load should be blocked offline")
+            self._expect_status("当前生产预览链仅支持在线 gateway 快照", "Offline DXF load should stay fail-closed")
 
             self.window._start_production_process(dry_run=False)
             QTest.qWait(50)

@@ -946,7 +946,6 @@ runtime-execution/
 │       │   ├── AuditLogger.h
 │       │   ├── InterlockMonitor.cpp
 │       │   ├── InterlockMonitor.h
-│       │   ├── SecurityLogHelper.h
 │       │   └── SecurityLogHelper.h
 │       ├── services/
 │       │   └── motion/

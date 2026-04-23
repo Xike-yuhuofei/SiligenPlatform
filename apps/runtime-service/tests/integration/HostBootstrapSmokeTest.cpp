@@ -327,8 +327,6 @@ TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanon
 
     const auto disconnect_result = connection_port->Disconnect();
     ASSERT_TRUE(disconnect_result.IsSuccess()) << disconnect_result.GetError().GetMessage();
-
-    EXPECT_TRUE(std::filesystem::exists(workspace.root() / "data" / "schemas" / "recipes"));
 }
 
 TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, InterlockSignalsFollowConnectionLifecycle) {

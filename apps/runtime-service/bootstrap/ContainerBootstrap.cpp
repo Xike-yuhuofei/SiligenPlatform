@@ -23,11 +23,6 @@
 #include "runtime_execution/contracts/motion/IInterpolationPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
 #include "runtime/contracts/system/IEventPublisherPort.h"
-#include "recipe_lifecycle/domain/recipes/ports/IParameterSchemaPort.h"
-#include "recipe_lifecycle/domain/recipes/ports/IAuditRepositoryPort.h"
-#include "recipe_lifecycle/domain/recipes/ports/IRecipeBundleSerializerPort.h"
-#include "recipe_lifecycle/domain/recipes/ports/IRecipeRepositoryPort.h"
-#include "recipe_lifecycle/domain/recipes/ports/ITemplateRepositoryPort.h"
 #include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "process_path/contracts/IPathSourcePort.h"
 #include "runtime/configuration/WorkspaceAssetPaths.h"
@@ -133,22 +128,6 @@ void ApplyBindings(
     }
     if (bindings.path_source_port) {
         container.RegisterPort<Siligen::ProcessPath::Contracts::IPathSourcePort>(bindings.path_source_port);
-    }
-    if (bindings.recipe_repository) {
-        container.RegisterPort<Siligen::Domain::Recipes::Ports::IRecipeRepositoryPort>(bindings.recipe_repository);
-    }
-    if (bindings.template_repository) {
-        container.RegisterPort<Siligen::Domain::Recipes::Ports::ITemplateRepositoryPort>(bindings.template_repository);
-    }
-    if (bindings.audit_repository) {
-        container.RegisterPort<Siligen::Domain::Recipes::Ports::IAuditRepositoryPort>(bindings.audit_repository);
-    }
-    if (bindings.parameter_schema_port) {
-        container.RegisterPort<Siligen::Domain::Recipes::Ports::IParameterSchemaPort>(bindings.parameter_schema_port);
-    }
-    if (bindings.recipe_bundle_serializer_port) {
-        container.RegisterPort<Siligen::Domain::Recipes::Ports::IRecipeBundleSerializerPort>(
-            bindings.recipe_bundle_serializer_port);
     }
 }
 

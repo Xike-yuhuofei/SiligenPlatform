@@ -7,7 +7,6 @@ ensure_hmi_application_path()
 
 from .tcp_client import TcpClient
 from .protocol import CommandProtocol, MachineStatus, AxisStatus, JobTransitionResult
-from .recipe import Recipe, RecipeManager
 from .backend_manager import BackendManager
 from .gateway_launch import GatewayLaunchSpec, load_gateway_launch_spec
 try:
@@ -71,8 +70,6 @@ __all__ = [
     "MachineStatus",
     "AxisStatus",
     "JobTransitionResult",
-    "Recipe",
-    "RecipeManager",
     "BackendManager",
     "GatewayLaunchSpec",
     "load_gateway_launch_spec",

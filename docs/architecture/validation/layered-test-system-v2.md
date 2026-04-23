@@ -46,7 +46,7 @@
 | 性能与长稳 | - | - | - | 可复用样本 | 可复用主路径 | 少量硬件样本 | `L6` 主承载 |
 | 人工探索式工作流检查表 | 资产完整性 | - | checklist contract | 引用 | 引用 | operator checklist | 引用 |
 
-当前 active lane 不纳入已退役的用户管理链路；`quick-gate` / `full-offline-gate` / `limited-hil` 只覆盖现行主链，不再为本地登录、会话与权限子系统保留验证席位。
+当前 active lane 不纳入已退役的 recipe management 与用户管理链路；`quick-gate` / `full-offline-gate` / `limited-hil` 只覆盖现行主链，不再为配方管理、本地登录、会话或权限子系统保留验证席位。
 
 ## 4. L0 责任边界
 

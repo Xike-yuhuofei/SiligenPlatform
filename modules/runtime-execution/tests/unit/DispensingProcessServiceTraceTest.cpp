@@ -6,6 +6,8 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace {
@@ -25,6 +27,7 @@ using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareProgramSpan;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch;
 using Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode;
 using Siligen::Domain::Motion::Ports::CoordinateSystemConfig;
 using Siligen::Domain::Motion::Ports::CoordinateSystemState;
@@ -145,6 +148,7 @@ class FakeValvePort final : public Siligen::Domain::Dispensing::Ports::IValvePor
             profile_compare_status.remaining_trigger_count =
                 request.expected_trigger_count - request.start_boundary_trigger_count;
         }
+        ApplyForcedProfileCompareStatus();
         profile_compare_status.error_message.clear();
         return Result<void>::Success();
     }
@@ -162,6 +166,7 @@ class FakeValvePort final : public Siligen::Domain::Dispensing::Ports::IValvePor
             profile_compare_status.completed_trigger_count = profile_compare_status.expected_trigger_count;
             profile_compare_status.remaining_trigger_count = 0U;
         }
+        ApplyForcedProfileCompareStatus();
         return Result<ProfileCompareStatus>::Success(profile_compare_status);
     }
 
@@ -193,7 +198,29 @@ class FakeValvePort final : public Siligen::Domain::Dispensing::Ports::IValvePor
     std::vector<ProfileCompareArmRequest> armed_requests{};
     ProfileCompareStatus profile_compare_status{};
     bool complete_profile_compare_immediately = true;
+    std::optional<uint32> forced_completed_trigger_count;
+    std::optional<uint32> forced_remaining_trigger_count;
+    std::optional<bool> forced_armed;
     DispenserValveState status{};
+
+   private:
+    void ApplyForcedProfileCompareStatus() noexcept {
+        if (forced_completed_trigger_count.has_value()) {
+            profile_compare_status.completed_trigger_count = forced_completed_trigger_count.value();
+            if (!forced_remaining_trigger_count.has_value()) {
+                profile_compare_status.remaining_trigger_count =
+                    profile_compare_status.completed_trigger_count >= profile_compare_status.expected_trigger_count
+                    ? 0U
+                    : (profile_compare_status.expected_trigger_count - profile_compare_status.completed_trigger_count);
+            }
+        }
+        if (forced_remaining_trigger_count.has_value()) {
+            profile_compare_status.remaining_trigger_count = forced_remaining_trigger_count.value();
+        }
+        if (forced_armed.has_value()) {
+            profile_compare_status.armed = forced_armed.value();
+        }
+    }
 };
 
 class FakeInterpolationPort final : public IInterpolationPort {
@@ -906,6 +933,53 @@ DispensingExecutionOptions BuildExecutionOptions() {
     return options;
 }
 
+std::shared_ptr<ProfileCompareExpectedTrace> BuildExpectedTraceFromPlanAndSchedule(
+    const DispensingExecutionPlan& plan,
+    const ProfileCompareExecutionSchedule& schedule) {
+    auto trace = std::make_shared<ProfileCompareExpectedTrace>();
+    trace->items.reserve(plan.profile_compare_program.trigger_points.size());
+
+    for (const auto& schedule_span : schedule.spans) {
+        const auto future_compare_offset = schedule_span.trigger_begin_index + schedule_span.start_boundary_trigger_count;
+        for (uint32 trigger_index = schedule_span.trigger_begin_index;
+             trigger_index <= schedule_span.trigger_end_index;
+             ++trigger_index) {
+            const auto& owner_trigger = plan.profile_compare_program.trigger_points[trigger_index];
+            ProfileCompareExpectedTraceItem item;
+            item.cycle_index = 1U;
+            item.trigger_sequence_id = owner_trigger.sequence_index;
+            item.authority_trigger_index = owner_trigger.sequence_index;
+            item.span_index = schedule_span.span_index;
+            item.execution_interpolation_index = plan.interpolation_points.empty()
+                ? 0U
+                : std::min<uint32>(
+                      trigger_index,
+                      static_cast<uint32>(plan.interpolation_points.size() - 1U));
+            item.authority_distance_mm = owner_trigger.profile_position_mm;
+            item.execution_profile_position_mm = owner_trigger.profile_position_mm;
+            item.execution_position_mm = owner_trigger.trigger_position_mm;
+            item.execution_trigger_position_mm = owner_trigger.trigger_position_mm;
+            item.compare_source_axis = schedule_span.compare_source_axis;
+            item.pulse_width_us = owner_trigger.pulse_width_us;
+            item.authority_trigger_ref = "trigger-" + std::to_string(owner_trigger.sequence_index);
+            item.authority_span_ref = "span-" + std::to_string(schedule_span.span_index);
+            if (trigger_index == schedule_span.trigger_begin_index &&
+                schedule_span.start_boundary_trigger_count == 1U) {
+                item.trigger_mode = "start_boundary";
+                item.compare_position_pulse = 0L;
+            } else {
+                const auto future_compare_index =
+                    static_cast<std::size_t>(trigger_index - future_compare_offset);
+                item.trigger_mode = "future_compare";
+                item.compare_position_pulse = schedule_span.compare_positions_pulse[future_compare_index];
+            }
+            trace->items.push_back(std::move(item));
+        }
+    }
+
+    return trace;
+}
+
 Result<ProfileCompareExecutionSchedule> CompileProfileCompareScheduleForTest(
     const DispensingExecutionPlan& plan,
     const DispensingRuntimeParams& params,
@@ -1297,6 +1371,176 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesMultipleProfileCo
     EXPECT_EQ(interpolation_port->start_calls, static_cast<int>(schedule.spans.size()));
     EXPECT_EQ(interpolation_port->add_calls, static_cast<int>(plan.interpolation_segments.size()));
     EXPECT_EQ(interpolation_port->all_added_segments.size(), plan.interpolation_segments.size());
+}
+
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalProducesStrictTraceabilityForOrthogonalTurnProfileComparePath) {
+    auto valve_port = std::make_shared<FakeValvePort>();
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SpanAwareMotionStatePort>(
+        interpolation_port,
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 10.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildOrthogonalTurnProfileCompareExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto schedule_result = CompileProfileCompareScheduleForTest(plan, params);
+    ASSERT_TRUE(schedule_result.IsSuccess()) << schedule_result.GetError().GetMessage();
+    const auto& schedule = schedule_result.Value();
+
+    auto options = BuildExecutionOptions();
+    options.dispense_enabled = true;
+    options.use_hardware_trigger = true;
+    options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule);
+    options.expected_trace = BuildExpectedTraceFromPlanAndSchedule(plan, schedule);
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        0.0f,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    ASSERT_EQ(result.Value().actual_trace.size(), 3U);
+    EXPECT_EQ(result.Value().traceability_mismatches.size(), 0U);
+    EXPECT_EQ(result.Value().traceability_verdict, "passed");
+    EXPECT_TRUE(result.Value().traceability_verdict_reason.empty());
+    EXPECT_TRUE(result.Value().strict_one_to_one_proven);
+
+    const auto& actual_trace = result.Value().actual_trace;
+    EXPECT_EQ(actual_trace[0].trigger_sequence_id, 0U);
+    EXPECT_EQ(actual_trace[0].span_index, schedule.spans[0].span_index);
+    EXPECT_EQ(actual_trace[0].completion_sequence, 1U);
+    EXPECT_EQ(actual_trace[0].local_completed_trigger_count, 1U);
+    EXPECT_EQ(actual_trace[0].trigger_mode, "start_boundary");
+
+    EXPECT_EQ(actual_trace[1].trigger_sequence_id, 1U);
+    EXPECT_EQ(actual_trace[1].span_index, schedule.spans[0].span_index);
+    EXPECT_EQ(actual_trace[1].completion_sequence, 2U);
+    EXPECT_EQ(actual_trace[1].local_completed_trigger_count, 2U);
+    EXPECT_EQ(actual_trace[1].trigger_mode, "future_compare");
+
+    EXPECT_EQ(actual_trace[2].trigger_sequence_id, 2U);
+    EXPECT_EQ(actual_trace[2].span_index, schedule.spans[1].span_index);
+    EXPECT_EQ(actual_trace[2].completion_sequence, 3U);
+    EXPECT_EQ(actual_trace[2].local_completed_trigger_count, 1U);
+    EXPECT_EQ(actual_trace[2].trigger_mode, "future_compare");
+}
+
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsClosedWhenSpanCompletedTriggerCountOverflows) {
+    auto valve_port = std::make_shared<FakeValvePort>();
+    valve_port->forced_completed_trigger_count = 3U;
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildProfileCompareExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto schedule_result = CompileProfileCompareScheduleForTest(plan, params);
+    ASSERT_TRUE(schedule_result.IsSuccess()) << schedule_result.GetError().GetMessage();
+    const auto& schedule = schedule_result.Value();
+
+    auto options = BuildExecutionOptions();
+    options.dispense_enabled = true;
+    options.use_hardware_trigger = true;
+    options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule);
+    options.expected_trace = BuildExpectedTraceFromPlanAndSchedule(plan, schedule);
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        0.0f,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::CMP_TRIGGER_SETUP_FAILED);
+    EXPECT_NE(
+        result.GetError().GetMessage().find("completed_trigger_count exceeded span expected_trigger_count"),
+        std::string::npos);
+}
+
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalFailsClosedWhenExpectedTraceDriftsOutsideCurrentSpan) {
+    auto valve_port = std::make_shared<FakeValvePort>();
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f},
+                             Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildProfileCompareExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto schedule_result = CompileProfileCompareScheduleForTest(plan, params);
+    ASSERT_TRUE(schedule_result.IsSuccess()) << schedule_result.GetError().GetMessage();
+    const auto& schedule = schedule_result.Value();
+
+    auto expected_trace = BuildExpectedTraceFromPlanAndSchedule(plan, schedule);
+    ASSERT_EQ(expected_trace->items.size(), 2U);
+    expected_trace->items[1].span_index = schedule.spans[0].span_index + 1U;
+
+    auto options = BuildExecutionOptions();
+    options.dispense_enabled = true;
+    options.use_hardware_trigger = true;
+    options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule);
+    options.expected_trace = expected_trace;
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        0.0f,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::CMP_TRIGGER_SETUP_FAILED);
+    EXPECT_NE(
+        result.GetError().GetMessage().find("completed trigger advanced outside current span"),
+        std::string::npos);
 }
 
 TEST(DispensingProcessServiceTraceTest,

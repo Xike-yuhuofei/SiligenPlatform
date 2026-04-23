@@ -68,7 +68,6 @@ from hmi_application.preview_session import (
 )
 from .dxf_default_paths import build_default_dxf_candidates
 from .styles import DARK_THEME
-from .recipe_config_widget import RecipeConfigWidget
 
 
 _UI_LOGGER = logging.getLogger("hmi.ui")
@@ -93,7 +92,6 @@ LOCAL_HOME_READINESS_COORD_SYS = 1
 LOCAL_HOME_READINESS_VELOCITY_EPSILON_MM_S = 0.1
 START_HOME_BOUNDARY_ZERO_TOLERANCE_MM = 0.1
 LOCAL_HOME_READINESS_BLOCK_MESSAGE = "运动系统未稳定，暂不可回零，请稍候"
-CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED = False
 LOCAL_HOME_READINESS_BLOCKING_JOB_STATES = frozenset(
     {
         "running",
@@ -192,11 +190,6 @@ class JogButton(QPushButton):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.LeftButton:
             _UI_LOGGER.info("JogButton mouse release text=%s", self.text())
-
-
-
-
-
 class AspectRatioContainer(QWidget):
     def __init__(self, content: QWidget, aspect_ratio: float, parent=None):
         super().__init__(parent)
@@ -476,15 +469,9 @@ class MainWindow(QMainWindow):
         self._main_tabs = tabs
         self._production_tab = self._create_production_tab()
         self._setup_tab = self._create_setup_tab()
-        self._recipe_tab = self._create_recipe_tab()
         self._alarm_panel = self._create_alarm_panel()
         tabs.addTab(self._production_tab, "生产")
         tabs.addTab(self._setup_tab, "设置")
-        recipe_tab_index = tabs.addTab(
-            self._recipe_tab,
-            "配置" if CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED else "配置(未启用)",
-        )
-        tabs.setTabEnabled(recipe_tab_index, CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED)
         tabs.addTab(self._alarm_panel, "报警")
         content_layout.addWidget(tabs)
 
@@ -671,7 +658,7 @@ class MainWindow(QMainWindow):
         self._dxf_filename_display = QLineEdit()
         self._dxf_filename_display.setReadOnly(True)
         self._dxf_filename_display.setPlaceholderText("未加载DXF文件")
-        self._dxf_filename_display.setProperty("data-testid", "input-current-recipe")
+        self._dxf_filename_display.setProperty("data-testid", "input-current-dxf")
         file_row.addWidget(self._dxf_filename_display)
         
         browse_btn = QPushButton("浏览...")
@@ -992,17 +979,6 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(controls_layout)
         return widget
-
-    def _create_recipe_tab(self) -> QWidget:
-        """Create Recipe/File tab - for DXF and recipe management."""
-        self._recipe_config_widget = RecipeConfigWidget(
-            self._protocol,
-            parent=self,
-        )
-        self._recipe_config_widget.setEnabled(CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED)
-        if not CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED:
-            self._recipe_config_widget.setToolTip("当前阶段未启用配方管理")
-        return self._recipe_config_widget
 
     def _create_system_panel(self) -> QGroupBox:
         group = QGroupBox("系统")
@@ -1740,7 +1716,6 @@ class MainWindow(QMainWindow):
         for widget_name in (
             "_motion_control_panel",
             "_dispenser_control_panel",
-            "_recipe_tab",
         ):
             widget = getattr(self, widget_name, None)
             if widget is not None:
@@ -2028,12 +2003,6 @@ class MainWindow(QMainWindow):
         self._global_progress.setValue(0)
         if result.success:
             self._hw_connect_btn.setEnabled(False)
-            if (
-                CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED
-                and result.online_ready
-                and hasattr(self, '_recipe_config_widget')
-            ):
-                self._recipe_config_widget._load_recipe_context()
         else:
             self._show_startup_error(result)
         self._update_recovery_controls_state()
@@ -2044,12 +2013,6 @@ class MainWindow(QMainWindow):
         self._recovery_worker = None
         self._apply_launch_result(result)
         self._global_progress.setValue(0)
-        if (
-            CURRENT_STAGE_RECIPE_MANAGEMENT_ENABLED
-            and result.online_ready
-            and hasattr(self, '_recipe_config_widget')
-        ):
-            self._recipe_config_widget._load_recipe_context()
         self.statusBar().showMessage(build_recovery_finished_message(action, result))
         self._update_recovery_controls_state()
 

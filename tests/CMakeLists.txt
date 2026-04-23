@@ -41,7 +41,6 @@ add_custom_target(
 set(SILIGEN_CANONICAL_TEST_ROOTS
     "${SILIGEN_SHARED_ROOT}/kernel/tests"
     "${SILIGEN_MODULES_ROOT}/workflow/tests"
-    "${SILIGEN_MODULES_ROOT}/recipe-lifecycle/tests"
     "${SILIGEN_MODULES_ROOT}/dxf-geometry/tests"
     "${SILIGEN_MODULES_ROOT}/job-ingest/tests"
     "${SILIGEN_MODULES_ROOT}/topology-feature/tests"

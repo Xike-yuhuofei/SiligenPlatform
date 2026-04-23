@@ -19,17 +19,7 @@ if str(HIL_DIR) not in sys.path:
 
 from dxf_hil_observation import DEFAULT_COORD_SYS, normalize_coord_status_sample, normalize_job_status_sample, normalize_machine_status_sample  # noqa: E402
 from run_real_dxf_machine_dryrun import parse_int, status_result  # noqa: E402
-from run_real_dxf_production_validation import (  # noqa: E402
-    add_step,
-    build_checklist,
-    compute_axis_coverage,
-    determine_overall_status,
-    extract_gateway_log_summary,
-    read_current_run_gateway_log,
-    summarize_machine_bbox,
-    summarize_points_bbox,
-    write_json,
-)
+from run_real_dxf_production_validation import add_step, extract_gateway_log_summary, read_current_run_gateway_log, write_json  # noqa: E402
 from runtime_gateway_harness import TcpJsonClient, VENDOR_DIR, resolve_default_exe, wait_gateway_ready  # noqa: E402
 
 
@@ -689,63 +679,40 @@ def evaluate_operator_execution(
 
 def evaluate_traceability_correspondence(
     *,
-    snapshot_result: dict[str, Any],
-    final_job_status: dict[str, Any],
-    log_summary: dict[str, Any],
-    machine_status_history: list[dict[str, Any]],
-    coord_status_history: list[dict[str, Any]],
-    min_axis_coverage_ratio: float,
-    snapshot_readback_error: str,
+    job_id: str,
+    job_traceability: dict[str, Any],
 ) -> dict[str, Any]:
-    expected_bbox = summarize_points_bbox(snapshot_result.get("glue_points", []))
-    observed_bbox = summarize_machine_bbox(machine_status_history)
-    axis_coverage = compute_axis_coverage(expected_bbox, observed_bbox)
-    checks: dict[str, dict[str, Any]] = {}
-    summary_alignment_status = "not_evaluated"
-    summary_alignment_error = ""
+    verdict = str(job_traceability.get("verdict", "failed") or "failed").strip().lower()
+    if verdict not in ("passed", "failed"):
+        verdict = "failed"
+    strict_one_to_one_proven = bool(job_traceability.get("strict_one_to_one_proven", False))
+    verdict_reason = str(job_traceability.get("verdict_reason", "") or "").strip()
+    expected_trace = job_traceability.get("expected_trace", [])
+    actual_trace = job_traceability.get("actual_trace", [])
+    mismatches = job_traceability.get("mismatches", [])
+    terminal_state = str(job_traceability.get("terminal_state", "") or "").strip().lower()
 
-    if snapshot_result and final_job_status:
-        checks = build_checklist(
-            validation_mode="production_execution",
-            plan_result={},
-            snapshot_result=snapshot_result,
-            job_start_response={},
-            blocked_motion_observation={},
-            final_job_status=final_job_status,
-            log_summary=log_summary,
-            axis_coverage=axis_coverage,
-            observed_bbox=observed_bbox,
-            min_axis_coverage_ratio=min_axis_coverage_ratio,
-        )
-        summary_alignment_status, summary_alignment_error = determine_overall_status(checks, "production_execution")
-    elif snapshot_readback_error:
-        summary_alignment_status = "failed"
-        summary_alignment_error = snapshot_readback_error
-    else:
-        summary_alignment_status = "failed"
-        summary_alignment_error = "missing snapshot readback or final job status for summary alignment"
-
-    if summary_alignment_status == "failed":
-        status = "failed"
-        reason = summary_alignment_error
-    elif len(coord_status_history) <= 0:
-        status = "insufficient_evidence"
-        reason = "coord-status-history 为空，不能把 summary-level alignment 升级为严格一一对应。"
-    else:
-        status = "insufficient_evidence"
-        reason = "已收集 summary-level alignment，但当前 runner 仍未证明严格一一对应。"
+    reason = verdict_reason
+    if not reason:
+        if verdict == "passed":
+            reason = "runtime dxf.job.traceability returned passed and strict_one_to_one_proven=true"
+        elif mismatches:
+            reason = "runtime dxf.job.traceability returned failed with mismatches"
+        elif terminal_state:
+            reason = f"runtime dxf.job.traceability returned failed in terminal_state={terminal_state}"
+        else:
+            reason = "runtime dxf.job.traceability returned failed"
 
     return {
-        "status": status,
+        "status": verdict,
         "reason": reason,
-        "strict_one_to_one_proven": False,
-        "summary_alignment_status": summary_alignment_status,
-        "summary_alignment_error": summary_alignment_error,
-        "summary_alignment_checks": checks,
-        "coord_status_sample_count": len(coord_status_history),
-        "expected_bbox": expected_bbox,
-        "observed_bbox": observed_bbox,
-        "axis_coverage": axis_coverage,
+        "strict_one_to_one_proven": strict_one_to_one_proven,
+        "job_id": job_id,
+        "terminal_state": terminal_state,
+        "expected_trace_count": len(expected_trace) if isinstance(expected_trace, list) else 0,
+        "actual_trace_count": len(actual_trace) if isinstance(actual_trace, list) else 0,
+        "mismatch_count": len(mismatches) if isinstance(mismatches, list) else 0,
+        "traceability_payload": job_traceability,
     }
 
 
@@ -806,6 +773,19 @@ def build_report(
     }
 
 
+def format_runtime_evidence(artifacts: dict[str, Any]) -> str:
+    runtime_stdout_log = str(artifacts.get("runtime_stdout_log", "") or "").strip()
+    runtime_stderr_log = str(artifacts.get("runtime_stderr_log", "") or "").strip()
+    runtime_log_note = str(artifacts.get("runtime_log_note", "") or "").strip()
+
+    runtime_paths = [path for path in (runtime_stdout_log, runtime_stderr_log) if path]
+    if runtime_paths:
+        return " / ".join(f"`{path}`" for path in runtime_paths)
+    if runtime_log_note:
+        return runtime_log_note
+    return "当前 runner 未采集独立 runtime 进程日志。"
+
+
 def build_report_markdown(report: dict[str, Any]) -> str:
     scope = report.get("scope", {})
     operator_execution = report.get("operator_execution", {})
@@ -813,6 +793,7 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     control_script_capability = report.get("control_script_capability", {})
     artifacts = report.get("artifacts", {})
     issues = operator_execution.get("issues", [])
+    runtime_evidence = format_runtime_evidence(artifacts)
 
     lines = [
         "# HMI 生产操作测试单",
@@ -869,6 +850,14 @@ def build_report_markdown(report: dict[str, Any]) -> str:
             f"- 结论：`{'允许' if control_script_capability.get('status') == 'allow' else '阻断'}`",
         ]
     )
+    if traceability:
+        lines.append(
+            "- formal traceability："
+            f" expected=`{traceability.get('expected_trace_count', 0)}`"
+            f" actual=`{traceability.get('actual_trace_count', 0)}`"
+            f" mismatches=`{traceability.get('mismatch_count', 0)}`"
+            f" terminal_state=`{traceability.get('terminal_state', '')}`"
+        )
     gaps = control_script_capability.get("gaps", [])
     if gaps:
         lines.append(f"- 若阻断，缺口：`{json.dumps(gaps, ensure_ascii=False)}`")
@@ -878,9 +867,12 @@ def build_report_markdown(report: dict[str, Any]) -> str:
             "",
             "### 7. 关键证据",
             f"- HMI：`{artifacts.get('hmi_stdout_log', '')}`",
-            f"- runtime：`{artifacts.get('gateway_stdout_log', '')}`",
-            f"- gateway：`{artifacts.get('gateway_stderr_log', '')}`",
+            f"- runtime：{runtime_evidence}",
+            f"- gateway stdout：`{artifacts.get('gateway_stdout_log', '')}`",
+            f"- gateway stderr：`{artifacts.get('gateway_stderr_log', '')}`",
+            f"- gateway tcp log：`{artifacts.get('gateway_log_copy', '')}`",
             f"- gateway launch spec：`{artifacts.get('gateway_launch_spec', '')}`",
+            f"- dxf.job.traceability：`{artifacts.get('job_traceability', '')}`",
             f"- report：`{artifacts.get('report_json', '')}` / `{artifacts.get('report_markdown', '')}`",
             f"- coord-status-history：`{artifacts.get('coord_status_history', '')}`",
             f"- staged screenshots：`{artifacts.get('hmi_screenshot_dir', '')}`",
@@ -890,8 +882,8 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     )
     if operator_execution.get("status") != "passed":
         lines.append("- HMI operator 正式入口仍有阻塞，不能把本轮结论升级为“人工操作可稳定完成生产”。")
-    if traceability.get("status") == "insufficient_evidence":
-        lines.append("- 当前只能给出 summary-level alignment 观察，不能宣称严格一一对应。")
+    if traceability.get("status") == "failed":
+        lines.append("- runtime strict traceability 已明确失败，不能把生产成功升级为严格一一对应。")
     if report.get("observer_poll_errors"):
         lines.append(f"- observer polling 存在波动：`{json.dumps(report['observer_poll_errors'][:3], ensure_ascii=False)}`")
 
@@ -899,9 +891,8 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     if operator_execution.get("status") != "passed":
         lines.append("- 先修操作阻塞问题，再重跑本 runner 复核完整阶段序列。")
     elif traceability.get("status") == "failed":
-        lines.append("- 先修 summary-level alignment 失败项，再重跑 operator runner。")
+        lines.append("- 先修 runtime/gateway strict traceability 失败项，再重跑 operator runner。")
     else:
-        lines.append("- 先补 strict traceability evaluator 或更强的 coord-level 对齐证据，再讨论严格一一对应结论。")
         lines.append("- 同步把该入口接入文档矩阵，明确它与 P1-04 runtime action matrix 的边界。")
 
     return "\n".join(lines) + "\n"
@@ -916,6 +907,7 @@ def main() -> int:
     report_json_path = report_dir / "hmi-production-operator-test.json"
     report_md_path = report_dir / "hmi-production-operator-test.md"
     job_status_json_path = report_dir / "job-status-history.json"
+    job_traceability_json_path = report_dir / "job-traceability.json"
     machine_status_json_path = report_dir / "machine-status-history.json"
     coord_status_json_path = report_dir / "coord-status-history.json"
     hmi_stdout_log_path = report_dir / "hmi-stdout.log"
@@ -940,6 +932,7 @@ def main() -> int:
     observer_connected = False
     current_job_id = ""
     final_job_status: dict[str, Any] = {}
+    job_traceability: dict[str, Any] = {}
     snapshot_result: dict[str, Any] = {}
     snapshot_readback_error = ""
     hmi_stdout = ""
@@ -1219,14 +1212,25 @@ def main() -> int:
         write_json(coord_status_json_path, coord_status_history)
 
         log_summary = extract_gateway_log_summary(gateway_log_text)
+        traceability_job_id = str(current_job_id or final_job_status.get("job_id", "") or "").strip()
+        if traceability_job_id:
+            traceability_response = observer_client.send_request(
+                "dxf.job.traceability",
+                {"job_id": traceability_job_id},
+                timeout_seconds=15.0,
+            )
+            if "error" in traceability_response:
+                raise RuntimeError(
+                    "dxf.job.traceability failed: " + json.dumps(traceability_response, ensure_ascii=True)
+                )
+            job_traceability = status_result(traceability_response)
+            add_step(steps, "job-traceability", "passed", f"job_id={traceability_job_id}")
+        else:
+            raise RuntimeError("job_id missing after production completion; cannot read dxf.job.traceability")
+        write_json(job_traceability_json_path, job_traceability)
         traceability = evaluate_traceability_correspondence(
-            snapshot_result=snapshot_result,
-            final_job_status=final_job_status,
-            log_summary=log_summary,
-            machine_status_history=machine_status_history,
-            coord_status_history=coord_status_history,
-            min_axis_coverage_ratio=args.min_axis_coverage_ratio,
-            snapshot_readback_error=snapshot_readback_error,
+            job_id=traceability_job_id,
+            job_traceability=job_traceability,
         )
 
         if operator_execution.get("status") != "passed" or traceability.get("status") == "failed":
@@ -1239,11 +1243,16 @@ def main() -> int:
                 "hmi_stdout_log": str(hmi_stdout_log_path),
                 "hmi_stderr_log": str(hmi_stderr_log_path),
                 "hmi_screenshot_dir": str(hmi_screenshot_dir),
+                "runtime_stdout_log": "",
+                "runtime_stderr_log": "",
+                "runtime_log_note": "当前 runner 直接启动 runtime gateway，无独立 runtime 进程日志；请以 gateway stdout/stderr 与 tcp_server.log 为准。",
+                "gateway_log_path": str(gateway_log_path),
                 "gateway_stdout_log": str(gateway_stdout_path),
                 "gateway_stderr_log": str(gateway_stderr_path),
                 "gateway_log_copy": str(gateway_log_copy_path),
                 "gateway_launch_spec": str(gateway_launch_spec_path),
                 "job_status_history": str(job_status_json_path),
+                "job_traceability": str(job_traceability_json_path),
                 "machine_status_history": str(machine_status_json_path),
                 "coord_status_history": str(coord_status_json_path),
                 "report_json": str(report_json_path),

@@ -15,16 +15,7 @@
 
 ## 已记录的兼容层
 
-- `recipe.*`: `recipeId` / `recipe_id`
-- `recipe.*version*`: `versionId` / `version_id`
-- `recipe.draft.create`: `templateId` / `template_id`
-- `recipe.*`: `baseVersionId` / `base_version_id`
-- `recipe.*`: `versionLabel` / `version_label`
-- `recipe.*`: `changeNote` / `change_note`
-- `recipe.export`: `outputPath` / `output_path`
-- `recipe.import`: `bundleJson` / `bundle_json`
-- `recipe.import`: `bundlePath` / `bundle_path`
-- `recipe.import`: `dryRun` / `dry_run`
+- 当前无额外 live request alias family 需要保留；新增兼容层必须先落文档，再进入实现。
 
 ## 当前未对齐但已记录
 

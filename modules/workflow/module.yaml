@@ -8,9 +8,11 @@ allowed_dependencies:
   - */contracts
 uniform_skeleton_ready: true
 notes: >
-  workflow/contracts 是当前稳定的 M0 触发契约面；recipe family 已迁到
-  modules/recipe-lifecycle，跨模块事件发布契约已迁到
+  workflow/contracts 是当前稳定的 M0 触发契约面；recipe management
+  surface 已退役并删除，跨模块事件发布契约已迁到
   shared/contracts/runtime/include/runtime/contracts/system/IEventPublisherPort.h。
+  任何 recipe owner、serializer、CRUD/import-export surface 都不得回流到
+  workflow 或其他 live 模块。
   modules/workflow 当前已收口为 M0 canonical bundle：module root 只暴露
   workflow/contracts、workflow/domain 与 workflow/adapters public surfaces，
   并显式纳入 application/services/runtime skeleton 自校验。domain/domain、
