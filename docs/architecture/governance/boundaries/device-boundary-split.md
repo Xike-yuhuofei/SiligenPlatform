@@ -1,5 +1,7 @@
 # Device Boundary Split
 
+> Historical migration note: 本文保留 legacy `control-core` 拆边界时的阻塞快照；若出现已退役历史管理路径，仅表示历史 residual，不代表当前主线能力。
+
 ## Contracts
 
 `packages/device-contracts` owns:

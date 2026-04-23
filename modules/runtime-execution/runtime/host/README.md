@@ -30,7 +30,7 @@
 - `security/**/*`
 
 其中 bootstrap / container / infrastructure 相关文件已迁到 [`apps/runtime-service`](D:/Projects/SiligenSuite/apps/runtime-service/README.md) 的 app-local 目录；
-历史管理持久化面已在 TASK-167 中正式退役，不再保留 `runtime/recipes/*` 的 app-local 替代目录。
+历史管理持久化面已在 TASK-167 中正式退役，不再保留对应的 app-local 替代目录。
 
 ## 目标与依赖
 

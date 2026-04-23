@@ -1,5 +1,7 @@
 # Device And Shared Decoupling
 
+> Historical migration note: 本文记录 `control-core` 时代的 legacy device/shared 拆分阻塞；下文出现的已退役历史管理路径与类型仅用于迁移追溯，不代表当前主线仍承载该能力。
+
 更新时间：`2026-03-18`
 
 ## 1. 目标

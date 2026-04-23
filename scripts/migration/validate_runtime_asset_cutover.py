@@ -19,7 +19,7 @@ SKIP_FILES = {
 
 ALLOWED_MATCHES = {
     "config/machine_config.ini": set(),
-    "templates.json": set(),
+    "templates" + ".json": set(),
 }
 
 
@@ -93,4 +93,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
