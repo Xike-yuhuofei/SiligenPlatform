@@ -200,9 +200,37 @@
       },
       "additionalProperties": false
     },
+    "runtimeIdentityStatus": {
+      "type": "object",
+      "required": [
+        "executable_path",
+        "working_directory",
+        "protocol_version",
+        "preview_snapshot_contract"
+      ],
+      "properties": {
+        "executable_path": {
+          "type": "string",
+          "description": "当前 runtime 进程 executable 权威路径；HMI online startup gate 用它核对本地 launch contract。"
+        },
+        "working_directory": {
+          "type": "string",
+          "description": "当前 runtime 进程 working directory 权威路径；HMI online startup gate 用它核对本地 launch contract。"
+        },
+        "protocol_version": {
+          "type": "string",
+          "description": "当前 runtime 进程公开的 application protocol version；startup gate 依赖它验证协议契约。"
+        },
+        "preview_snapshot_contract": {
+          "type": "string",
+          "description": "当前 runtime 进程公开的 preview snapshot contract authority；缺失或不匹配必须 fail-closed。"
+        }
+      },
+      "additionalProperties": false
+    },
     "machineStatus": {
       "type": "object",
-      "required": ["connected", "connection_state", "device_mode", "machine_state", "machine_state_reason", "supervision", "safety_boundary", "action_capabilities", "interlock_latched", "job_execution", "axes", "effective_interlocks", "io", "dispenser", "alarms"],
+      "required": ["connected", "connection_state", "device_mode", "machine_state", "machine_state_reason", "supervision", "runtime_identity", "safety_boundary", "action_capabilities", "interlock_latched", "job_execution", "axes", "effective_interlocks", "io", "dispenser", "alarms"],
       "properties": {
         "connected": { "type": "boolean" },
         "connection_state": { "type": "string" },
@@ -233,6 +261,7 @@
           "additionalProperties": false
         },
         "supervision": { "$ref": "#/definitions/supervisionStatus" },
+        "runtime_identity": { "$ref": "#/definitions/runtimeIdentityStatus" },
         "effective_interlocks": { "$ref": "#/definitions/effectiveInterlocks" },
         "io": { "$ref": "#/definitions/ioStatus" },
         "dispenser": {

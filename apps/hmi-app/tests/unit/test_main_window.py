@@ -17,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src" / "hmi_client"))
 
 import ui.main_window as main_window_module
 from client import SessionSnapshot, launch_result_from_snapshot
+from client.launch_supervision_contract import RuntimeIdentity
 from client.protocol import (
     ActionCapabilitiesStatus,
     AxisStatus,
@@ -592,6 +593,11 @@ class MainWindowTabsTest(unittest.TestCase):
             recoverable=False,
             last_error_message=None,
             updated_at="2026-04-01T00:00:00Z",
+            runtime_contract_verified=True,
+            runtime_identity=RuntimeIdentity(
+                executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+                working_directory="C:\\runtime",
+            ),
         )
         self.window._requested_launch_mode = "online"
         self.window._session_snapshot = snapshot
@@ -852,6 +858,11 @@ class MainWindowTabsTest(unittest.TestCase):
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",
             updated_at="2026-04-01T07:58:49Z",
+            runtime_contract_verified=True,
+            runtime_identity=RuntimeIdentity(
+                executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+                working_directory="C:\\runtime",
+            ),
         )
         self.window._requested_launch_mode = "online"
         self.window._protocol = fake_protocol
@@ -1328,6 +1339,11 @@ class MainWindowTabsTest(unittest.TestCase):
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",
             updated_at="2026-04-01T07:58:49Z",
+            runtime_contract_verified=True,
+            runtime_identity=RuntimeIdentity(
+                executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+                working_directory="C:\\runtime",
+            ),
         )
         self.window._requested_launch_mode = "online"
         self.window._session_snapshot = failed_snapshot

@@ -102,6 +102,8 @@ def phase_from_snapshot(snapshot: SessionSnapshot) -> str:
         return "backend"
     if stage.startswith("tcp"):
         return "tcp"
+    if stage.startswith("runtime"):
+        return "runtime"
     if stage.startswith("hardware"):
         return "hardware"
     if stage == "online_ready":

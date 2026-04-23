@@ -4,10 +4,17 @@ from bootstrap import ensure_hmi_application_test_paths
 ensure_hmi_application_test_paths()
 
 from hmi_application.contracts.launch_supervision_contract import (
+    RuntimeIdentity,
     SessionSnapshot,
     SessionStageEvent,
     is_online_ready,
     snapshot_timestamp,
+)
+
+
+RUNTIME_IDENTITY = RuntimeIdentity(
+    executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+    working_directory="C:\\runtime",
 )
 
 
@@ -54,6 +61,8 @@ class LaunchSupervisionContractTest(unittest.TestCase):
             recoverable=True,
             last_error_message="ready",
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=True,
+            runtime_identity=RUNTIME_IDENTITY,
         )
         degraded_snapshot = SessionSnapshot(
             mode="online",
@@ -70,6 +79,21 @@ class LaunchSupervisionContractTest(unittest.TestCase):
 
         self.assertTrue(is_online_ready(ready_snapshot))
         self.assertFalse(is_online_ready(degraded_snapshot))
+
+    def test_ready_snapshot_requires_runtime_identity(self) -> None:
+        with self.assertRaisesRegex(ValueError, "ready online snapshot requires runtime_contract_verified"):
+            SessionSnapshot(
+                mode="online",
+                session_state="ready",
+                backend_state="ready",
+                tcp_state="ready",
+                hardware_state="ready",
+                failure_code=None,
+                failure_stage=None,
+                recoverable=True,
+                last_error_message="ready",
+                updated_at=snapshot_timestamp(),
+            )
 
     def test_stage_event_rejects_unknown_event_type(self) -> None:
         with self.assertRaises(ValueError):

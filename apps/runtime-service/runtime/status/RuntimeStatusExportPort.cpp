@@ -3,9 +3,21 @@
 #include "shared/types/Error.h"
 
 #include <cstddef>
+#include <filesystem>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef GetMessage
+#undef GetMessage
+#endif
+#endif
 
 namespace Siligen::Runtime::Service::Status {
 namespace {
@@ -13,6 +25,8 @@ namespace {
 using IRuntimeSupervisionPort = Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort;
 using RuntimeAxisStatusExportSnapshot =
     Siligen::RuntimeExecution::Contracts::System::RuntimeAxisStatusExportSnapshot;
+using RuntimeIdentityExportSnapshot =
+    Siligen::RuntimeExecution::Contracts::System::RuntimeIdentityExportSnapshot;
 using RuntimeJobExecutionExportSnapshot =
     Siligen::RuntimeExecution::Contracts::System::RuntimeJobExecutionExportSnapshot;
 using RuntimeActionCapabilitiesExportSnapshot =
@@ -26,6 +40,9 @@ using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
 constexpr const char* kErrorSource = "RuntimeStatusExportPort";
+constexpr const char* kRuntimeProtocolVersion = "siligen.application/1.0";
+constexpr const char* kPreviewSnapshotContract =
+    "planned_glue_snapshot.glue_points+execution_trajectory_snapshot.polyline";
 
 Result<std::shared_ptr<IRuntimeSupervisionPort>> EnsureSupervisionPort(
     const std::shared_ptr<IRuntimeSupervisionPort>& runtime_supervision_port) {
@@ -36,6 +53,71 @@ Result<std::shared_ptr<IRuntimeSupervisionPort>> EnsureSupervisionPort(
             kErrorSource));
     }
     return Result<std::shared_ptr<IRuntimeSupervisionPort>>::Success(runtime_supervision_port);
+}
+
+std::string NormalizePathForExport(const std::filesystem::path& path) {
+    if (path.empty()) {
+        return {};
+    }
+
+    std::error_code ec;
+    auto canonical_path = std::filesystem::weakly_canonical(path, ec);
+    if (!ec) {
+        return canonical_path.string();
+    }
+
+    canonical_path = std::filesystem::absolute(path, ec);
+    if (!ec) {
+        return canonical_path.string();
+    }
+
+    return path.lexically_normal().string();
+}
+
+std::filesystem::path ResolveRuntimeExecutablePath() {
+#if defined(_WIN32)
+    std::wstring buffer(MAX_PATH, L'\0');
+    while (true) {
+        const auto size = static_cast<DWORD>(buffer.size());
+        const DWORD length = ::GetModuleFileNameW(nullptr, buffer.data(), size);
+        if (length == 0) {
+            return {};
+        }
+        if (length < size - 1) {
+            buffer.resize(length);
+            return std::filesystem::path(buffer);
+        }
+        buffer.resize(buffer.size() * 2);
+    }
+#else
+    std::error_code ec;
+    const auto proc_self_exe = std::filesystem::path("/proc/self/exe");
+    if (std::filesystem::exists(proc_self_exe, ec)) {
+        const auto executable_path = std::filesystem::read_symlink(proc_self_exe, ec);
+        if (!ec) {
+            return executable_path;
+        }
+    }
+    return {};
+#endif
+}
+
+std::filesystem::path ResolveRuntimeWorkingDirectoryPath() {
+    std::error_code ec;
+    const auto working_directory = std::filesystem::current_path(ec);
+    if (ec) {
+        return {};
+    }
+    return working_directory;
+}
+
+RuntimeIdentityExportSnapshot BuildRuntimeIdentitySnapshot() {
+    RuntimeIdentityExportSnapshot snapshot;
+    snapshot.executable_path = NormalizePathForExport(ResolveRuntimeExecutablePath());
+    snapshot.working_directory = NormalizePathForExport(ResolveRuntimeWorkingDirectoryPath());
+    snapshot.protocol_version = kRuntimeProtocolVersion;
+    snapshot.preview_snapshot_contract = kPreviewSnapshotContract;
+    return snapshot;
 }
 
 RuntimeAxisStatusExportSnapshot BuildAxisStatusSnapshot(const Siligen::Domain::Motion::Ports::MotionStatus& status) {
@@ -209,6 +291,7 @@ Result<RuntimeStatusExportSnapshot> RuntimeStatusExportPort::ReadSnapshot() cons
     snapshot.connection_state = supervision.connection_state;
     snapshot.machine_state = supervision.supervision.current_state;
     snapshot.machine_state_reason = supervision.supervision.state_reason;
+    snapshot.runtime_identity = BuildRuntimeIdentitySnapshot();
     snapshot.interlock_latched = supervision.interlock_latched;
     snapshot.io = supervision.io;
     snapshot.effective_interlocks = supervision.effective_interlocks;

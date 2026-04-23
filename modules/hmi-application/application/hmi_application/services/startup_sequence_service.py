@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 from ..adapters.launch_supervision_env import load_supervisor_policy_from_env
-from ..adapters.launch_supervision_ports import BackendController, HardwareProtocolLike, TcpClientLike
+from ..adapters.launch_supervision_ports import BackendController, HardwareProtocolLike, RuntimeStatusProbeLike, TcpClientLike
 from ..contracts.launch_supervision_contract import RecoveryAction, SessionSnapshot, SessionStageEvent
 from ..domain.launch_result_types import LaunchResult
 from ..domain.launch_supervision_types import SupervisorPolicy, normalize_launch_mode
@@ -16,6 +16,7 @@ def run_launch_sequence(
     backend: BackendController,
     client: TcpClientLike,
     protocol: HardwareProtocolLike,
+    runtime_probe: RuntimeStatusProbeLike,
     progress_callback: Callable[[str, int], None] | None = None,
     snapshot_callback: Callable[[SessionSnapshot], None] | None = None,
     event_callback: Callable[[SessionStageEvent], None] | None = None,
@@ -26,6 +27,7 @@ def run_launch_sequence(
         backend=backend,
         client=client,
         protocol=protocol,
+        runtime_probe=runtime_probe,
         launch_mode=mode,
         policy=policy if policy is not None else load_supervisor_policy_from_env(),
     )
@@ -43,6 +45,7 @@ def run_recovery_action(
     backend: BackendController,
     client: TcpClientLike,
     protocol: HardwareProtocolLike,
+    runtime_probe: RuntimeStatusProbeLike,
     progress_callback: Callable[[str, int], None] | None = None,
     snapshot_callback: Callable[[SessionSnapshot], None] | None = None,
     event_callback: Callable[[SessionStageEvent], None] | None = None,
@@ -55,6 +58,7 @@ def run_recovery_action(
         backend=backend,
         client=client,
         protocol=protocol,
+        runtime_probe=runtime_probe,
         launch_mode="online",
         policy=policy if policy is not None else load_supervisor_policy_from_env(),
     )

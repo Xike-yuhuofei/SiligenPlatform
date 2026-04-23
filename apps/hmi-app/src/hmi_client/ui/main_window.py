@@ -2035,6 +2035,7 @@ class MainWindow(QMainWindow):
             self._backend,
             self._client,
             self._protocol,
+            self._protocol,
             launch_mode=self._requested_launch_mode,
             policy=self._supervisor_policy,
         )
@@ -2062,6 +2063,7 @@ class MainWindow(QMainWindow):
             backend=self._backend,
             client=self._client,
             protocol=self._protocol,
+            runtime_probe=self._protocol,
             policy=self._supervisor_policy,
         )
         self._bind_session_worker_signals(self._recovery_worker)

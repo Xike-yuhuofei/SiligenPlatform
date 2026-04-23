@@ -4,11 +4,17 @@ from bootstrap import ensure_hmi_application_test_paths
 
 ensure_hmi_application_test_paths()
 
-from hmi_application.contracts.launch_supervision_contract import SessionSnapshot, snapshot_timestamp
+from hmi_application.contracts.launch_supervision_contract import RuntimeIdentity, SessionSnapshot, snapshot_timestamp
 from hmi_application.services.launch_result_projection import (
     build_launch_result,
     build_offline_launch_result,
     launch_result_from_snapshot,
+)
+
+
+RUNTIME_IDENTITY = RuntimeIdentity(
+    executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+    working_directory="C:\\runtime",
 )
 
 
@@ -24,6 +30,8 @@ def _ready_snapshot() -> SessionSnapshot:
         recoverable=True,
         last_error_message="System ready",
         updated_at=snapshot_timestamp(),
+        runtime_contract_verified=True,
+        runtime_identity=RUNTIME_IDENTITY,
     )
 
 

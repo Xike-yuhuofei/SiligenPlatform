@@ -782,6 +782,12 @@ class GuiContractRunner:
             self._capture_screenshot(f"runtime action profile {profile}")
 
     def _emit_supervisor_diag(self) -> None:
+        def _diag_value(value: object | None) -> str:
+            text = str(value or "").strip()
+            if not text:
+                return "null"
+            return text.replace(" ", "%20")
+
         result = self.window._launch_result
         if result is None:
             print(
@@ -794,11 +800,17 @@ class GuiContractRunner:
                 "failure_code=null "
                 "failure_stage=null "
                 "recoverable=false "
-                "online_ready=false",
+                "online_ready=false "
+                "runtime_contract_verified=false "
+                "runtime_executable=null "
+                "runtime_working_directory=null "
+                "runtime_protocol_version=null "
+                "preview_snapshot_contract=null",
                 flush=True,
             )
             return
         snapshot = result.session_snapshot
+        runtime_identity = snapshot.runtime_identity if snapshot is not None else None
         mode = snapshot.mode if snapshot is not None else result.effective_mode
         session_state = snapshot.session_state if snapshot is not None else result.session_state
         backend_state = snapshot.backend_state if snapshot is not None else ("ready" if result.backend_started else "stopped")
@@ -808,6 +820,7 @@ class GuiContractRunner:
         failure_stage = snapshot.failure_stage if snapshot is not None else result.failure_stage
         recoverable = snapshot.recoverable if snapshot is not None else result.recoverable
         online_ready = result.online_ready
+        runtime_contract_verified = bool(snapshot.runtime_contract_verified) if snapshot is not None else False
         print(
             "SUPERVISOR_DIAG "
             f"mode={mode} "
@@ -818,7 +831,12 @@ class GuiContractRunner:
             f"failure_code={failure_code or 'null'} "
             f"failure_stage={failure_stage or 'null'} "
             f"recoverable={str(bool(recoverable)).lower()} "
-            f"online_ready={str(bool(online_ready)).lower()}",
+            f"online_ready={str(bool(online_ready)).lower()} "
+            f"runtime_contract_verified={str(runtime_contract_verified).lower()} "
+            f"runtime_executable={_diag_value(getattr(runtime_identity, 'executable_path', None))} "
+            f"runtime_working_directory={_diag_value(getattr(runtime_identity, 'working_directory', None))} "
+            f"runtime_protocol_version={_diag_value(getattr(runtime_identity, 'protocol_version', None))} "
+            f"preview_snapshot_contract={_diag_value(getattr(runtime_identity, 'preview_snapshot_contract', None))}",
             flush=True,
         )
 
