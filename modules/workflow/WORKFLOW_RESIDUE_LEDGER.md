@@ -308,7 +308,7 @@
 2. `siligen_application` 宏 target 已退出 live code；后续 application 批次不应再把 alias、shared-kernel helper keep-set 或 `siligen_application_redundancy` header-bundle 去耦当主战场。若要继续减少 `siligen_workflow_application_headers` 剩余 foreign contract `INTERFACE` links 或 `siligen_application_dispensing` 其余 `PUBLIC` deps，必须单开 public header surface refactor 批次。
 
 # 8. Unknowns requiring further trace
-1. root `BUILD_SECURITY_MODULE` / `security_module` 残留已退役；当前 security live build graph 只允许 `apps/runtime-service/security/**`。后续若再出现 root optional security 构建入口，应直接按 boundary regression 处理，而不是重新讨论 owner 落点。
+1. root `BUILD_SECURITY_MODULE` / `security_module` 残留已退役；`runtime-execution/runtime/host/security/**` 不再是有效的 live surface，当前 app-local security landing 留在 `apps/runtime-service/**`。后续若再出现 root optional security 构建入口，应直接按 boundary regression 处理，而不是重新讨论 owner 落点。
 2. `siligen_application_redundancy` 当前在 round `31` 已完成最小 public-surface 去耦；`siligen_application_dispensing` 与 `siligen_workflow_application_headers` 的 remaining keep-set 已在 round `32` 冻结为当前 public-surface 必需项。若后续仍要区分“编排层必需”与“历史 carry-over”，必须以前置 public header surface refactor 为准入条件，而不再作为当前低成本收紧问题继续推进。
 3. apps 中仍然存活的 `workflow/application/planning-trigger/*` / `phase-control/*` canonical include，是否需要按 orchestration lane 再细化成文档级 owner 账本，仍待在后续批次补 trace；当前它们不再作为 `WF-R024` blocker。
 
