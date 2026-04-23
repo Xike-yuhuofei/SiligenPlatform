@@ -13,6 +13,7 @@
 #include "siligen/device/contracts/ports/device_ports.h"
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 namespace Siligen::RuntimeExecution::Application::Services::Dispensing {
@@ -69,7 +70,9 @@ class DispensingProcessService final : public IDispensingProcessPort {
                                        uint32 total_segments,
                                        uint32 profile_compare_expected_trigger_count,
                                        bool dispense_enabled,
-                                       IDispensingExecutionObserver* observer) noexcept;
+                                       IDispensingExecutionObserver* observer,
+                                       const std::function<Result<void>(const Siligen::Domain::Dispensing::Ports::ProfileCompareStatus&)>&
+                                           profile_compare_status_observer = nullptr) noexcept;
     Result<void> ClearInterpolationBufferForFormalPath(std::atomic<bool>* stop_flag,
                                                        std::atomic<bool>* pause_flag,
                                                        std::atomic<bool>* pause_applied_flag) noexcept;

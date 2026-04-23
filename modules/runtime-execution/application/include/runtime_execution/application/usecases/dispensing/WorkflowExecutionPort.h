@@ -33,6 +33,8 @@ struct WorkflowExecutionRequest {
     ExecutionPackageValidated execution_package;
     std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
         profile_compare_schedule;
+    std::shared_ptr<const Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace>
+        expected_trace;
     std::string source_path;
 
     bool dry_run = false;
@@ -91,6 +93,11 @@ struct WorkflowExecutionRequest {
                     ErrorCode::INVALID_PARAMETER,
                     "PROFILE_COMPARE workflow execution request 缺少 profile compare schedule"));
             }
+            if (!expected_trace || expected_trace->Empty()) {
+                return Result<void>::Failure(Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "PROFILE_COMPARE workflow execution request 缺少 expected trace"));
+            }
             auto schedule_validation =
                 Siligen::RuntimeExecution::Contracts::Dispensing::ValidateProfileCompareExecutionSchedule(
                     execution_package.execution_plan,
@@ -98,10 +105,15 @@ struct WorkflowExecutionRequest {
             if (schedule_validation.IsError()) {
                 return Result<void>::Failure(schedule_validation.GetError());
             }
-        } else if (profile_compare_schedule) {
+            if (expected_trace->items.size() != profile_compare_schedule->expected_trigger_count) {
+                return Result<void>::Failure(Error(
+                    ErrorCode::INVALID_PARAMETER,
+                    "PROFILE_COMPARE workflow execution request expected trace 数量与 schedule 不一致"));
+            }
+        } else if (profile_compare_schedule || expected_trace) {
             return Result<void>::Failure(Error(
                 ErrorCode::INVALID_PARAMETER,
-                "非 PROFILE_COMPARE workflow execution request 不允许携带 profile compare schedule"));
+                "非 PROFILE_COMPARE workflow execution request 不允许携带 profile compare traceability"));
         }
         if (max_jerk < 0.0f) {
             return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "max_jerk不能为负数"));

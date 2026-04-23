@@ -425,6 +425,122 @@ struct MaterializedProfileCompareSpan {
     uint32 global_progress_end = 0U;
 };
 
+struct ProfileCompareActualTraceCollector {
+    std::vector<ValueObjects::ProfileCompareActualTraceItem> actual_trace;
+    std::vector<ValueObjects::ProfileCompareTraceabilityMismatch> mismatches;
+    std::string verdict = "passed";
+    std::string verdict_reason;
+    bool strict_one_to_one_proven = true;
+    std::size_t next_expected_index = 0U;
+
+    Result<void> ObserveStatus(
+        uint32 cycle_index,
+        const MaterializedProfileCompareSpan& span,
+        const ValueObjects::ProfileCompareExpectedTrace& expected_trace,
+        const Ports::ProfileCompareStatus& status) {
+        const auto expected_total = expected_trace.items.size();
+        if (expected_total == 0U) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER,
+                      "profile_compare actual trace 缺少 expected trace",
+                      "DispensingProcessService"));
+        }
+        if (status.completed_trigger_count > span.schedule_span.expected_trigger_count) {
+            ValueObjects::ProfileCompareTraceabilityMismatch mismatch;
+            mismatch.cycle_index = cycle_index;
+            mismatch.code = "span_completed_trigger_overflow";
+            mismatch.message = "span completed_trigger_count exceeded span expected_trigger_count";
+            mismatches.push_back(std::move(mismatch));
+            verdict = "failed";
+            verdict_reason = "span completed_trigger_count exceeded span expected_trigger_count";
+            strict_one_to_one_proven = false;
+            return Result<void>::Failure(
+                Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
+                      "profile_compare span completed_trigger_count exceeded span expected_trigger_count",
+                      "DispensingProcessService"));
+        }
+
+        const auto target_actual_size =
+            static_cast<std::size_t>(span.schedule_span.trigger_begin_index) +
+            static_cast<std::size_t>(status.completed_trigger_count);
+
+        while (actual_trace.size() < target_actual_size) {
+            if (next_expected_index >= expected_total) {
+                ValueObjects::ProfileCompareTraceabilityMismatch mismatch;
+                mismatch.cycle_index = cycle_index;
+                mismatch.code = "unexpected_trigger_completion";
+                mismatch.message = "completed_trigger_count exceeded expected trace size";
+                mismatches.push_back(std::move(mismatch));
+                verdict = "failed";
+                verdict_reason = "completed_trigger_count exceeded expected trace size";
+                strict_one_to_one_proven = false;
+                return Result<void>::Failure(
+                    Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
+                          "profile_compare completed_trigger_count exceeded expected trace size",
+                          "DispensingProcessService"));
+            }
+
+            const auto& expected_item = expected_trace.items[next_expected_index];
+            if (expected_item.span_index != span.schedule_span.span_index) {
+                ValueObjects::ProfileCompareTraceabilityMismatch mismatch;
+                mismatch.cycle_index = cycle_index;
+                mismatch.trigger_sequence_id = expected_item.trigger_sequence_id;
+                mismatch.code = "trigger_span_drift";
+                mismatch.message = "completed trigger advanced outside current schedule span";
+                mismatches.push_back(std::move(mismatch));
+                verdict = "failed";
+                verdict_reason = "completed trigger advanced outside current schedule span";
+                strict_one_to_one_proven = false;
+                return Result<void>::Failure(
+                    Error(ErrorCode::CMP_TRIGGER_SETUP_FAILED,
+                          "profile_compare completed trigger advanced outside current span",
+                          "DispensingProcessService"));
+            }
+
+            ValueObjects::ProfileCompareActualTraceItem actual_item;
+            actual_item.cycle_index = cycle_index;
+            actual_item.trigger_sequence_id = expected_item.trigger_sequence_id;
+            actual_item.completion_sequence = static_cast<uint32>(actual_trace.size() + 1U);
+            actual_item.span_index = span.schedule_span.span_index;
+            actual_item.local_completed_trigger_count = static_cast<uint32>(
+                actual_trace.size() + 1U - static_cast<std::size_t>(span.schedule_span.trigger_begin_index));
+            actual_item.observed_completed_trigger_count = status.completed_trigger_count;
+            actual_item.compare_source_axis = expected_item.compare_source_axis;
+            actual_item.compare_position_pulse = expected_item.compare_position_pulse;
+            actual_item.authority_trigger_ref = expected_item.authority_trigger_ref;
+            actual_item.trigger_mode = expected_item.trigger_mode;
+            actual_trace.push_back(std::move(actual_item));
+            ++next_expected_index;
+        }
+
+        return Result<void>::Success();
+    }
+
+    void FinalizeTerminal(uint32 cycle_index, const ValueObjects::ProfileCompareExpectedTrace& expected_trace) {
+        if (actual_trace.size() == expected_trace.items.size() && mismatches.empty() && verdict == "passed") {
+            strict_one_to_one_proven = true;
+            verdict_reason.clear();
+            return;
+        }
+
+        if (actual_trace.size() != expected_trace.items.size()) {
+            ValueObjects::ProfileCompareTraceabilityMismatch mismatch;
+            mismatch.cycle_index = cycle_index;
+            mismatch.code = "terminal_trigger_count_mismatch";
+            mismatch.message = "profile_compare terminal actual trace count does not match expected trace count";
+            mismatches.push_back(std::move(mismatch));
+            if (verdict_reason.empty()) {
+                verdict_reason = "profile_compare terminal actual trace count does not match expected trace count";
+            }
+        } else if (verdict_reason.empty()) {
+            verdict_reason = "profile_compare traceability mismatches detected";
+        }
+
+        verdict = "failed";
+        strict_one_to_one_proven = false;
+    }
+};
+
 std::optional<Point2D> ResolveInterpolationEndPoint(
     const Motion::Ports::InterpolationData& segment) noexcept;
 
@@ -1441,6 +1557,7 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
     std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
         profile_compare_schedule;
     std::vector<MaterializedProfileCompareSpan> materialized_compare_spans;
+    ProfileCompareActualTraceCollector actual_trace_collector;
     if (require_profile_compare) {
         if (!profile_compare_port_) {
             return Result<DispensingExecutionReport>::Failure(
@@ -1455,12 +1572,24 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
                       "PROFILE_COMPARE 执行缺少正式 execution schedule",
                       "DispensingProcessService"));
         }
+        if (!options.expected_trace || options.expected_trace->Empty()) {
+            return Result<DispensingExecutionReport>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER,
+                      "PROFILE_COMPARE 执行缺少 expected trace",
+                      "DispensingProcessService"));
+        }
         auto schedule_validation =
             Siligen::RuntimeExecution::Contracts::Dispensing::ValidateProfileCompareExecutionSchedule(
                 plan,
                 *profile_compare_schedule);
         if (schedule_validation.IsError()) {
             return Result<DispensingExecutionReport>::Failure(schedule_validation.GetError());
+        }
+        if (options.expected_trace->items.size() != profile_compare_schedule->expected_trigger_count) {
+            return Result<DispensingExecutionReport>::Failure(
+                Error(ErrorCode::INVALID_PARAMETER,
+                      "PROFILE_COMPARE expected trace 数量与 execution schedule 不一致",
+                      "DispensingProcessService"));
         }
         auto materialized_spans_result =
             MaterializeProfileCompareSpans(plan, params, *profile_compare_schedule);
@@ -1624,6 +1753,14 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
                               "profile_compare immediate-only span 未完成全部触发点",
                               "DispensingProcessService"));
                 }
+                auto observe_result = actual_trace_collector.ObserveStatus(
+                    1U,
+                    span,
+                    *options.expected_trace,
+                    compare_status);
+                if (observe_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(observe_result.GetError());
+                }
 
                 auto disarm_result = profile_compare_guard.Disarm();
                 if (disarm_result.IsError()) {
@@ -1724,6 +1861,14 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
                               compare_status.error_message,
                               "DispensingProcessService"));
                 }
+                auto observe_result = actual_trace_collector.ObserveStatus(
+                    1U,
+                    span,
+                    *options.expected_trace,
+                    compare_status);
+                if (observe_result.IsError()) {
+                    return Result<DispensingExecutionReport>::Failure(observe_result.GetError());
+                }
 
                 const auto space = space_result.Value();
                 if (space == 0U) {
@@ -1778,7 +1923,14 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
                 static_cast<uint32>(local_total_segments),
                 span.schedule_span.expected_trigger_count,
                 false,
-                nullptr);
+                nullptr,
+                [&](const Ports::ProfileCompareStatus& compare_status) -> Result<void> {
+                    return actual_trace_collector.ObserveStatus(
+                        1U,
+                        span,
+                        *options.expected_trace,
+                        compare_status);
+                });
             if (wait_result.IsError()) {
                 return Result<DispensingExecutionReport>::Failure(wait_result.GetError());
             }
@@ -1793,6 +1945,12 @@ Result<DispensingExecutionReport> DispensingProcessService::ExecutePlanInternal(
         DispensingExecutionReport report;
         report.executed_segments = total_segments;
         report.total_distance = plan.total_length_mm > 0.0f ? plan.total_length_mm : plan.motion_trajectory.total_length;
+        actual_trace_collector.FinalizeTerminal(1U, *options.expected_trace);
+        report.actual_trace = std::move(actual_trace_collector.actual_trace);
+        report.traceability_mismatches = std::move(actual_trace_collector.mismatches);
+        report.traceability_verdict = actual_trace_collector.verdict;
+        report.traceability_verdict_reason = actual_trace_collector.verdict_reason;
+        report.strict_one_to_one_proven = actual_trace_collector.strict_one_to_one_proven;
         return Result<DispensingExecutionReport>::Success(report);
     }
 
@@ -2107,7 +2265,9 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                                                              uint32 total_segments,
                                                              uint32 profile_compare_expected_trigger_count,
                                                              bool dispense_enabled,
-                                                             IDispensingExecutionObserver* observer) noexcept {
+                                                             IDispensingExecutionObserver* observer,
+                                                             const std::function<Result<void>(const Ports::ProfileCompareStatus&)>&
+                                                                 profile_compare_status_observer) noexcept {
     if (!interpolation_port_) {
         return Result<void>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "插补端口未初始化", "DispensingProcessService"));
@@ -2177,6 +2337,12 @@ Result<void> DispensingProcessService::WaitForMotionComplete(int32 timeout_ms,
                           "DispensingProcessService"));
             }
             compare_status_snapshot = compare_status;
+            if (profile_compare_status_observer) {
+                auto observer_result = profile_compare_status_observer(compare_status);
+                if (observer_result.IsError()) {
+                    return observer_result;
+                }
+            }
         }
         const bool coord_completed = IsCoordinateSystemCompleted(status);
 

@@ -96,6 +96,12 @@ struct JobExecutionContext {
     std::atomic<bool> final_state_committed{false};
     JobCycleAdvanceMode cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
     bool dry_run = false;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem> expected_trace;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem> actual_trace;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch> mismatches;
+    std::string traceability_verdict = "failed";
+    std::string traceability_verdict_reason;
+    bool strict_one_to_one_proven = false;
     std::chrono::steady_clock::time_point start_time{};
     std::chrono::steady_clock::time_point end_time{};
     mutable std::mutex mutex_;
@@ -123,6 +129,7 @@ struct DispensingExecutionUseCase::Impl {
     Shared::Types::Result<DispensingExecutionResult> Execute(const DispensingExecutionRequest& request);
     Shared::Types::Result<JobID> StartJob(const RuntimeStartJobRequest& request);
     Shared::Types::Result<RuntimeJobStatusResponse> GetJobStatus(const JobID& job_id) const;
+    Shared::Types::Result<RuntimeJobTraceabilityResponse> GetJobTraceability(const JobID& job_id) const;
     Shared::Types::Result<ExecutionTransitionSnapshot> RequestJobTransition(
         const JobID& job_id,
         ExecutionTransitionState requested_transition_state);
@@ -237,6 +244,8 @@ struct DispensingExecutionUseCase::Impl {
     TaskID GenerateTaskID();
     JobID GenerateJobID();
     RuntimeJobStatusResponse BuildJobStatusResponse(const std::shared_ptr<JobExecutionContext>& context) const;
+    RuntimeJobTraceabilityResponse BuildJobTraceabilityResponse(const std::shared_ptr<JobExecutionContext>& context)
+        const;
     void RunJob(const std::shared_ptr<JobExecutionContext>& context);
     void FinalizeJob(
         const std::shared_ptr<JobExecutionContext>& context,

@@ -704,6 +704,19 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
     context->dry_run =
         execution_request->ResolveOutputPolicy() == ProcessOutputPolicy::Inhibited;
     context->start_time = std::chrono::steady_clock::now();
+    if (execution_request->expected_trace && !execution_request->expected_trace->Empty()) {
+        context->expected_trace.reserve(
+            execution_request->expected_trace->items.size() * static_cast<std::size_t>(request.target_count));
+        for (uint32 cycle_index = 1U; cycle_index <= request.target_count; ++cycle_index) {
+            for (const auto& item : execution_request->expected_trace->items) {
+                auto expanded_item = item;
+                expanded_item.cycle_index = cycle_index;
+                context->expected_trace.push_back(std::move(expanded_item));
+            }
+        }
+        context->traceability_verdict = "passed";
+        context->strict_one_to_one_proven = true;
+    }
 
     {
         std::lock_guard<std::mutex> lock(jobs_mutex_);
@@ -784,6 +797,41 @@ Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::Impl::GetJobStatus(
         context = it->second;
     }
     return Result<RuntimeJobStatusResponse>::Success(BuildJobStatusResponse(context));
+}
+
+Result<RuntimeJobTraceabilityResponse> DispensingExecutionUseCase::Impl::GetJobTraceability(
+    const JobID& job_id) const {
+    std::shared_ptr<JobExecutionContext> context;
+    {
+        std::lock_guard<std::mutex> lock(jobs_mutex_);
+        auto it = jobs_.find(job_id);
+        if (it == jobs_.end()) {
+            return Result<RuntimeJobTraceabilityResponse>::Failure(
+                Error(ErrorCode::NOT_FOUND, "job not found", "DispensingExecutionUseCase"));
+        }
+        context = it->second;
+    }
+
+    if (!IsTerminalJobState(context->state.load())) {
+        return Result<RuntimeJobTraceabilityResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_STATE,
+                "job traceability is available only after terminal state",
+                "DispensingExecutionUseCase"));
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        if (context->expected_trace.empty()) {
+            return Result<RuntimeJobTraceabilityResponse>::Failure(
+                Error(
+                    ErrorCode::INVALID_STATE,
+                    "job does not carry profile_compare traceability",
+                    "DispensingExecutionUseCase"));
+        }
+    }
+
+    return Result<RuntimeJobTraceabilityResponse>::Success(BuildJobTraceabilityResponse(context));
 }
 
 Result<TaskStatusResponse> DispensingExecutionUseCase::Impl::GetTaskStatus(const TaskID& task_id) const {
@@ -1087,6 +1135,24 @@ RuntimeJobStatusResponse DispensingExecutionUseCase::Impl::BuildJobStatusRespons
     return response;
 }
 
+RuntimeJobTraceabilityResponse DispensingExecutionUseCase::Impl::BuildJobTraceabilityResponse(
+    const std::shared_ptr<JobExecutionContext>& context) const {
+    RuntimeJobTraceabilityResponse response;
+    response.job_id = context->job_id;
+    response.plan_id = context->plan_id;
+    response.plan_fingerprint = context->plan_fingerprint;
+    response.terminal_state = JobStateToString(context->state.load());
+
+    std::lock_guard<std::mutex> lock(context->mutex_);
+    response.expected_trace = context->expected_trace;
+    response.actual_trace = context->actual_trace;
+    response.mismatches = context->mismatches;
+    response.verdict = context->traceability_verdict;
+    response.verdict_reason = context->traceability_verdict_reason;
+    response.strict_one_to_one_proven = context->strict_one_to_one_proven;
+    return response;
+}
+
 void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecutionContext>& context) {
     if (!context->execution_request) {
         FinalizeJob(context, JobState::FAILED, "failure_stage=job_precheck;failure_code=MISSING_REQUEST;message=execution_request_unavailable");
@@ -1144,6 +1210,21 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
         }
 
         const auto task_id = task_result.Value();
+        std::shared_ptr<TaskExecutionContext> task_context;
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            auto task_it = tasks_.find(task_id);
+            if (task_it != tasks_.end()) {
+                task_context = task_it->second;
+            }
+        }
+        if (!task_context) {
+            FinalizeJob(
+                context,
+                JobState::FAILED,
+                "failure_stage=job_task_link;failure_code=MISSING_TASK_CONTEXT;message=task_context_unavailable");
+            return;
+        }
         {
             std::lock_guard<std::mutex> lock(context->mutex_);
             context->active_task_id = task_id;
@@ -1241,6 +1322,35 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                     context->state.store(context->stop_requested.load() ? JobState::STOPPING : JobState::RUNNING);
                 }
             } else if (task_status.state == "completed") {
+                const auto cycle_index = cycle + 1U;
+                {
+                    std::lock_guard<std::mutex> lock(context->mutex_);
+                    for (const auto& actual_item : task_context->result.actual_trace) {
+                        auto cycle_item = actual_item;
+                        cycle_item.cycle_index = cycle_index;
+                        context->actual_trace.push_back(std::move(cycle_item));
+                    }
+                    for (const auto& mismatch : task_context->result.traceability_mismatches) {
+                        auto cycle_mismatch = mismatch;
+                        cycle_mismatch.cycle_index = cycle_index;
+                        context->mismatches.push_back(std::move(cycle_mismatch));
+                    }
+
+                    if (task_context->result.traceability_verdict != "passed") {
+                        context->traceability_verdict = "failed";
+                        context->strict_one_to_one_proven = false;
+                        if (context->traceability_verdict_reason.empty()) {
+                            context->traceability_verdict_reason =
+                                task_context->result.traceability_verdict_reason.empty()
+                                    ? ("traceability failed at cycle " + std::to_string(cycle_index))
+                                    : ("cycle " + std::to_string(cycle_index) + ": " +
+                                       task_context->result.traceability_verdict_reason);
+                        }
+                    } else {
+                        context->strict_one_to_one_proven =
+                            context->strict_one_to_one_proven && task_context->result.strict_one_to_one_proven;
+                    }
+                }
                 context->completed_count.store(cycle + 1);
                 context->current_segment.store(0);
                 context->total_segments.store(0);
@@ -1298,6 +1408,36 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
         }
     }
 
+    {
+        std::lock_guard<std::mutex> lock(context->mutex_);
+        if (!context->expected_trace.empty()) {
+            if (context->actual_trace.size() != context->expected_trace.size()) {
+                Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch mismatch;
+                mismatch.cycle_index = 1U;
+                mismatch.code = "actual_trace_count_mismatch";
+                mismatch.message =
+                    "actual trace count does not match expected trace count at terminal state";
+                context->mismatches.push_back(std::move(mismatch));
+                context->traceability_verdict = "failed";
+                if (context->traceability_verdict_reason.empty()) {
+                    context->traceability_verdict_reason =
+                        "actual trace count does not match expected trace count at terminal state";
+                }
+                context->strict_one_to_one_proven = false;
+            } else if (context->mismatches.empty() &&
+                       context->traceability_verdict == "passed" &&
+                       context->strict_one_to_one_proven) {
+                context->traceability_verdict_reason.clear();
+            } else {
+                context->traceability_verdict = "failed";
+                if (context->traceability_verdict_reason.empty()) {
+                    context->traceability_verdict_reason = "traceability mismatches detected";
+                }
+                context->strict_one_to_one_proven = false;
+            }
+        }
+    }
+
     FinalizeJob(context, JobState::COMPLETED);
 }
 
@@ -1312,6 +1452,15 @@ void DispensingExecutionUseCase::Impl::FinalizeJob(
     {
         std::lock_guard<std::mutex> lock(context->mutex_);
         context->active_task_id.clear();
+        if (final_state != JobState::COMPLETED && !context->expected_trace.empty()) {
+            context->traceability_verdict = "failed";
+            if (context->traceability_verdict_reason.empty()) {
+                context->traceability_verdict_reason =
+                    "job terminated in state " + JobStateToString(final_state) +
+                    " before strict traceability could be proven";
+            }
+            context->strict_one_to_one_proven = false;
+        }
     }
     if (final_state == JobState::COMPLETED) {
         context->cycle_progress_percent.store(100);

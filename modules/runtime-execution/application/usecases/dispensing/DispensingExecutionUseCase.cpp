@@ -342,6 +342,11 @@ Result<void> DispensingExecutionRequest::Validate() const noexcept {
                 ErrorCode::INVALID_PARAMETER,
                 "PROFILE_COMPARE execution request 缺少 profile compare schedule"));
         }
+        if (!expected_trace || expected_trace->Empty()) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_PARAMETER,
+                "PROFILE_COMPARE execution request 缺少 expected trace"));
+        }
         auto schedule_validation =
             Siligen::RuntimeExecution::Contracts::Dispensing::ValidateProfileCompareExecutionSchedule(
                 execution_package.execution_plan,
@@ -349,10 +354,15 @@ Result<void> DispensingExecutionRequest::Validate() const noexcept {
         if (schedule_validation.IsError()) {
             return Result<void>::Failure(schedule_validation.GetError());
         }
-    } else if (profile_compare_schedule) {
+        if (expected_trace->items.size() != profile_compare_schedule->expected_trigger_count) {
+            return Result<void>::Failure(Error(
+                ErrorCode::INVALID_PARAMETER,
+                "PROFILE_COMPARE execution request expected trace 数量与 schedule 不一致"));
+        }
+    } else if (profile_compare_schedule || expected_trace) {
         return Result<void>::Failure(Error(
             ErrorCode::INVALID_PARAMETER,
-            "非 PROFILE_COMPARE execution request 不允许携带 profile compare schedule"));
+            "非 PROFILE_COMPARE execution request 不允许携带 profile compare traceability"));
     }
     if (max_jerk < 0.0f) {
         return Result<void>::Failure(Error(ErrorCode::INVALID_PARAMETER, "max_jerk不能为负数"));
@@ -433,6 +443,10 @@ Result<JobID> DispensingExecutionUseCase::StartJob(const RuntimeStartJobRequest&
 
 Result<RuntimeJobStatusResponse> DispensingExecutionUseCase::GetJobStatus(const JobID& job_id) const {
     return impl_->GetJobStatus(job_id);
+}
+
+Result<RuntimeJobTraceabilityResponse> DispensingExecutionUseCase::GetJobTraceability(const JobID& job_id) const {
+    return impl_->GetJobTraceability(job_id);
 }
 
 Result<ExecutionTransitionSnapshot> DispensingExecutionUseCase::RequestJobTransition(
@@ -708,6 +722,7 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
     options.output_policy = resolved_execution_.output_policy;
     options.guard_decision = guard_decision;
     options.profile_compare_schedule = request.profile_compare_schedule;
+    options.expected_trace = request.expected_trace;
 
     std::unique_ptr<VelocityTraceObserver> trace_observer;
     if (trace_settings.enabled) {
@@ -743,6 +758,11 @@ Result<DispensingExecutionResult> DispensingExecutionUseCase::Impl::ExecuteInter
 
     result.executed_segments = exec_result.Value().executed_segments;
     result.total_distance = exec_result.Value().total_distance;
+    result.actual_trace = exec_result.Value().actual_trace;
+    result.traceability_mismatches = exec_result.Value().traceability_mismatches;
+    result.traceability_verdict = exec_result.Value().traceability_verdict;
+    result.traceability_verdict_reason = exec_result.Value().traceability_verdict_reason;
+    result.strict_one_to_one_proven = exec_result.Value().strict_one_to_one_proven;
 
     result.success = true;
     result.executed_segments = result.total_segments;

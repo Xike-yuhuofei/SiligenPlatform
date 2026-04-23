@@ -21,6 +21,8 @@ using Siligen::Device::Contracts::Capabilities::DeviceCapabilities;
 using Siligen::Device::Contracts::Capabilities::DispenserCapability;
 using Siligen::Device::Contracts::Ports::DispenserDevicePort;
 using Siligen::Device::Contracts::Ports::MotionDevicePort;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::Error;
@@ -251,6 +253,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.performance_profile.authority_build_ms = authority_preview.authority_profile.authority_build_ms;
     response.performance_profile.authority_total_ms = authority_preview.authority_profile.total_ms;
     response.performance_profile.prepare_total_ms = ToElapsedMs(prepare_start);
+    const auto current_prepare_profile = response.performance_profile;
 
     const auto log_prepare_profile = [&](const PreparePlanResponse& profile_response) {
         const auto& profile = profile_response.performance_profile;
@@ -332,7 +335,6 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
                 static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
             reusable->response.total_length_mm = authority_preview.artifacts.total_length;
             reusable->response.generated_at = response.generated_at;
-            reusable->response.performance_profile = response.performance_profile;
             reusable->response.import_diagnostics = artifact.upload_response.import_diagnostics;
             reusable->response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
             reusable->response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
@@ -359,6 +361,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->authority_trigger_layout = authority_preview.artifacts.authority_trigger_layout;
             reusable->execution_launch.execution_package.reset();
             reusable->execution_launch.profile_compare_schedule.reset();
+            reusable->execution_launch.expected_trace.reset();
             reusable->execution_assembly = ExecutionAssemblyResponse{};
             if (reusable->preview_state == PlanPreviewState::STALE) {
                 reusable->preview_state =
@@ -394,6 +397,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             RefreshResponseExecutionContract(it->second);
             RefreshPlanImportDiagnostics(it->second);
             response = it->second.response;
+            response.performance_profile = current_prepare_profile;
         }
     }
 
@@ -721,6 +725,7 @@ DispensingWorkflowUseCase::BuildExecutionRequest(const PlanExecutionLaunch& laun
         request.execution_package = *launch.execution_package;
     }
     request.profile_compare_schedule = launch.profile_compare_schedule;
+    request.expected_trace = launch.expected_trace;
     request.source_path = launch.runtime_overrides.source_path;
     request.dry_run = launch.runtime_overrides.dry_run;
     request.machine_mode = launch.runtime_overrides.machine_mode;
@@ -1313,6 +1318,7 @@ std::string DispensingWorkflowUseCase::ResolveProductionGateFailure(const PlanRe
 
 void DispensingWorkflowUseCase::RefreshProfileCompareSchedule(PlanRecord& plan_record) const {
     plan_record.execution_launch.profile_compare_schedule.reset();
+    plan_record.execution_launch.expected_trace.reset();
     plan_record.profile_compare_schedule_failure.clear();
 
     const auto execution_package = plan_record.execution_launch.execution_package;
@@ -1365,6 +1371,14 @@ void DispensingWorkflowUseCase::RefreshProfileCompareSchedule(PlanRecord& plan_r
     plan_record.execution_launch.profile_compare_schedule =
         std::make_shared<Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>(
             std::move(compile_result.Value()));
+
+    auto expected_trace_result = BuildExpectedTrace(plan_record);
+    if (expected_trace_result.IsError()) {
+        plan_record.execution_launch.profile_compare_schedule.reset();
+        plan_record.profile_compare_schedule_failure = expected_trace_result.GetError().GetMessage();
+        return;
+    }
+    plan_record.execution_launch.expected_trace = expected_trace_result.Value();
 }
 
 Result<void> DispensingWorkflowUseCase::MaterializeProfileCompareSchedule(PlanRecord& plan_record) const {
@@ -1376,6 +1390,153 @@ Result<void> DispensingWorkflowUseCase::MaterializeProfileCompareSchedule(PlanRe
             "DispensingWorkflowUseCase"));
     }
     return Result<void>::Success();
+}
+
+Result<std::shared_ptr<const ProfileCompareExpectedTrace>> DispensingWorkflowUseCase::BuildExpectedTrace(
+    const PlanRecord& plan_record) const {
+    if (!plan_record.execution_launch.execution_package ||
+        !plan_record.execution_launch.profile_compare_schedule) {
+        return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            "profile_compare expected trace compile 缺少 execution package 或 schedule",
+            "DispensingWorkflowUseCase"));
+    }
+
+    const auto& execution_plan = plan_record.execution_launch.execution_package->execution_plan;
+    const auto& schedule = *plan_record.execution_launch.profile_compare_schedule;
+    const auto& program = execution_plan.profile_compare_program;
+    const auto& authority_layout = plan_record.execution_assembly.authority_trigger_layout;
+    if (program.trigger_points.empty() || program.spans.empty()) {
+        return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            "profile_compare expected trace compile 缺少 owner trigger program",
+            "DispensingWorkflowUseCase"));
+    }
+    if (schedule.spans.size() != program.spans.size()) {
+        return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            "profile_compare expected trace compile 检测到 owner span 与 schedule span 数量不一致",
+            "DispensingWorkflowUseCase"));
+    }
+    if (authority_layout.trigger_points.size() != program.trigger_points.size()) {
+        return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            "profile_compare expected trace compile 检测到 authority trigger 数量与 owner trigger 数量不一致",
+            "DispensingWorkflowUseCase"));
+    }
+
+    std::vector<const Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint*> authority_triggers_by_sequence(
+        authority_layout.trigger_points.size(),
+        nullptr);
+    for (const auto& trigger : authority_layout.trigger_points) {
+        if (trigger.sequence_index_global >= authority_triggers_by_sequence.size()) {
+            return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+                ErrorCode::INVALID_STATE,
+                "profile_compare expected trace compile 检测到 authority trigger sequence 越界",
+                "DispensingWorkflowUseCase"));
+        }
+        authority_triggers_by_sequence[trigger.sequence_index_global] = &trigger;
+    }
+    std::unordered_map<std::string, const Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding*>
+        bindings_by_ref;
+    bindings_by_ref.reserve(authority_layout.bindings.size());
+    for (const auto& binding : authority_layout.bindings) {
+        if (binding.bound) {
+            bindings_by_ref.emplace(binding.trigger_ref, &binding);
+        }
+    }
+    std::unordered_map<std::string, const Siligen::Domain::Dispensing::ValueObjects::DispenseSpan*> spans_by_id;
+    spans_by_id.reserve(authority_layout.spans.size());
+    for (const auto& span : authority_layout.spans) {
+        spans_by_id.emplace(span.span_id, &span);
+    }
+
+    auto trace = std::make_shared<ProfileCompareExpectedTrace>();
+    trace->items.reserve(program.trigger_points.size());
+    for (std::size_t span_index = 0; span_index < schedule.spans.size(); ++span_index) {
+        const auto& owner_span = program.spans[span_index];
+        const auto& schedule_span = schedule.spans[span_index];
+        const auto future_compare_offset =
+            owner_span.trigger_begin_index + schedule_span.start_boundary_trigger_count;
+
+        for (uint32 trigger_index = owner_span.trigger_begin_index; trigger_index <= owner_span.trigger_end_index;
+             ++trigger_index) {
+            const auto& owner_trigger = program.trigger_points[trigger_index];
+            if (trigger_index >= authority_triggers_by_sequence.size() ||
+                authority_triggers_by_sequence[trigger_index] == nullptr) {
+                return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+                    ErrorCode::INVALID_STATE,
+                    "profile_compare expected trace 缺少 authority trigger sequence 绑定",
+                    "DispensingWorkflowUseCase"));
+            }
+            const auto* authority_trigger = authority_triggers_by_sequence[trigger_index];
+            const auto binding_it = bindings_by_ref.find(authority_trigger->trigger_id);
+            if (binding_it == bindings_by_ref.end() || binding_it->second == nullptr) {
+                return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+                    ErrorCode::INVALID_STATE,
+                    "profile_compare expected trace 缺少 execution binding",
+                    "DispensingWorkflowUseCase"));
+            }
+            const auto span_it = spans_by_id.find(authority_trigger->span_ref);
+            if (span_it == spans_by_id.end() || span_it->second == nullptr) {
+                return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+                    ErrorCode::INVALID_STATE,
+                    "profile_compare expected trace 缺少 authority span 元数据",
+                    "DispensingWorkflowUseCase"));
+            }
+            const auto& authority_span = *span_it->second;
+
+            if (binding_it->second->interpolation_index >= execution_plan.interpolation_points.size()) {
+                return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+                    ErrorCode::INVALID_STATE,
+                    "profile_compare expected trace execution binding interpolation_index 越界",
+                    "DispensingWorkflowUseCase"));
+            }
+
+            ProfileCompareExpectedTraceItem item;
+            item.cycle_index = 1U;
+            item.trigger_sequence_id = owner_trigger.sequence_index;
+            item.authority_trigger_index = static_cast<uint32>(authority_trigger->sequence_index_global);
+            item.span_index = static_cast<uint32>(span_index);
+            item.component_index = static_cast<uint32>(authority_span.component_index);
+            item.span_order_index = static_cast<uint32>(authority_span.order_index);
+            item.source_segment_index = static_cast<uint32>(authority_trigger->source_segment_index);
+            item.execution_interpolation_index = static_cast<uint32>(binding_it->second->interpolation_index);
+            item.authority_distance_mm = authority_trigger->distance_mm_global;
+            item.execution_profile_position_mm = owner_trigger.profile_position_mm;
+            item.execution_position_mm = binding_it->second->execution_position;
+            item.execution_trigger_position_mm = owner_trigger.trigger_position_mm;
+            item.compare_source_axis = schedule_span.compare_source_axis;
+            item.pulse_width_us = schedule_span.pulse_width_us;
+            item.authority_trigger_ref = authority_trigger->trigger_id;
+            item.authority_span_ref = authority_trigger->span_ref;
+            if (trigger_index == owner_span.trigger_begin_index && schedule_span.start_boundary_trigger_count == 1U) {
+                item.trigger_mode = "start_boundary";
+                item.compare_position_pulse = 0L;
+            } else {
+                const auto future_compare_index =
+                    static_cast<std::size_t>(trigger_index - future_compare_offset);
+                if (future_compare_index >= schedule_span.compare_positions_pulse.size()) {
+                    return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+                        ErrorCode::INVALID_STATE,
+                        "profile_compare expected trace future compare 序列与 owner trigger 不一致",
+                        "DispensingWorkflowUseCase"));
+                }
+                item.trigger_mode = "future_compare";
+                item.compare_position_pulse = schedule_span.compare_positions_pulse[future_compare_index];
+            }
+            trace->items.push_back(std::move(item));
+        }
+    }
+
+    if (trace->items.size() != program.trigger_points.size()) {
+        return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Failure(Error(
+            ErrorCode::INVALID_STATE,
+            "profile_compare expected trace 条目数与 owner trigger 数量不一致",
+            "DispensingWorkflowUseCase"));
+    }
+
+    return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Success(trace);
 }
 
 void DispensingWorkflowUseCase::RefreshPlanImportDiagnostics(PlanRecord& plan_record) const {
@@ -1613,6 +1774,7 @@ std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState sta
 void DispensingWorkflowUseCase::ReleaseRetainedExecutionState(PlanRecord& plan_record) const {
     plan_record.execution_launch.execution_package.reset();
     plan_record.execution_launch.profile_compare_schedule.reset();
+    plan_record.execution_launch.expected_trace.reset();
     plan_record.execution_assembly = {};
     plan_record.preview_authority_shared_with_execution = false;
     plan_record.execution_authority_shared_with_execution = false;

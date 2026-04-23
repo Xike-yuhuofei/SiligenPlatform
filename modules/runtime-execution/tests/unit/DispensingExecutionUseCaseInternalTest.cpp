@@ -18,11 +18,15 @@ using Siligen::Application::UseCases::Dispensing::ExecutionTransitionState;
 using Siligen::Application::UseCases::Dispensing::JobExecutionContext;
 using Siligen::Application::UseCases::Dispensing::JobState;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
+using Siligen::Application::UseCases::Dispensing::RuntimeJobTraceabilityResponse;
 using Siligen::Application::UseCases::Dispensing::TaskExecutionContext;
 using Siligen::Application::UseCases::Dispensing::TaskState;
 using Siligen::Domain::Dispensing::Ports::TaskExecutor;
 using Siligen::Domain::Dispensing::Ports::TaskStatus;
 using Siligen::Domain::Dispensing::Ports::TaskStatusInfo;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
@@ -669,6 +673,100 @@ TEST(DispensingExecutionUseCaseInternalTest, TerminalJobStatusRemainsReadableUnt
     ASSERT_TRUE(second_status_result.IsSuccess());
     EXPECT_EQ(second_status_result.Value().job_id, context->job_id);
     EXPECT_EQ(second_status_result.Value().state, "completed");
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityRejectsUnknownJob) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto traceability_result = use_case->GetJobTraceability("job-missing");
+
+    ASSERT_TRUE(traceability_result.IsError());
+    EXPECT_EQ(traceability_result.GetError().GetCode(), ErrorCode::NOT_FOUND);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityRejectsNonTerminalJob) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto context = std::make_shared<JobExecutionContext>();
+    context->job_id = "job-running";
+    context->plan_id = "plan-running";
+    context->plan_fingerprint = "fp-running";
+    context->state.store(JobState::RUNNING);
+    use_case->jobs_[context->job_id] = context;
+
+    auto traceability_result = use_case->GetJobTraceability(context->job_id);
+
+    ASSERT_TRUE(traceability_result.IsError());
+    EXPECT_EQ(traceability_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(traceability_result.GetError().GetMessage().find("terminal state"), std::string::npos);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityRejectsTerminalJobWithoutTraceabilityPayload) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto context = std::make_shared<JobExecutionContext>();
+    context->job_id = "job-no-trace";
+    context->plan_id = "plan-no-trace";
+    context->plan_fingerprint = "fp-no-trace";
+    context->state.store(JobState::COMPLETED);
+    context->final_state_committed.store(true);
+    context->end_time = std::chrono::steady_clock::now();
+    use_case->jobs_[context->job_id] = context;
+
+    auto traceability_result = use_case->GetJobTraceability(context->job_id);
+
+    ASSERT_TRUE(traceability_result.IsError());
+    EXPECT_EQ(traceability_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(traceability_result.GetError().GetMessage().find("does not carry"), std::string::npos);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityReturnsTerminalTraceabilitySnapshot) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto context = std::make_shared<JobExecutionContext>();
+    context->job_id = "job-trace";
+    context->plan_id = "plan-trace";
+    context->plan_fingerprint = "fp-trace";
+    context->state.store(JobState::COMPLETED);
+    context->final_state_committed.store(true);
+    context->end_time = std::chrono::steady_clock::now();
+    context->traceability_verdict = "passed";
+    context->strict_one_to_one_proven = true;
+
+    ProfileCompareExpectedTraceItem expected_item;
+    expected_item.cycle_index = 1U;
+    expected_item.trigger_sequence_id = 7U;
+    expected_item.authority_trigger_ref = "trigger-7";
+    expected_item.trigger_mode = "future_compare";
+    expected_item.compare_position_pulse = 2400L;
+    context->expected_trace.push_back(expected_item);
+
+    ProfileCompareActualTraceItem actual_item;
+    actual_item.cycle_index = 1U;
+    actual_item.trigger_sequence_id = 7U;
+    actual_item.completion_sequence = 1U;
+    actual_item.authority_trigger_ref = "trigger-7";
+    actual_item.trigger_mode = "future_compare";
+    actual_item.compare_position_pulse = 2400L;
+    context->actual_trace.push_back(actual_item);
+
+    use_case->jobs_[context->job_id] = context;
+
+    auto traceability_result = use_case->GetJobTraceability(context->job_id);
+
+    ASSERT_TRUE(traceability_result.IsSuccess()) << traceability_result.GetError().GetMessage();
+    const auto& response = traceability_result.Value();
+    EXPECT_EQ(response.job_id, context->job_id);
+    EXPECT_EQ(response.plan_id, context->plan_id);
+    EXPECT_EQ(response.terminal_state, "completed");
+    ASSERT_EQ(response.expected_trace.size(), 1U);
+    EXPECT_EQ(response.expected_trace.front().trigger_sequence_id, 7U);
+    ASSERT_EQ(response.actual_trace.size(), 1U);
+    EXPECT_EQ(response.actual_trace.front().completion_sequence, 1U);
+    EXPECT_TRUE(response.mismatches.empty());
+    EXPECT_EQ(response.verdict, "passed");
+    EXPECT_TRUE(response.verdict_reason.empty());
+    EXPECT_TRUE(response.strict_one_to_one_proven);
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, CleanupTerminalJobsLockedDropsOlderTerminalJobs) {

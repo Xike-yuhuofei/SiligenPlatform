@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Siligen::Application::UseCases::Dispensing {
 
@@ -47,6 +48,7 @@ struct DispensingExecutionRequest {
     ExecutionPackageValidated execution_package;
     std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
         profile_compare_schedule;
+    std::shared_ptr<const Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace> expected_trace;
     std::string source_path;
 
     bool dry_run = false;
@@ -92,6 +94,11 @@ struct DispensingExecutionResult {
 
     Domain::Dispensing::ValueObjects::QualityMetrics quality_metrics;
     bool quality_metrics_available = false;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem> actual_trace;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch> traceability_mismatches;
+    std::string traceability_verdict = "failed";
+    std::string traceability_verdict_reason;
+    bool strict_one_to_one_proven = false;
 };
 
 using JobID = std::string;
@@ -122,6 +129,19 @@ struct RuntimeJobStatusResponse {
     ExecutionBudgetBreakdown execution_budget_breakdown;
     std::string error_message;
     bool dry_run = false;
+};
+
+struct RuntimeJobTraceabilityResponse {
+    JobID job_id;
+    std::string plan_id;
+    std::string plan_fingerprint;
+    std::string terminal_state;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem> expected_trace;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem> actual_trace;
+    std::vector<Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch> mismatches;
+    std::string verdict = "failed";
+    std::string verdict_reason;
+    bool strict_one_to_one_proven = false;
 };
 
 struct ExecutionTransitionSnapshot {
@@ -155,6 +175,7 @@ class DispensingExecutionUseCase {
     Shared::Types::Result<DispensingExecutionResult> Execute(const DispensingExecutionRequest& request);
     Shared::Types::Result<JobID> StartJob(const RuntimeStartJobRequest& request);
     Shared::Types::Result<RuntimeJobStatusResponse> GetJobStatus(const JobID& job_id) const;
+    Shared::Types::Result<RuntimeJobTraceabilityResponse> GetJobTraceability(const JobID& job_id) const;
     Shared::Types::Result<ExecutionTransitionSnapshot> RequestJobTransition(
         const JobID& job_id,
         ExecutionTransitionState requested_transition_state);

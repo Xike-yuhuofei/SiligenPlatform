@@ -75,6 +75,7 @@ class RuntimeWorkflowExecutionPortAdapter final : public IWorkflowExecutionPort 
         runtime_request.cycle_advance_mode = request.cycle_advance_mode;
         runtime_request.execution_request.execution_package = request.execution_request.execution_package;
         runtime_request.execution_request.profile_compare_schedule = request.execution_request.profile_compare_schedule;
+        runtime_request.execution_request.expected_trace = request.execution_request.expected_trace;
         runtime_request.execution_request.source_path = request.execution_request.source_path;
         runtime_request.execution_request.dry_run = request.execution_request.dry_run;
         runtime_request.execution_request.machine_mode = request.execution_request.machine_mode;
