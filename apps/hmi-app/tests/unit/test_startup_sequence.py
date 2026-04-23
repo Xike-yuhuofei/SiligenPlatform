@@ -2,6 +2,7 @@ import sys
 import unittest
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -16,7 +17,19 @@ from hmi_client.client.startup_sequence import (
     run_recovery_action,
 )
 from hmi_client.client.launch_supervision_session import SupervisorPolicy
-from hmi_client.client.launch_supervision_contract import FailureStage, SessionSnapshot, snapshot_timestamp
+from hmi_client.client.launch_supervision_contract import (
+    FailureStage,
+    RuntimeIdentity,
+    SessionSnapshot,
+    snapshot_timestamp,
+)
+from hmi_client.client.protocol import RuntimeIdentityStatus, StatusQueryResult
+
+
+EXPECTED_RUNTIME_IDENTITY = RuntimeIdentity(
+    executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+    working_directory="C:\\runtime",
+)
 
 
 class _FakeBackend:
@@ -26,6 +39,8 @@ class _FakeBackend:
         self.start_calls = 0
         self.wait_calls = 0
         self.stop_calls = 0
+        self.exe_path = EXPECTED_RUNTIME_IDENTITY.executable_path
+        self.working_directory = EXPECTED_RUNTIME_IDENTITY.working_directory
 
     def start(self):
         self.start_calls += 1
@@ -61,6 +76,28 @@ class _FakeProtocol:
     def connect_hardware(self, card_ip: str = "", local_ip: str = "", timeout: float = 15.0):
         self.hardware_calls += 1
         return self.hardware_result
+
+
+class _FakeRuntimeProbe:
+    def __init__(self, status_result: StatusQueryResult | None = None) -> None:
+        self.status_result = status_result or StatusQueryResult(
+            ok=True,
+            status=SimpleNamespace(
+                runtime_identity=RuntimeIdentityStatus(
+                    executable_path=EXPECTED_RUNTIME_IDENTITY.executable_path,
+                    working_directory=EXPECTED_RUNTIME_IDENTITY.working_directory,
+                    protocol_version=EXPECTED_RUNTIME_IDENTITY.protocol_version,
+                    preview_snapshot_contract=EXPECTED_RUNTIME_IDENTITY.preview_snapshot_contract,
+                )
+            ),
+        )
+        self.calls = 0
+        self.timeouts: list[float] = []
+
+    def get_status_detailed(self, timeout: float = 5.0):
+        self.calls += 1
+        self.timeouts.append(timeout)
+        return self.status_result
 
 
 class StartupSequenceContractTest(unittest.TestCase):
@@ -144,6 +181,8 @@ class StartupSequenceContractTest(unittest.TestCase):
             recoverable=True,
             last_error_message="System ready",
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=True,
+            runtime_identity=EXPECTED_RUNTIME_IDENTITY,
         )
         result = launch_result_from_snapshot("online", ready_snapshot)
         self.assertTrue(result.success)
@@ -154,6 +193,7 @@ class StartupSequenceContractTest(unittest.TestCase):
         backend = _FakeBackend()
         client = _FakeClient()
         protocol = _FakeProtocol()
+        runtime_probe = _FakeRuntimeProbe()
         progress_events = []
 
         result = run_launch_sequence(
@@ -161,6 +201,7 @@ class StartupSequenceContractTest(unittest.TestCase):
             backend,
             client,
             protocol,
+            runtime_probe,
             progress_callback=lambda message, percent: progress_events.append((message, percent)),
         )
 
@@ -184,8 +225,9 @@ class StartupSequenceContractTest(unittest.TestCase):
         backend = _FakeBackend(start_result=(False, "missing gateway"))
         client = _FakeClient()
         protocol = _FakeProtocol()
+        runtime_probe = _FakeRuntimeProbe()
 
-        result = run_launch_sequence("online", backend, client, protocol)
+        result = run_launch_sequence("online", backend, client, protocol, runtime_probe)
 
         self.assertFalse(result.success)
         self.assertEqual(result.phase, "backend")
@@ -201,6 +243,7 @@ class StartupSequenceContractTest(unittest.TestCase):
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
         progress_events = []
         snapshots = []
         stage_events = []
@@ -210,6 +253,7 @@ class StartupSequenceContractTest(unittest.TestCase):
             backend,
             client,
             protocol,
+            runtime_probe,
             progress_callback=lambda message, percent: progress_events.append((message, percent)),
             snapshot_callback=lambda snapshot: snapshots.append(snapshot),
             event_callback=lambda event: stage_events.append(event),
@@ -227,6 +271,7 @@ class StartupSequenceContractTest(unittest.TestCase):
         self.assertEqual(backend.start_calls, 1)
         self.assertEqual(backend.wait_calls, 1)
         self.assertEqual(client.connect_calls, 1)
+        self.assertEqual(runtime_probe.calls, 1)
         self.assertEqual(protocol.hardware_calls, 1)
         self.assertGreaterEqual(len(snapshots), 2)
         self.assertTrue(any(event.event_type == "stage_entered" for event in stage_events))
@@ -239,15 +284,19 @@ class StartupSequenceContractTest(unittest.TestCase):
                 ("Backend ready", 30),
                 ("Connecting TCP...", 40),
                 ("TCP connected", 60),
-                ("Initializing hardware...", 70),
+                ("Verifying runtime contract...", 70),
+                ("Initializing hardware...", 80),
                 ("System ready", 100),
             ],
         )
+        self.assertTrue(result.session_snapshot.runtime_contract_verified)
+        self.assertEqual(result.session_snapshot.runtime_identity, EXPECTED_RUNTIME_IDENTITY)
 
     def test_recovery_retry_stage_restores_online_ready(self) -> None:
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
 
         result = run_recovery_action(
             action="retry_stage",
@@ -255,6 +304,7 @@ class StartupSequenceContractTest(unittest.TestCase):
             backend=backend,
             client=client,
             protocol=protocol,
+            runtime_probe=runtime_probe,
         )
 
         self.assertTrue(result.success)
@@ -263,12 +313,14 @@ class StartupSequenceContractTest(unittest.TestCase):
         self.assertIsNone(result.failure_code)
         self.assertIsNone(result.failure_stage)
         self.assertGreaterEqual(client.connect_calls, 1)
+        self.assertGreaterEqual(runtime_probe.calls, 1)
         self.assertGreaterEqual(protocol.hardware_calls, 1)
 
     def test_recovery_retry_stage_returns_input_when_not_recoverable(self) -> None:
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
         original = self._failed_snapshot(recoverable=False, stage="backend_starting")
 
         with self.assertRaisesRegex(ValueError, "recoverable failed session snapshot"):
@@ -278,6 +330,7 @@ class StartupSequenceContractTest(unittest.TestCase):
                 backend=backend,
                 client=client,
                 protocol=protocol,
+                runtime_probe=runtime_probe,
             )
 
         self.assertEqual(backend.start_calls, 0)
@@ -289,6 +342,7 @@ class StartupSequenceContractTest(unittest.TestCase):
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
         ready_snapshot = SessionSnapshot(
             mode="online",
             session_state="ready",
@@ -300,6 +354,8 @@ class StartupSequenceContractTest(unittest.TestCase):
             recoverable=True,
             last_error_message="System ready",
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=True,
+            runtime_identity=EXPECTED_RUNTIME_IDENTITY,
         )
 
         with self.assertRaisesRegex(ValueError, "failed online session snapshot"):
@@ -309,6 +365,7 @@ class StartupSequenceContractTest(unittest.TestCase):
                 backend=backend,
                 client=client,
                 protocol=protocol,
+                runtime_probe=runtime_probe,
             )
 
         self.assertEqual(backend.stop_calls, 0)
@@ -317,6 +374,7 @@ class StartupSequenceContractTest(unittest.TestCase):
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
         ready_snapshot = SessionSnapshot(
             mode="online",
             session_state="ready",
@@ -328,6 +386,8 @@ class StartupSequenceContractTest(unittest.TestCase):
             recoverable=True,
             last_error_message="System ready",
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=True,
+            runtime_identity=EXPECTED_RUNTIME_IDENTITY,
         )
 
         result = run_recovery_action(
@@ -336,6 +396,7 @@ class StartupSequenceContractTest(unittest.TestCase):
             backend=backend,
             client=client,
             protocol=protocol,
+            runtime_probe=runtime_probe,
         )
 
         self.assertFalse(result.success)

@@ -37,10 +37,15 @@ class HardwareProtocolLike(Protocol):
     ) -> tuple[bool, str]: ...
 
 
+class RuntimeStatusProbeLike(Protocol):
+    def get_status_detailed(self, timeout: float = 5.0) -> object: ...
+
+
 __all__ = [
     "BackendController",
     "BackendManagerBasic",
     "BackendManagerDetailed",
     "HardwareProtocolLike",
+    "RuntimeStatusProbeLike",
     "TcpClientLike",
 ]

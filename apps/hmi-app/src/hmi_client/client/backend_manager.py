@@ -57,6 +57,18 @@ class BackendManager:
         return self._launch_spec.executable
 
     @property
+    def working_directory(self) -> Path:
+        """Get the configured working directory for the launched runtime."""
+        if self._launch_spec is None:
+            return Path()
+        return self._launch_spec.cwd or self._launch_spec.executable.parent
+
+    @property
+    def launch_spec(self) -> GatewayLaunchSpec | None:
+        """Expose the authoritative launch contract used by startup supervision."""
+        return self._launch_spec
+
+    @property
     def host(self) -> str:
         """Get the host address."""
         return self._host

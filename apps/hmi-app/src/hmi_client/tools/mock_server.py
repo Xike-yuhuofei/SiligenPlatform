@@ -7,11 +7,18 @@ import configparser
 import hashlib
 import json
 import math
+import os
 import socketserver
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+from hmi_application.contracts.launch_supervision_contract import (
+    PREVIEW_SNAPSHOT_CONTRACT,
+    RUNTIME_PROTOCOL_VERSION,
+)
 
 
 @dataclass
@@ -578,6 +585,12 @@ class MockState:
                     "result": {
                         "connected": self.hardware_connected,
                         "connection_state": "connected" if self.hardware_connected else "disconnected",
+                        "runtime_identity": {
+                            "executable_path": sys.executable,
+                            "working_directory": os.getcwd(),
+                            "protocol_version": RUNTIME_PROTOCOL_VERSION,
+                            "preview_snapshot_contract": PREVIEW_SNAPSHOT_CONTRACT,
+                        },
                         "supervision": supervision,
                         "interlock_latched": bool(self.io.estop or self.io.door),
                         "job_execution": {

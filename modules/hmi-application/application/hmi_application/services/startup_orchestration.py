@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 from ..adapters.logging_support import get_hmi_application_file_logger
-from ..adapters.launch_supervision_ports import BackendController, HardwareProtocolLike, TcpClientLike
+from ..adapters.launch_supervision_ports import BackendController, HardwareProtocolLike, RuntimeStatusProbeLike, TcpClientLike
 from ..contracts.launch_supervision_contract import (
     RecoveryAction,
     SessionSnapshot,
@@ -25,6 +25,7 @@ def run_launch_sequence(
     backend: BackendController,
     client: TcpClientLike,
     protocol: HardwareProtocolLike,
+    runtime_probe: RuntimeStatusProbeLike,
     progress_callback: Callable[[str, int], None] | None = None,
     snapshot_callback: Callable[[SessionSnapshot], None] | None = None,
     event_callback: Callable[[SessionStageEvent], None] | None = None,
@@ -37,6 +38,7 @@ def run_launch_sequence(
         backend=backend,
         client=client,
         protocol=protocol,
+        runtime_probe=runtime_probe,
         progress_callback=progress_callback,
         snapshot_callback=snapshot_callback,
         event_callback=event_callback,
@@ -52,6 +54,7 @@ def run_recovery_action(
     backend: BackendController,
     client: TcpClientLike,
     protocol: HardwareProtocolLike,
+    runtime_probe: RuntimeStatusProbeLike,
     progress_callback: Callable[[str, int], None] | None = None,
     snapshot_callback: Callable[[SessionSnapshot], None] | None = None,
     event_callback: Callable[[SessionStageEvent], None] | None = None,
@@ -73,6 +76,7 @@ def run_recovery_action(
         backend=backend,
         client=client,
         protocol=protocol,
+        runtime_probe=runtime_probe,
         progress_callback=progress_callback,
         snapshot_callback=snapshot_callback,
         event_callback=event_callback,

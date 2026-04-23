@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 TEST_ROOT = Path(__file__).resolve().parents[1]
 if str(TEST_ROOT) not in sys.path:
@@ -12,10 +13,17 @@ ensure_hmi_application_test_paths()
 
 from hmi_application.contracts.launch_supervision_contract import (
     FailureStage,
+    RuntimeIdentity,
     SessionSnapshot,
     snapshot_timestamp,
 )
 from hmi_application.services.startup_orchestration import run_launch_sequence, run_recovery_action
+
+
+EXPECTED_RUNTIME_IDENTITY = RuntimeIdentity(
+    executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+    working_directory="C:\\runtime",
+)
 
 
 class _FakeBackend:
@@ -25,6 +33,8 @@ class _FakeBackend:
         self.start_calls = 0
         self.wait_calls = 0
         self.stop_calls = 0
+        self.exe_path = EXPECTED_RUNTIME_IDENTITY.executable_path
+        self.working_directory = EXPECTED_RUNTIME_IDENTITY.working_directory
 
     def start(self):
         self.start_calls += 1
@@ -62,6 +72,26 @@ class _FakeProtocol:
         return self.hardware_result
 
 
+class _FakeRuntimeProbe:
+    def __init__(self, status_result: object | None = None) -> None:
+        self.status_result = status_result or SimpleNamespace(
+            ok=True,
+            status=SimpleNamespace(
+                runtime_identity=SimpleNamespace(
+                    executable_path=EXPECTED_RUNTIME_IDENTITY.executable_path,
+                    working_directory=EXPECTED_RUNTIME_IDENTITY.working_directory,
+                    protocol_version=EXPECTED_RUNTIME_IDENTITY.protocol_version,
+                    preview_snapshot_contract=EXPECTED_RUNTIME_IDENTITY.preview_snapshot_contract,
+                )
+            ),
+        )
+        self.calls = 0
+
+    def get_status_detailed(self, timeout: float = 5.0):
+        self.calls += 1
+        return self.status_result
+
+
 def _failed_snapshot(*, recoverable: bool = True, stage: FailureStage = "tcp_ready") -> SessionSnapshot:
     return SessionSnapshot(
         mode="online",
@@ -82,19 +112,22 @@ class StartupOrchestrationTest(unittest.TestCase):
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
 
-        result = run_launch_sequence("online", backend, client, protocol)
+        result = run_launch_sequence("online", backend, client, protocol, runtime_probe)
 
         self.assertTrue(result.success)
         self.assertEqual(result.phase, "ready")
         self.assertEqual(backend.start_calls, 1)
         self.assertEqual(client.connect_calls, 1)
+        self.assertEqual(runtime_probe.calls, 1)
         self.assertEqual(protocol.hardware_calls, 1)
 
     def test_run_recovery_action_keeps_online_recovery_contract(self) -> None:
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
 
         result = run_recovery_action(
             action="retry_stage",
@@ -102,6 +135,7 @@ class StartupOrchestrationTest(unittest.TestCase):
             backend=backend,
             client=client,
             protocol=protocol,
+            runtime_probe=runtime_probe,
         )
 
         self.assertTrue(result.success)
@@ -113,6 +147,7 @@ class StartupOrchestrationTest(unittest.TestCase):
         backend = _FakeBackend()
         client = _FakeClient(connect_result=True)
         protocol = _FakeProtocol(hardware_result=(True, "ready"))
+        runtime_probe = _FakeRuntimeProbe()
         offline_snapshot = SessionSnapshot(
             mode="offline",
             session_state="idle",
@@ -133,6 +168,7 @@ class StartupOrchestrationTest(unittest.TestCase):
                 backend=backend,
                 client=client,
                 protocol=protocol,
+                runtime_probe=runtime_probe,
             )
 
 

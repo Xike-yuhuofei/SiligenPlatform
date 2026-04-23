@@ -201,6 +201,7 @@ function New-TemporaryLaunchSpec {
     param(
         [string]$PythonPath,
         [string]$EntryPath,
+        [string]$WorkingDirectory,
         [string]$TargetHost,
         [int]$TargetPort
     )
@@ -214,10 +215,23 @@ function New-TemporaryLaunchSpec {
             throw "Cannot resolve python executable for launch spec: $PythonPath"
         }
     }
+    $resolvedEntryPath = if ([IO.Path]::IsPathRooted($EntryPath)) {
+        $EntryPath
+    } else {
+        (Resolve-Path $EntryPath -ErrorAction Stop).Path
+    }
+    $resolvedWorkingDirectory = $WorkingDirectory
+    if ([string]::IsNullOrWhiteSpace($resolvedWorkingDirectory)) {
+        $resolvedWorkingDirectory = Split-Path -Parent $resolvedEntryPath
+    }
+    if (-not [IO.Path]::IsPathRooted($resolvedWorkingDirectory)) {
+        $resolvedWorkingDirectory = (Resolve-Path $resolvedWorkingDirectory -ErrorAction Stop).Path
+    }
 
     $payload = @{
         executable = $resolvedPython
-        args       = @("-u", $EntryPath, "--host", $TargetHost, "--port", "$TargetPort")
+        cwd        = $resolvedWorkingDirectory
+        args       = @("-u", $resolvedEntryPath, "--host", $TargetHost, "--port", "$TargetPort")
     }
     $json = $payload | ConvertTo-Json -Depth 3
     [System.IO.File]::WriteAllText($specPath, $json, [System.Text.UTF8Encoding]::new($false))
@@ -484,6 +498,7 @@ function Resolve-UiExitCode {
         "backend_starting",
         "backend_ready",
         "tcp_connecting",
+        "runtime_contract_ready",
         "hardware_probing",
         "online_ready"
     )
@@ -504,6 +519,10 @@ function Resolve-UiExitCode {
     }
     if ($Output -notmatch "SUPERVISOR_DIAG .*online_ready=true(\s|$)") {
         Write-Host "[online-smoke] missing SUPERVISOR_DIAG online_ready=true on success path"
+        return $ExitGuiAssertionFailed
+    }
+    if ($Output -notmatch "SUPERVISOR_DIAG .*runtime_contract_verified=true(\s|$)") {
+        Write-Host "[online-smoke] missing SUPERVISOR_DIAG runtime_contract_verified=true on success path"
         return $ExitGuiAssertionFailed
     }
 
@@ -558,11 +577,24 @@ try {
         $injectSource = if ([string]::IsNullOrWhiteSpace($MockCommand)) { $hangingServer } else { $MockCommand }
         $injectEntry = Resolve-MockEntry -Entry $injectSource
         Write-Host "[online-smoke] supervisor injection mode enabled host=$ListenHost port=$actualPort entry=$injectEntry"
-        $launchSpecPath = New-TemporaryLaunchSpec -PythonPath $PythonExe -EntryPath $injectEntry -TargetHost $ListenHost -TargetPort $actualPort
+        $launchSpecPath = New-TemporaryLaunchSpec `
+            -PythonPath $PythonExe `
+            -EntryPath $injectEntry `
+            -WorkingDirectory (Split-Path -Parent $injectEntry) `
+            -TargetHost $ListenHost `
+            -TargetPort $actualPort
         $ownsLaunchSpecPath = $true
         $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
     } else {
         $mockEntry = Resolve-MockEntry -Entry $MockCommand
+        $mockWorkingDirectory = Split-Path -Parent $mockEntry
+        $launchSpecPath = New-TemporaryLaunchSpec `
+            -PythonPath $PythonExe `
+            -EntryPath $mockEntry `
+            -WorkingDirectory $mockWorkingDirectory `
+            -TargetHost $ListenHost `
+            -TargetPort $actualPort
+        $ownsLaunchSpecPath = $true
         $stdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))
         $stderrLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stderr.log" -f [guid]::NewGuid().ToString("N"))
         $mockArgs = @("-u", $mockEntry, "--host", $ListenHost, "--port", "$actualPort")
@@ -577,6 +609,7 @@ try {
             -PassThru `
             -RedirectStandardOutput $stdoutLog `
             -RedirectStandardError $stderrLog `
+            -WorkingDirectory $mockWorkingDirectory `
             -WindowStyle Hidden
 
         $deadline = (Get-Date).AddMilliseconds($MockStartupTimeoutMs)
@@ -610,7 +643,7 @@ try {
             exit $ExitMockReadyTimeout
         }
 
-        $uiResult = Invoke-UiSmoke -TargetPort $actualPort
+        $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
     }
 
     $exitCode = Resolve-UiExitCode -RawExitCode $uiResult.RawExitCode -Output $uiResult.Output

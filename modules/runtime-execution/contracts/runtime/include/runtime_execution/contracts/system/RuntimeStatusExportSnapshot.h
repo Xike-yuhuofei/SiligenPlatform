@@ -31,6 +31,13 @@ struct RuntimeDispenserStatusExportSnapshot {
     double progress = 0.0;
 };
 
+struct RuntimeIdentityExportSnapshot {
+    std::string executable_path;
+    std::string working_directory;
+    std::string protocol_version;
+    std::string preview_snapshot_contract;
+};
+
 struct RuntimeJobExecutionExportSnapshot {
     std::string job_id;
     std::string plan_id;
@@ -77,6 +84,7 @@ struct RuntimeStatusExportSnapshot {
     std::string device_mode = "production";
     std::string machine_state = "Unknown";
     std::string machine_state_reason = "unknown";
+    RuntimeIdentityExportSnapshot runtime_identity;
     bool interlock_latched = false;
     RawIoStatus io;
     EffectiveInterlocksStatus effective_interlocks;

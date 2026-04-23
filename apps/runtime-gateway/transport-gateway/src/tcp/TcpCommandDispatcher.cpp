@@ -897,6 +897,15 @@ nlohmann::json BuildActionCapabilitiesJson(const RuntimeStatusExportSnapshot& sn
     };
 }
 
+nlohmann::json BuildRuntimeIdentityJson(const RuntimeStatusExportSnapshot& snapshot) {
+    return {
+        {"executable_path", snapshot.runtime_identity.executable_path},
+        {"working_directory", snapshot.runtime_identity.working_directory},
+        {"protocol_version", snapshot.runtime_identity.protocol_version},
+        {"preview_snapshot_contract", snapshot.runtime_identity.preview_snapshot_contract}
+    };
+}
+
 nlohmann::json BuildAxesJson(const RuntimeStatusExportSnapshot& snapshot) {
     nlohmann::json axes_json = nlohmann::json::object();
     for (const auto& [axis_name, axis_status] : snapshot.axes) {
@@ -1333,6 +1342,7 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     const nlohmann::json supervisionJson = BuildSupervisionJson(status_snapshot);
     const nlohmann::json safetyBoundaryJson = BuildSafetyBoundaryJson(status_snapshot);
     const nlohmann::json actionCapabilitiesJson = BuildActionCapabilitiesJson(status_snapshot);
+    const nlohmann::json runtimeIdentityJson = BuildRuntimeIdentityJson(status_snapshot);
 
     nlohmann::json resultJson = {
         {"connected", status_snapshot.connected},
@@ -1341,6 +1351,7 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
         {"machine_state", status_snapshot.machine_state},
         {"machine_state_reason", status_snapshot.machine_state_reason},
         {"supervision", supervisionJson},
+        {"runtime_identity", runtimeIdentityJson},
         {"safety_boundary", safetyBoundaryJson},
         {"action_capabilities", actionCapabilitiesJson},
         {"interlock_latched", status_snapshot.interlock_latched},

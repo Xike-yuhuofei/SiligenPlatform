@@ -29,6 +29,7 @@
 ## 当前未对齐但已记录
 
 - `status` 的 owner 数据面当前来自 `IRuntimeStatusExportPort` snapshot；其中 `connected` / `connection_state` / `device_mode` / `interlock_latched` / `job_execution` / `supervision` / `effective_interlocks` / `io` 由 export snapshot 统一导出，底层 supervision 语义仍来自 `IRuntimeSupervisionPort` 输入，`runtime-gateway` 只承担协议序列化。
+- `status.runtime_identity` 是当前稳定 owner 面：由 runtime 当前进程直接导出 `executable_path` / `working_directory` / `protocol_version` / `preview_snapshot_contract`；HMI startup gate 依赖它核对本地 launch contract，缺失或不匹配必须 fail-closed，不属于 silent fallback 或兼容垫片。
 - `status` 当前继续保留 `machine_state` / `machine_state_reason` compat 面，语义镜像 `status.supervision.current_state` / `status.supervision.state_reason`；HMI 主显示与门禁统一依赖 `status.supervision` 与 `effective_interlocks`。
 - `status.device_mode` 当前是 V1 派生字段：`job_execution.dry_run=true` 时导出 `test`，其余导出 `production`；在独立 device mode owner 落地前，不表达 HMI 启动模式或离线模式。
 - `status.safety_boundary` 当前是 V1 软件动作准入快照：基于 `effective_interlocks` / `io` / `interlock_latched` / `device_mode` / `job_execution.dry_run` 单向派生，只表达运动与真实工艺输出是否准入，不等同功能安全认证状态；gateway 直接透传，HMI 在字段缺失时按同一规则兼容派生。

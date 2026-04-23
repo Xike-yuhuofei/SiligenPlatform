@@ -22,6 +22,7 @@ class StartupWorker(QThread):
         backend: Any,
         client: Any,
         protocol: Any,
+        runtime_probe: Any,
         launch_mode: str = "online",
         policy: Any | None = None,
     ):
@@ -32,6 +33,7 @@ class StartupWorker(QThread):
         self._backend = backend
         self._client = client
         self._protocol = protocol
+        self._runtime_probe = runtime_probe
         self._launch_mode = normalize_launch_mode(launch_mode)
         self._policy = policy if policy is not None else load_supervisor_policy_from_env()
 
@@ -42,6 +44,7 @@ class StartupWorker(QThread):
                 self._backend,
                 self._client,
                 self._protocol,
+                self._runtime_probe,
                 progress_callback=self.progress.emit,
                 snapshot_callback=self.snapshot.emit,
                 event_callback=self.stage_event.emit,
@@ -65,6 +68,7 @@ class RecoveryWorker(QThread):
         backend: Any,
         client: Any,
         protocol: Any,
+        runtime_probe: Any,
         policy: Any | None = None,
     ):
         super().__init__()
@@ -75,6 +79,7 @@ class RecoveryWorker(QThread):
         self._backend = backend
         self._client = client
         self._protocol = protocol
+        self._runtime_probe = runtime_probe
         self._policy = policy if policy is not None else load_supervisor_policy_from_env()
 
     def run(self):
@@ -85,6 +90,7 @@ class RecoveryWorker(QThread):
                 backend=self._backend,
                 client=self._client,
                 protocol=self._protocol,
+                runtime_probe=self._runtime_probe,
                 progress_callback=self.progress.emit,
                 snapshot_callback=self.snapshot.emit,
                 event_callback=self.stage_event.emit,
