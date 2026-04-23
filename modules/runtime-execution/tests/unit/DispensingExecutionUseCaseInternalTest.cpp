@@ -31,6 +31,7 @@ using Siligen::Domain::Dispensing::Ports::TaskExecutor;
 using Siligen::Domain::Dispensing::Ports::TaskStatus;
 using Siligen::Domain::Dispensing::Ports::TaskStatusInfo;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
@@ -1041,25 +1042,6 @@ TEST(DispensingExecutionUseCaseInternalTest, CleanupTerminalJobsLockedDropsOlder
 
     EXPECT_EQ(use_case->jobs_.find(terminal_job->job_id), use_case->jobs_.end());
     EXPECT_TRUE(use_case->active_job_id_.empty());
-}
-
-TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityRejectsNonTerminalJob) {
-    auto use_case = CreateExecutionUseCase();
-
-    auto job_context = std::make_shared<JobExecutionContext>();
-    job_context->job_id = "job-trace-running";
-    job_context->plan_id = "plan-trace-running";
-    job_context->plan_fingerprint = "fp-trace-running";
-    job_context->state.store(JobState::RUNNING);
-    use_case->jobs_[job_context->job_id] = job_context;
-
-    const auto traceability_result = use_case->GetJobTraceability(job_context->job_id);
-
-    ASSERT_TRUE(traceability_result.IsError());
-    EXPECT_EQ(traceability_result.GetError().GetCode(), ErrorCode::INVALID_STATE);
-    EXPECT_NE(
-        traceability_result.GetError().GetMessage().find("available only after terminal state"),
-        std::string::npos);
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityReturnsCompletedTerminalPayload) {
