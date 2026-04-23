@@ -26,6 +26,7 @@
 | DXF 生产模式真机专项 | `real-dxf-production-validation.json` 及同批次观测工件 | `tests/e2e/hardware-in-loop/` | 验证汇总、incident 材料 |
 | 在线预览证据 | `preview-verdict.json` + `plan-prepare.json` + `snapshot.json` | `tests/e2e/hardware-in-loop/` + `tests/contracts/` | HMI 展示、验证汇总 |
 | HMI online 成功/失败/恢复 | `online-smoke.log` 中的 `SUPERVISOR_EVENT` / `SUPERVISOR_DIAG` | `apps/hmi-app/scripts/` + `apps/hmi-app/src/hmi_client/tools/` | `docs/validation/`、`docs/runtime/` |
+| HMI operator production 专项 | `hmi-production-operator-test.json` 及同批次观测工件 | `tests/e2e/hardware-in-loop/run_hmi_operator_production_test.py` | 操作问题清单、traceability 边界说明 |
 
 约束：
 
@@ -44,6 +45,7 @@
 | DXF 生产模式真机专项 | `tests/e2e/hardware-in-loop/run_real_dxf_production_validation.py` | `real-dxf-production-validation.json/md`、状态观测工件、gateway 日志切片 | owner-local 正式专项入口，不替代 controlled gate |
 | 在线预览证据 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_snapshot.py` | `plan-prepare.json`、`snapshot.json`、`preview-verdict.json` 等 | P0 正式入口 |
 | HMI online smoke | `apps/hmi-app/scripts/online-smoke.ps1` | `online-smoke.log`、qtest stdout/stderr、截图 | P0 正式入口 |
+| HMI operator production 专项 | `tests/e2e/hardware-in-loop/run_hmi_operator_production_test.py` | `hmi-production-operator-test.json/md`、job/machine/coord 历史、gateway 日志切片、staged screenshots | owner-local 正式专项入口，不替代 `P1-04` runtime action matrix |
 | HMI failure stage 注入 | `apps/hmi-app/scripts/verify-online-ready-timeout.ps1` | `SUPERVISOR_DIAG` / `SUPERVISOR_EVENT` 映射证据 | P0 正式入口 |
 | HMI recovery | `apps/hmi-app/scripts/verify-online-recovery-loop.ps1` | 恢复前后事件与最终 `online_ready=true` | P0 正式入口 |
 | 多轮 home/closed-loop matrix | `tests/e2e/hardware-in-loop/run_case_matrix.py`，或根级 `test.ps1 -IncludeHilCaseMatrix` | `case-matrix-summary.json/md` | P1 补充入口，已接 root validation opt-in，已接 controlled gate / release-check 默认门禁 |
@@ -84,6 +86,7 @@
 | `P1-03` | L4 | DXF 基线集批量在线预览 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_suite.py` | `existing`：聚合 `rect_diag` / `bra` / `arc_circle_quadrants`，产出 suite summary 与 evidence bundle，不替代 controlled publish |
 | `P1-04` | L5 | HMI runtime actions 批量在线回归 | `apps/hmi-app/scripts/run_online_runtime_action_matrix.py` + `online-smoke.ps1` / `ui_qtest.py` | `existing`：正式在线预览 authority 仅允许 `operator_preview`；`snapshot_render` 仅供 HIL 截图链 render-only 使用，不进入 matrix |
 | `P1-05` | L6 | 30 分钟以上 soak | `tests/performance/run_online_soak_profiles.py --profile-id soak-30m-matrix` | `existing`：已纳入 full-online blocker 集合；`>30m` 扩展 profile 需要显式 `--allow-long-profiles` |
+| `P1-06` | L5 | HMI operator production 专项 | `tests/e2e/hardware-in-loop/run_hmi_operator_production_test.py` | `existing`：通过 `operator_production` 正式入口走 HMI browse/preview/start/completed/next-job-ready；报告必须分离 `operator_execution` 与 `traceability_correspondence` |
 
 ### 4.3 P2：发布前与容量边界
 
@@ -141,6 +144,28 @@
 - 每个 profile 的 `online-smoke.log`
 - 每个 profile 的 screenshot
 - `operator_preview` case 的 `OPERATOR_CONTEXT` 阶段序列与显式 version 选择证据
+
+### 5.4.1 HMI operator production 专项
+
+至少保留：
+
+- `hmi-production-operator-test.json`
+- `hmi-production-operator-test.md`
+- `job-status-history.json`
+- `machine-status-history.json`
+- `coord-status-history.json`
+- `tcp_server.log`
+- `gateway-stdout.log`
+- `gateway-stderr.log`
+- `hmi-stdout.log`
+- `hmi-stderr.log`
+- `hmi-screenshots/`
+
+其中 `hmi-production-operator-test.json` 必须满足：
+
+- `operator_execution.status` 与 `traceability_correspondence.status` 分开表达，不允许用单一 passed/failed 混写。
+- 若 `coord-status-history.json` 为空，则 `traceability_correspondence.status` 只能是 `insufficient_evidence`，不得写成 `passed`。
+- `control_script_capability` 必须说明该入口是否真的覆盖 `production-started` 与 `next-job-ready`。
 
 ### 5.5 controlled gate 类
 

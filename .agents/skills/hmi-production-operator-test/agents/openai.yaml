@@ -1,0 +1,4 @@
+interface:
+  display_name: "HMI Production Operator Test"
+  short_description: "通过 HMI 模拟人工生产，输出操作问题清单与追溯一致性结论"
+  default_prompt: "Use $hmi-production-operator-test 通过 HMI 主链路模拟人工完成真实生产，发现操作阻塞/误导/低效/恢复问题，并将操作问题清单与链路追溯一致性结论分开输出。"

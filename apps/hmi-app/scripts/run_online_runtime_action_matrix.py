@@ -14,6 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[3]
 ONLINE_SMOKE_SCRIPT = ROOT / "apps" / "hmi-app" / "scripts" / "online-smoke.ps1"
 DEFAULT_REPORT_ROOT = ROOT / "tests" / "reports" / "adhoc" / "hmi-runtime-action-matrix"
+DEFAULT_OPERATOR_PREVIEW_DXF = ROOT / "samples" / "dxf" / "rect_diag.dxf"
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,8 @@ def build_command(
         command.extend(["-GatewayConfig", str(args.gateway_config)])
     if args.use_mock_gateway_config:
         command.append("-UseMockGatewayConfig")
+    if case.profile == "operator_preview":
+        command.extend(["-DxfBrowsePath", str(DEFAULT_OPERATOR_PREVIEW_DXF)])
     return command
 
 

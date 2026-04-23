@@ -3123,6 +3123,36 @@ class MainWindow(QMainWindow):
         self._update_info_label()
         return True
 
+    def build_operator_context_snapshot(self) -> dict[str, object]:
+        preview_state = getattr(self._preview_session, "state", None)
+        preview_gate = getattr(self, "_preview_gate", None)
+        snapshot = getattr(preview_gate, "snapshot", None)
+        confirmed_snapshot_hash = ""
+        if preview_gate is not None and hasattr(preview_gate, "get_confirmed_snapshot_hash"):
+            confirmed_snapshot_hash = str(preview_gate.get_confirmed_snapshot_hash() or "")
+        global_progress_percent = 0
+        if hasattr(self, "_global_progress") and hasattr(self._global_progress, "value"):
+            global_progress_percent = int(self._global_progress.value() or 0)
+        target_count = int(getattr(self, "_target_count", 0) or 0)
+        completed_count = int(getattr(self, "_completed_count", 0) or 0)
+        current_operation = self._operation_status.text() if hasattr(self, "_operation_status") else ""
+        return {
+            "artifact_id": str(getattr(self, "_dxf_artifact_id", "") or ""),
+            "plan_id": str(getattr(self, "_current_plan_id", "") or ""),
+            "preview_source": str(getattr(self, "_preview_source", "") or ""),
+            "preview_kind": str(getattr(preview_state, "preview_kind", "") or ""),
+            "glue_point_count": int(getattr(preview_state, "glue_point_count", 0) or 0),
+            "snapshot_hash": str(getattr(snapshot, "snapshot_hash", "") or ""),
+            "confirmed_snapshot_hash": confirmed_snapshot_hash,
+            "snapshot_ready": bool(snapshot is not None),
+            "preview_confirmed": bool(confirmed_snapshot_hash),
+            "job_id": str(getattr(self, "_current_job_id", "") or ""),
+            "target_count": target_count,
+            "completed_count": f"{completed_count}/{target_count}",
+            "global_progress_percent": global_progress_percent,
+            "current_operation": str(current_operation or ""),
+        }
+
     def _update_info_label(self):
         self._sync_preview_session_fields()
         self._dxf_info_label.setText(self._preview_session.info_label_text())
