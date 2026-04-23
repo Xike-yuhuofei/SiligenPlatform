@@ -192,9 +192,6 @@ class _RuntimeActionProfileRunner(GuiContractRunner):
         self.operator_production_calls = 0
         self.operator_preview_calls = 0
 
-    def _elevate_runtime_permissions(self) -> None:
-        return None
-
     def _cached_status(self):
         return object()
 

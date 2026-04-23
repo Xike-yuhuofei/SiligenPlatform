@@ -586,22 +586,6 @@ class GuiContractRunner:
         self._expect(isinstance(payload, dict), "Preview payload should be a JSON object")
         return payload if isinstance(payload, dict) else {}
 
-    def _elevate_runtime_permissions(self) -> None:
-        auth = getattr(self.window, "_auth", None)
-        self._expect(auth is not None, "Runtime action chain requires auth manager")
-        if auth is None:
-            return
-        ok, message = auth.login("tech", "5678")
-        self._expect(ok, f"Runtime action chain requires tech permission: {message}")
-        if not ok:
-            return
-        user = auth.current_user
-        if user is not None and hasattr(self.window, "_user_label"):
-            self.window._user_label.setText(f"{user.role}")
-        if hasattr(self.window, "_apply_permissions"):
-            self.window._apply_permissions()
-        QTest.qWait(100)
-
     def _resolved_runtime_action_profile(self) -> str:
         profile = self.runtime_action_profile
         if not profile:
@@ -1055,7 +1039,6 @@ class GuiContractRunner:
 
     def _assert_runtime_action_chain(self) -> None:
         print("STEP: runtime action chain", flush=True)
-        self._elevate_runtime_permissions()
         cached = self._cached_status()
         self._expect(cached is not None, "Online runtime action chain requires cached status")
         if cached is None:

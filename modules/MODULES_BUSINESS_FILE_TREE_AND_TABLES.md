@@ -942,32 +942,12 @@ runtime-execution/
 │       │           ├── LocalFileStorageAdapter.cpp
 │       │           └── LocalFileStorageAdapter.h
 │       ├── security/
-│       │   ├── config/
-│       │   │   ├── ConfigurationVersionService.cpp
-│       │   │   ├── ConfigurationVersionService.h
-│       │   │   ├── SecurityConfigLoader.cpp
-│       │   │   └── SecurityConfigLoader.h
 │       │   ├── AuditLogger.cpp
 │       │   ├── AuditLogger.h
 │       │   ├── InterlockMonitor.cpp
 │       │   ├── InterlockMonitor.h
-│       │   ├── NetworkAccessControl.cpp
-│       │   ├── NetworkAccessControl.h
-│       │   ├── NetworkWhitelist.cpp
-│       │   ├── NetworkWhitelist.h
-│       │   ├── PasswordHasher.cpp
-│       │   ├── PasswordHasher.h
-│       │   ├── PermissionService.cpp
-│       │   ├── PermissionService.h
-│       │   ├── SafetyLimitsValidator.cpp
-│       │   ├── SafetyLimitsValidator.h
 │       │   ├── SecurityLogHelper.h
-│       │   ├── SecurityService.cpp
-│       │   ├── SecurityService.h
-│       │   ├── SessionService.cpp
-│       │   ├── SessionService.h
-│       │   ├── UserService.cpp
-│       │   └── UserService.h
+│       │   └── SecurityLogHelper.h
 │       ├── services/
 │       │   └── motion/
 │       │       ├── HardLimitMonitorService.cpp
@@ -1193,21 +1173,6 @@ runtime-execution/
 |---|---|---|---|---|---|
 | `AuditLogger.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
 | `InterlockMonitor.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 执行安全联锁或限位判断，防止设备在危险条件下继续动作。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `NetworkAccessControl.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `NetworkWhitelist.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `PasswordHasher.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `PermissionService.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `SafetyLimitsValidator.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 执行安全联锁或限位判断，防止设备在危险条件下继续动作。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `SecurityService.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `SessionService.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `UserService.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 承担该环节中的主要行为实现。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-
-**runtime-execution/runtime/host/security/config/**
-
-| 文件 | 流程阶段 | 触发条件 | 当前职责 | 输出结果 | 失败影响 |
-|---|---|---|---|---|---|
-| `ConfigurationVersionService.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 收敛设备、工艺或运行参数，为后续规划和执行提供边界条件。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
-| `SecurityConfigLoader.cpp` | 执行入口的安全控制阶段 | 当执行入口涉及权限、策略或敏感配置保护时触发。 | 收敛设备、工艺或运行参数，为后续规划和执行提供边界条件。 | 输出运行时会话、调度结果或执行状态，供现场执行链继续推进。 | 如果这里出错，问题会直接落到现场设备，表现为无法启动、走位异常、阀控异常或状态回收失败。 |
 
 **runtime-execution/runtime/host/services/motion/**
 
