@@ -401,3 +401,61 @@ class HmiRunScriptContractTest(unittest.TestCase):
             output = f"{completed.stdout}\n{completed.stderr}"
             self.assertEqual(completed.returncode, 0, msg=output)
             self.assertTrue(screenshot_path.exists(), msg=output)
+
+    def test_online_smoke_rejects_operator_preview_without_explicit_dxf_browse_path(self) -> None:
+        smoke_script = PROJECT_ROOT / "scripts" / "online-smoke.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        completed = subprocess.run(
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(smoke_script),
+                "-PythonExe",
+                str(python_exe),
+                "-ExerciseRuntimeActions",
+                "-RuntimeActionProfile",
+                "operator_preview",
+            ],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        output = f"{completed.stdout}\n{completed.stderr}"
+        normalized_output = " ".join(output.split())
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("RuntimeActionProfile operator_preview requires explicit", normalized_output)
+        self.assertIn("-DxfBrowsePath", normalized_output)
+
+    def test_online_smoke_rejects_operator_production_without_explicit_dxf_browse_path(self) -> None:
+        smoke_script = PROJECT_ROOT / "scripts" / "online-smoke.ps1"
+        python_exe = Path(sys.executable).resolve()
+
+        completed = subprocess.run(
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(smoke_script),
+                "-PythonExe",
+                str(python_exe),
+                "-ExerciseRuntimeActions",
+                "-RuntimeActionProfile",
+                "operator_production",
+            ],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        output = f"{completed.stdout}\n{completed.stderr}"
+        normalized_output = " ".join(output.split())
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("RuntimeActionProfile operator_production requires explicit", normalized_output)
+        self.assertIn("-DxfBrowsePath", normalized_output)

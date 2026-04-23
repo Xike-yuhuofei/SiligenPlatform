@@ -4,6 +4,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
@@ -2924,6 +2925,39 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(messages[-1][0], "胶点预览生成失败")
         self.assertIn("缺少非空 glue_points", messages[-1][1])
         self.assertTrue(messages[-1][2])
+
+    def test_build_operator_context_snapshot_exports_authority_and_execution_fields(self) -> None:
+        self.window._dxf_artifact_id = "artifact-1"
+        self.window._current_plan_id = "plan-1"
+        self.window._preview_source = "planned_glue_snapshot"
+        self.window._preview_session.state.preview_kind = "glue_points"
+        self.window._preview_session.state.glue_point_count = 3
+        self.window._preview_gate = SimpleNamespace(
+            snapshot=SimpleNamespace(snapshot_hash="snapshot-hash-1"),
+            get_confirmed_snapshot_hash=lambda: "snapshot-hash-1",
+        )
+        self.window._current_job_id = "job-1"
+        self.window._target_count = 3
+        self.window._completed_count = 1
+        self.window._global_progress.setValue(42)
+        self.window._operation_status.setText("生产运行中")
+
+        context = self.window.build_operator_context_snapshot()
+
+        self.assertEqual(context["artifact_id"], "artifact-1")
+        self.assertEqual(context["plan_id"], "plan-1")
+        self.assertEqual(context["preview_source"], "planned_glue_snapshot")
+        self.assertEqual(context["preview_kind"], "glue_points")
+        self.assertEqual(context["glue_point_count"], 3)
+        self.assertEqual(context["snapshot_hash"], "snapshot-hash-1")
+        self.assertEqual(context["confirmed_snapshot_hash"], "snapshot-hash-1")
+        self.assertTrue(context["snapshot_ready"])
+        self.assertTrue(context["preview_confirmed"])
+        self.assertEqual(context["job_id"], "job-1")
+        self.assertEqual(context["target_count"], 3)
+        self.assertEqual(context["completed_count"], "1/3")
+        self.assertEqual(context["global_progress_percent"], 42)
+        self.assertEqual(context["current_operation"], "生产运行中")
 
     def test_preview_snapshot_reports_legacy_backend_contract_when_glue_points_missing(self) -> None:
         messages = []

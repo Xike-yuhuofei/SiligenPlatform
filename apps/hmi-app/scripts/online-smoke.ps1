@@ -15,7 +15,9 @@ param(
     [switch]$UseSupervisorInjection,
     [switch]$ExerciseRuntimeActions,
     [string]$ScreenshotPath = "",
+    [string]$ScreenshotDir = "",
     [string]$PreviewPayloadPath = "",
+    [string]$DxfBrowsePath = "",
     [string]$RuntimeActionProfile = "",
     [switch]$VerboseMock
 )
@@ -53,18 +55,23 @@ function Assert-RuntimeActionParameterContract {
     param(
         [switch]$ExerciseRuntimeActions,
         [string]$PreviewPayloadPath,
-        [string]$RuntimeActionProfile
+        [string]$RuntimeActionProfile,
+        [string]$DxfBrowsePath
     )
 
     $hasPayload = -not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)
     $hasProfile = -not [string]::IsNullOrWhiteSpace($RuntimeActionProfile)
     $normalizedProfile = $RuntimeActionProfile.Trim().ToLowerInvariant()
+    $hasDxfBrowsePath = -not [string]::IsNullOrWhiteSpace($DxfBrowsePath)
 
     if ($hasPayload -and -not $ExerciseRuntimeActions) {
         throw "PreviewPayloadPath requires -ExerciseRuntimeActions and -RuntimeActionProfile snapshot_render"
     }
     if ($hasProfile -and -not $ExerciseRuntimeActions) {
         throw "RuntimeActionProfile requires -ExerciseRuntimeActions"
+    }
+    if ($hasDxfBrowsePath -and -not $ExerciseRuntimeActions) {
+        throw "DxfBrowsePath requires -ExerciseRuntimeActions"
     }
     if (-not $ExerciseRuntimeActions) {
         return
@@ -78,13 +85,22 @@ function Assert-RuntimeActionParameterContract {
     if ($normalizedProfile -eq "snapshot_render" -and -not $hasPayload) {
         throw "RuntimeActionProfile snapshot_render requires -PreviewPayloadPath"
     }
+    if ($normalizedProfile -in @("full", "operator_preview", "operator_production") -and -not $hasDxfBrowsePath) {
+        throw "RuntimeActionProfile $normalizedProfile requires explicit -DxfBrowsePath"
+    }
 }
 
 $normalizedRuntimeActionProfile = $RuntimeActionProfile.Trim().ToLowerInvariant()
+$effectiveRuntimeActionProfile = if ($ExerciseRuntimeActions -and [string]::IsNullOrWhiteSpace($normalizedRuntimeActionProfile)) {
+    "full"
+} else {
+    $normalizedRuntimeActionProfile
+}
 Assert-RuntimeActionParameterContract `
     -ExerciseRuntimeActions:$ExerciseRuntimeActions `
     -PreviewPayloadPath $PreviewPayloadPath `
-    -RuntimeActionProfile $normalizedRuntimeActionProfile
+    -RuntimeActionProfile $effectiveRuntimeActionProfile `
+    -DxfBrowsePath $DxfBrowsePath
 
 function Get-FreeTcpPort {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse($ListenHost), 0)
@@ -340,9 +356,9 @@ function Invoke-UiSmoke {
 
     if ($ExerciseRuntimeActions -and -not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
         $previewPayloadContractFailure = ""
-        if ([string]::IsNullOrWhiteSpace($RuntimeActionProfile)) {
+        if ([string]::IsNullOrWhiteSpace($effectiveRuntimeActionProfile)) {
             $previewPayloadContractFailure = "PreviewPayloadPath requires explicit -RuntimeActionProfile snapshot_render"
-        } elseif ($RuntimeActionProfile -ine "snapshot_render") {
+        } elseif ($effectiveRuntimeActionProfile -ine "snapshot_render") {
             $previewPayloadContractFailure = "PreviewPayloadPath is only allowed with -RuntimeActionProfile snapshot_render"
         }
 
@@ -372,13 +388,19 @@ function Invoke-UiSmoke {
     if (-not [string]::IsNullOrWhiteSpace($ScreenshotPath)) {
         $uiArgs += @("--screenshot-path", $ScreenshotPath)
     }
+    if (-not [string]::IsNullOrWhiteSpace($ScreenshotDir)) {
+        $uiArgs += @("--screenshot-dir", $ScreenshotDir)
+    }
     if ($ExerciseRuntimeActions) {
         $uiArgs += "--exercise-runtime-actions"
         if (-not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
             $uiArgs += @("--preview-payload-path", $PreviewPayloadPath)
         }
-        if (-not [string]::IsNullOrWhiteSpace($normalizedRuntimeActionProfile)) {
-            $uiArgs += @("--runtime-action-profile", $normalizedRuntimeActionProfile)
+        if (-not [string]::IsNullOrWhiteSpace($effectiveRuntimeActionProfile)) {
+            $uiArgs += @("--runtime-action-profile", $effectiveRuntimeActionProfile)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($DxfBrowsePath)) {
+            $uiArgs += @("--dxf-browse-path", $DxfBrowsePath)
         }
     }
 

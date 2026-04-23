@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import tempfile
@@ -18,8 +19,10 @@ for candidate in (HIL_DIR, HMI_SCRIPTS_DIR, PERFORMANCE_DIR, TEST_KIT_SRC):
 
 from run_full_online_hmi_suite import FULL_ONLINE_HMI_SCENARIOS, scenario_ids  # noqa: E402
 from run_online_runtime_action_matrix import (  # noqa: E402
+    DEFAULT_OPERATOR_PREVIEW_DXF,
     OPERATOR_PREVIEW_REQUIRED_STAGES,
     RUNTIME_ACTION_CASES,
+    build_command,
     summarize_operator_context,
 )
 from run_online_soak_profiles import (  # noqa: E402
@@ -95,6 +98,25 @@ class OnlineTestMatrixRunnerContractTest(unittest.TestCase):
         self.assertEqual(summary["snapshot_hash"], "hash-001")
         self.assertEqual(summary["preview_source"], "planned_glue_snapshot")
         self.assertTrue(summary["snapshot_ready"])
+
+    def test_operator_preview_case_passes_explicit_dxf_browse_path_to_online_smoke(self) -> None:
+        args = argparse.Namespace(
+            report_root=ROOT / "tests" / "reports" / "adhoc" / "hmi-runtime-action-matrix",
+            python_exe=sys.executable,
+            timeout_ms=20000,
+            gateway_exe=None,
+            gateway_config=None,
+            use_mock_gateway_config=False,
+        )
+        case = next(item for item in RUNTIME_ACTION_CASES if item.profile == "operator_preview")
+        command = build_command(
+            args=args,
+            case=case,
+            screenshot_path=ROOT / "tests" / "reports" / "adhoc" / "operator-preview.png",
+        )
+
+        self.assertIn("-DxfBrowsePath", command)
+        self.assertIn(str(DEFAULT_OPERATOR_PREVIEW_DXF), command)
 
     def test_soak_profiles_cover_formal_and_planned_blockers(self) -> None:
         profiles = resolve_profiles(())

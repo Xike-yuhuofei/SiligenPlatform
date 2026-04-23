@@ -37,6 +37,7 @@ EXIT_TIMEOUT = 11
 SUPPORTED_RUNTIME_ACTION_PROFILES = (
     "full",
     "operator_preview",
+    "operator_production",
     "snapshot_render",
     "home_move",
     "jog",
@@ -44,9 +45,25 @@ SUPPORTED_RUNTIME_ACTION_PROFILES = (
     "estop_reset",
     "door_interlock",
 )
-OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES = ("full", "operator_preview")
+OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES = ("full", "operator_preview", "operator_production")
 MOCK_RECIPE_ID = "recipe-mock-001"
 MOCK_VERSION_ID = "version-mock-001"
+REQUIRED_OPERATOR_CONTEXT_FIELDS = (
+    "artifact_id",
+    "plan_id",
+    "preview_source",
+    "preview_kind",
+    "glue_point_count",
+    "snapshot_hash",
+    "confirmed_snapshot_hash",
+    "snapshot_ready",
+    "preview_confirmed",
+    "job_id",
+    "target_count",
+    "completed_count",
+    "global_progress_percent",
+    "current_operation",
+)
 
 
 def canonical_preview_sample() -> Path:
@@ -55,6 +72,54 @@ def canonical_preview_sample() -> Path:
 
 def uses_real_recipe_context(runtime_action_profile: str) -> bool:
     return runtime_action_profile.strip().lower() in OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES
+
+
+def requires_explicit_dxf_browse_path(runtime_action_profile: str) -> bool:
+    return runtime_action_profile.strip().lower() in OPERATOR_JOURNEY_RUNTIME_ACTION_PROFILES
+
+
+def resolve_runtime_action_request(
+    *,
+    exercise_runtime_actions: bool,
+    runtime_action_profile: str,
+    preview_payload_path: str,
+    dxf_browse_path: str,
+) -> tuple[str, bool, str]:
+    normalized_profile = str(runtime_action_profile or "").strip().lower()
+    normalized_preview_payload_path = str(preview_payload_path or "").strip()
+    normalized_dxf_browse_path = str(dxf_browse_path or "").strip()
+
+    if not exercise_runtime_actions:
+        if normalized_preview_payload_path:
+            raise ValueError("--preview-payload-path requires --exercise-runtime-actions --runtime-action-profile snapshot_render")
+        if normalized_profile:
+            raise ValueError("--runtime-action-profile requires --exercise-runtime-actions")
+        if normalized_dxf_browse_path:
+            raise ValueError("--dxf-browse-path requires --exercise-runtime-actions")
+        return "", False, ""
+
+    if not normalized_profile:
+        normalized_profile = "full"
+    if normalized_profile not in SUPPORTED_RUNTIME_ACTION_PROFILES:
+        raise ValueError(
+            "Unsupported runtime action profile: "
+            f"{normalized_profile}; supported={','.join(SUPPORTED_RUNTIME_ACTION_PROFILES)}"
+        )
+    if normalized_preview_payload_path and normalized_profile != "snapshot_render":
+        raise ValueError("--preview-payload-path is only allowed with --runtime-action-profile snapshot_render")
+    if normalized_profile == "snapshot_render" and not normalized_preview_payload_path:
+        raise ValueError("--runtime-action-profile snapshot_render requires --preview-payload-path")
+    if requires_explicit_dxf_browse_path(normalized_profile):
+        if not normalized_dxf_browse_path:
+            raise ValueError(f"--runtime-action-profile {normalized_profile} requires --dxf-browse-path")
+        resolved_dxf_path = Path(normalized_dxf_browse_path).expanduser()
+        if not resolved_dxf_path.is_absolute():
+            resolved_dxf_path = (Path.cwd() / resolved_dxf_path).resolve()
+        if not resolved_dxf_path.exists():
+            raise ValueError(f"--dxf-browse-path does not exist: {resolved_dxf_path}")
+        normalized_dxf_browse_path = str(resolved_dxf_path)
+
+    return normalized_profile, uses_real_recipe_context(normalized_profile), normalized_dxf_browse_path
 
 
 def find_by_testid(root: QWidget, testid: str) -> Optional[QWidget]:
@@ -226,14 +291,17 @@ def patch_modal_dialogs() -> Iterator[None]:
     def _dialog_noop(*_args, **_kwargs):
         return main_window_module.QMessageBox.Ok
 
+    def _dialog_yes(*_args, **_kwargs):
+        return main_window_module.QMessageBox.Yes
+
     main_window_module.QMessageBox.critical = _dialog_noop
     main_window_module.QMessageBox.warning = _dialog_noop
     main_window_module.QMessageBox.information = _dialog_noop
-    main_window_module.QMessageBox.question = _dialog_noop
+    main_window_module.QMessageBox.question = _dialog_yes
     recipe_config_widget_module.QMessageBox.critical = _dialog_noop
     recipe_config_widget_module.QMessageBox.warning = _dialog_noop
     recipe_config_widget_module.QMessageBox.information = _dialog_noop
-    recipe_config_widget_module.QMessageBox.question = _dialog_noop
+    recipe_config_widget_module.QMessageBox.question = _dialog_yes
     try:
         yield
     finally:
@@ -305,6 +373,7 @@ class GuiContractRunner:
         exercise_recovery: bool = False,
         exercise_runtime_actions: bool = False,
         screenshot_path: str = "",
+        screenshot_dir: str = "",
         preview_payload_path: str = "",
         runtime_action_profile: str = "",
     ):
@@ -317,11 +386,13 @@ class GuiContractRunner:
         self.exercise_recovery = exercise_recovery
         self.exercise_runtime_actions = exercise_runtime_actions
         self.screenshot_path = screenshot_path.strip()
+        self.screenshot_dir = screenshot_dir.strip()
         self.preview_payload_path = preview_payload_path.strip()
         self.runtime_action_profile = runtime_action_profile.strip().lower()
         self.failed = False
         self.timed_out = False
         self.exit_code = EXIT_SUCCESS
+        self._screenshot_index = 0
 
     def _uses_external_gateway(self) -> bool:
         return bool(os.getenv("SILIGEN_GATEWAY_LAUNCH_SPEC", "").strip())
@@ -379,6 +450,69 @@ class GuiContractRunner:
             return None
         return status.axes.get(axis)
 
+    def _job_execution_state(self) -> str:
+        status = self._cached_status()
+        if status is None:
+            return ""
+        job_execution = getattr(status, "job_execution", None)
+        return str(getattr(job_execution, "state", "") or "").strip().lower()
+
+    def _progress_value(self, testid: str) -> int:
+        widget = self._require_widget(testid)
+        if widget is None:
+            return 0
+        if hasattr(widget, "value"):
+            return int(widget.value())
+        self._fail(f"Widget does not expose value(): {testid}")
+        return 0
+
+    def _preview_session_state(self):
+        preview_session = getattr(self.window, "_preview_session", None)
+        return getattr(preview_session, "state", None)
+
+    def _confirmed_snapshot_hash(self) -> str:
+        preview_gate = getattr(self.window, "_preview_gate", None)
+        if preview_gate is None or not hasattr(preview_gate, "get_confirmed_snapshot_hash"):
+            return ""
+        return str(preview_gate.get_confirmed_snapshot_hash() or "")
+
+    def _ensure_operator_context_contract(self) -> bool:
+        exporter = getattr(self.window, "build_operator_context_snapshot", None)
+        if not callable(exporter):
+            self._fail("MainWindow missing build_operator_context_snapshot()")
+            return False
+        snapshot = exporter()
+        if not isinstance(snapshot, dict):
+            self._fail("MainWindow build_operator_context_snapshot() must return dict")
+            return False
+        missing_fields = [field for field in REQUIRED_OPERATOR_CONTEXT_FIELDS if field not in snapshot]
+        if missing_fields:
+            self._fail(
+                "MainWindow build_operator_context_snapshot() missing required fields: "
+                + ",".join(missing_fields)
+            )
+            return False
+        return True
+
+    def _operator_context(self) -> dict[str, object]:
+        exporter = getattr(self.window, "build_operator_context_snapshot", None)
+        if not callable(exporter):
+            self._fail("MainWindow missing build_operator_context_snapshot()")
+            return {}
+        snapshot = exporter()
+        if not isinstance(snapshot, dict):
+            self._fail("MainWindow build_operator_context_snapshot() must return dict")
+            return {}
+        return snapshot
+
+    def _operator_context_satisfies(self, predicate: Callable[[dict[str, object]], bool]) -> bool:
+        if self.failed:
+            return False
+        context = self._operator_context()
+        if self.failed or not context:
+            return False
+        return bool(predicate(context))
+
     def _spinbox_set(self, testid: str, value: float) -> None:
         widget = self._require_widget(testid)
         if widget is None:
@@ -394,22 +528,40 @@ class GuiContractRunner:
         if widget is None:
             return
         self._expect(widget.isEnabled(), f"{testid} should be enabled")
+        if self.failed or not widget.isEnabled():
+            return
         QTest.mouseClick(widget, Qt.LeftButton)
         QTest.qWait(100)
 
-    def _capture_screenshot(self, description: str) -> None:
-        if not self.screenshot_path:
+    def _sanitize_capture_token(self, value: str) -> str:
+        normalized = re.sub(r"[^0-9A-Za-z._-]+", "-", str(value or "").strip())
+        normalized = normalized.strip("-").lower()
+        return normalized or "capture"
+
+    def _save_screenshot(self, pixmap, target_path: Path, description: str, *, stage_name: str = "") -> None:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if not pixmap.save(str(target_path)):
+            self._fail(f"Failed to save {description}: {target_path}")
             return
-        screenshot_path = Path(self.screenshot_path)
-        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+        if stage_name:
+            print(f"HMI_SCREENSHOT stage={stage_name} path={target_path}", flush=True)
+            return
+        print(f"HMI_SCREENSHOT path={target_path}", flush=True)
+
+    def _capture_screenshot(self, description: str, *, stage_name: str = "") -> None:
+        if not self.screenshot_path and not self.screenshot_dir:
+            return
         self.app.processEvents()
         self.window.repaint()
         QTest.qWait(200)
         pixmap = self.window.grab()
-        if not pixmap.save(str(screenshot_path)):
-            self._fail(f"Failed to save {description}: {screenshot_path}")
-            return
-        print(f"HMI_SCREENSHOT path={screenshot_path}", flush=True)
+        if self.screenshot_dir:
+            self._screenshot_index += 1
+            stage_token = self._sanitize_capture_token(stage_name or description)
+            staged_path = Path(self.screenshot_dir) / f"{self._screenshot_index:02d}-{stage_token}.png"
+            self._save_screenshot(pixmap, staged_path, description, stage_name=stage_token)
+        if self.screenshot_path:
+            self._save_screenshot(pixmap, Path(self.screenshot_path), description, stage_name="")
 
     def _load_preview_payload(self) -> dict:
         if not self.preview_payload_path:
@@ -514,59 +666,203 @@ class GuiContractRunner:
         return ""
 
     def _emit_operator_context(self, stage: str) -> None:
-        preview_gate = getattr(self.window, "_preview_gate", None)
-        snapshot = getattr(preview_gate, "snapshot", None)
-        artifact_id = getattr(self.window, "_dxf_artifact_id", "") or "null"
-        plan_id = getattr(self.window, "_current_plan_id", "") or "null"
-        preview_source = getattr(self.window, "_preview_source", "") or "null"
-        snapshot_hash = getattr(snapshot, "snapshot_hash", "") if snapshot is not None else ""
+        context = self._operator_context()
+        if self.failed or not context:
+            return
+        artifact_id = str(context.get("artifact_id") or "null")
+        plan_id = str(context.get("plan_id") or "null")
+        preview_source = str(context.get("preview_source") or "null")
+        preview_kind = str(context.get("preview_kind") or "null")
+        glue_point_count = int(context.get("glue_point_count", 0) or 0)
+        snapshot_hash = str(context.get("snapshot_hash") or "")
+        confirmed_snapshot_hash = str(context.get("confirmed_snapshot_hash") or "null")
+        current_operation = str(context.get("current_operation") or "null").replace(" ", "_")
+        completed_count = str(context.get("completed_count") or "0/0").replace(" ", "")
+        job_id = str(context.get("job_id") or "null")
+        target_count = int(context.get("target_count", 0) or 0)
+        global_progress = int(context.get("global_progress_percent", 0) or 0)
         print(
             "OPERATOR_CONTEXT "
             f"stage={stage} "
             f"artifact_id={artifact_id} "
             f"plan_id={plan_id} "
             f"preview_source={preview_source} "
+            f"preview_kind={preview_kind} "
+            f"glue_point_count={glue_point_count} "
             f"snapshot_hash={snapshot_hash or 'null'} "
-            f"snapshot_ready={str(bool(snapshot)).lower()}",
+            f"confirmed_snapshot_hash={confirmed_snapshot_hash} "
+            f"snapshot_ready={str(bool(context.get('snapshot_ready', False))).lower()} "
+            f"job_id={job_id} "
+            f"target_count={target_count} "
+            f"completed_count={completed_count or '0/0'} "
+            f"global_progress_percent={global_progress} "
+            f"current_operation={current_operation or 'null'} "
+            f"preview_confirmed={str(bool(context.get('preview_confirmed', False))).lower()}",
             flush=True,
         )
 
-    def _assert_operator_preview_action(self) -> None:
+    def _run_operator_preview_journey(self) -> None:
+        if not self._ensure_operator_context_contract():
+            return
         self._switch_to_production_tab()
+        if self.failed:
+            return
         self._click_button("btn-dxf-browse")
-        self._wait_for(
+        if self.failed:
+            return
+        if not self._wait_for(
             "operator preview loads dxf artifact",
-            lambda: bool(getattr(self.window, "_dxf_loaded", False))
-            and bool(getattr(self.window, "_dxf_artifact_id", "")),
+            lambda: self._operator_context_satisfies(
+                lambda context: bool(str(context.get("artifact_id") or "").strip())
+            ),
             timeout_ms=10000,
-        )
+        ):
+            return
         self._expect(
             "未显式选择配方版本" not in self._status_message(),
             "DXF preview should not be blocked by recipe/version selection",
         )
-        self._wait_for(
+        if self.failed:
+            return
+        if not self._wait_for(
             "operator preview becomes ready without recipe selection",
-            lambda: bool(getattr(self.window, "_preview_gate", None))
-            and bool(getattr(self.window._preview_gate, "snapshot", None))
-            and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
-            and bool(getattr(self.window, "_current_plan_id", "")),
+            lambda: self._operator_context_satisfies(
+                lambda context: bool(context.get("snapshot_ready", False))
+                and str(context.get("preview_source") or "") == "planned_glue_snapshot"
+                and str(context.get("preview_kind") or "") == "glue_points"
+                and int(context.get("glue_point_count", 0) or 0) > 0
+                and bool(str(context.get("snapshot_hash") or "").strip())
+                and bool(str(context.get("plan_id") or "").strip())
+            ),
             timeout_ms=15000,
-        )
+        ):
+            return
         self._emit_operator_context("preview-ready")
+        if self.failed:
+            return
+        self._capture_screenshot("operator preview ready screenshot", stage_name="preview-ready")
+        if self.failed:
+            return
+        preview_gate = getattr(self.window, "_preview_gate", None)
         self._expect(
-            "未显式选择配方版本" not in getattr(self.window._preview_gate, "last_error_message", ""),
+            "未显式选择配方版本" not in getattr(preview_gate, "last_error_message", ""),
             "Preview gate should not report missing recipe/version",
         )
+        if self.failed:
+            return
         self._click_button("btn-dxf-preview-refresh")
-        self._wait_for(
+        if self.failed:
+            return
+        if not self._wait_for(
             "operator preview refresh succeeds without recipe selection",
-            lambda: bool(self.window._preview_gate.snapshot)
-            and getattr(self.window, "_preview_source", "") == "planned_glue_snapshot"
-            and bool(getattr(self.window, "_current_plan_id", "")),
+            lambda: self._operator_context_satisfies(
+                lambda context: bool(context.get("snapshot_ready", False))
+                and str(context.get("preview_source") or "") == "planned_glue_snapshot"
+                and str(context.get("preview_kind") or "") == "glue_points"
+                and int(context.get("glue_point_count", 0) or 0) > 0
+                and bool(str(context.get("snapshot_hash") or "").strip())
+                and bool(str(context.get("plan_id") or "").strip())
+            ),
             timeout_ms=15000,
-        )
+        ):
+            return
         self._emit_operator_context("preview-refreshed")
-        self._capture_screenshot("operator preview journey screenshot")
+        if self.failed:
+            return
+        self._capture_screenshot("operator preview refreshed screenshot", stage_name="preview-refreshed")
+
+    def _assert_operator_preview_action(self) -> None:
+        self._run_operator_preview_journey()
+
+    def _assert_operator_production_action(self) -> None:
+        print("STEP: operator production journey", flush=True)
+        self._run_operator_preview_journey()
+        if self.failed:
+            return
+
+        self._ensure_runtime_motion_ready()
+        if self.failed:
+            return
+        self._spinbox_set("input-target-count", 1)
+        if self.failed:
+            return
+
+        start_button = self._require_widget("btn-production-start")
+        if start_button is not None:
+            if not self._wait_for("production start button enabled", lambda: start_button.isEnabled(), timeout_ms=10000):
+                return
+
+        self._click_button("btn-production-start")
+        if self.failed:
+            return
+        if not self._wait_for(
+            "preview confirmation settles",
+            lambda: self._operator_context_satisfies(
+                lambda context: bool(context.get("preview_confirmed", False))
+                and bool(str(context.get("confirmed_snapshot_hash") or "").strip())
+            ),
+            timeout_ms=10000,
+        ):
+            return
+        if not self._wait_for(
+            "operator production enters running state",
+            lambda: self._operator_context_satisfies(
+                lambda context: bool(str(context.get("job_id") or "").strip())
+                and bool(context.get("preview_confirmed", False))
+                and str(context.get("current_operation") or "") == "生产运行中"
+            ),
+            timeout_ms=30000,
+        ):
+            return
+        self._emit_operator_context("production-started")
+        if self.failed:
+            return
+        self._emit_operator_context("production-running")
+        if self.failed:
+            return
+        self._capture_screenshot("operator production running screenshot", stage_name="production-running")
+        if self.failed:
+            return
+
+        if not self._wait_for(
+            "operator production terminal completed",
+            lambda: self._operator_context_satisfies(
+                lambda context: not bool(str(context.get("job_id") or "").strip())
+                and str(context.get("current_operation") or "") == "完成"
+                and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
+                and int(context.get("global_progress_percent", 0) or 0) == 100
+                and bool(context.get("preview_confirmed", False))
+            ),
+            timeout_ms=self.timeout_ms,
+        ):
+            return
+        self._emit_operator_context("production-completed")
+        if self.failed:
+            return
+        self._capture_screenshot("operator production completed screenshot", stage_name="production-completed")
+        if self.failed:
+            return
+
+        target_input = self._require_widget("input-target-count")
+        if not self._wait_for(
+            "operator production recovers next job readiness",
+            lambda: start_button is not None
+            and target_input is not None
+            and start_button.isEnabled()
+            and target_input.isEnabled()
+            and self._operator_context_satisfies(
+                lambda context: not bool(str(context.get("job_id") or "").strip())
+                and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
+                and int(context.get("global_progress_percent", 0) or 0) == 100
+                and bool(context.get("preview_confirmed", False))
+            ),
+            timeout_ms=15000,
+        ):
+            return
+        self._emit_operator_context("next-job-ready")
+        if self.failed:
+            return
+        self._capture_screenshot("operator production next job ready screenshot", stage_name="next-job-ready")
 
     def _ensure_runtime_motion_ready(self) -> None:
         if (
@@ -768,6 +1064,8 @@ class GuiContractRunner:
             self._assert_snapshot_render_action()
         if profile in {"full", "operator_preview"}:
             self._assert_operator_preview_action()
+        if profile == "operator_production":
+            self._assert_operator_production_action()
         if profile in {"full", "home_move"}:
             self._assert_runtime_move_to_action()
         if profile in {"full", "jog"}:
@@ -1113,14 +1411,21 @@ def main() -> int:
     parser.add_argument("--exercise-recovery", action="store_true")
     parser.add_argument("--exercise-runtime-actions", action="store_true")
     parser.add_argument("--screenshot-path", default="")
+    parser.add_argument("--screenshot-dir", default="")
     parser.add_argument("--preview-payload-path", default="")
+    parser.add_argument("--dxf-browse-path", default="")
     parser.add_argument("--runtime-action-profile", default="")
     args = parser.parse_args()
-    requested_runtime_action_profile = str(args.runtime_action_profile or "").strip().lower()
-    resolved_runtime_action_profile = requested_runtime_action_profile
-    if args.exercise_runtime_actions and not resolved_runtime_action_profile:
-        resolved_runtime_action_profile = "full"
-    real_operator_journey = args.exercise_runtime_actions and uses_real_recipe_context(resolved_runtime_action_profile)
+    try:
+        resolved_runtime_action_profile, real_operator_journey, resolved_dxf_browse_path = resolve_runtime_action_request(
+            exercise_runtime_actions=bool(args.exercise_runtime_actions),
+            runtime_action_profile=args.runtime_action_profile,
+            preview_payload_path=args.preview_payload_path,
+            dxf_browse_path=args.dxf_browse_path,
+        )
+    except ValueError as exc:
+        print(f"FAIL: {exc}", flush=True)
+        return EXIT_ASSERTION_FAILED
 
     server: Optional[MockTcpServer] = None
     port = args.port
@@ -1133,7 +1438,7 @@ def main() -> int:
         args.host,
         port,
         patch_recipe_context=not real_operator_journey,
-        dxf_browse_path=str(canonical_preview_sample()) if real_operator_journey else "",
+        dxf_browse_path=resolved_dxf_browse_path,
     )
     window.show()
 
@@ -1147,6 +1452,7 @@ def main() -> int:
         exercise_recovery=args.exercise_recovery,
         exercise_runtime_actions=args.exercise_runtime_actions,
         screenshot_path=args.screenshot_path,
+        screenshot_dir=args.screenshot_dir,
         preview_payload_path=args.preview_payload_path,
         runtime_action_profile=resolved_runtime_action_profile,
     )
