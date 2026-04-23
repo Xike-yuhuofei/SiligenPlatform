@@ -320,10 +320,17 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     safety_boundary_required = set(states["definitions"]["safetyBoundaryStatus"]["required"])
     action_capabilities_required = set(states["definitions"]["actionCapabilitiesStatus"]["required"])
     supervision_required = set(states["definitions"]["supervisionStatus"]["required"])
+    runtime_identity_required = set(states["definitions"]["runtimeIdentityStatus"]["required"])
 
-    assert {"supervision", "effective_interlocks", "safety_boundary", "action_capabilities", "job_execution", "device_mode"}.issubset(machine_required)
+    assert {"supervision", "runtime_identity", "effective_interlocks", "safety_boundary", "action_capabilities", "job_execution", "device_mode"}.issubset(machine_required)
     assert {"active_job_id", "active_job_state"}.isdisjoint(machine_required)
     assert {"machine_state", "machine_state_reason"}.issubset(machine_required)
+    assert {
+        "executable_path",
+        "working_directory",
+        "protocol_version",
+        "preview_snapshot_contract",
+    }.issubset(runtime_identity_required)
     assert {
         "estop_active",
         "estop_known",
@@ -373,6 +380,8 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "点胶阀状态为 Running" in states["definitions"]["actionCapabilitiesStatus"]["properties"]["manual_dispenser_pause_permitted"]["description"]
     assert "点胶阀状态为 Paused" in states["definitions"]["actionCapabilitiesStatus"]["properties"]["manual_dispenser_resume_permitted"]["description"]
     assert "supervision.current_state 为 Estop" in states["definitions"]["actionCapabilitiesStatus"]["properties"]["estop_reset_permitted"]["description"]
+    assert "HMI online startup gate" in states["definitions"]["runtimeIdentityStatus"]["properties"]["executable_path"]["description"]
+    assert "fail-closed" in states["definitions"]["runtimeIdentityStatus"]["properties"]["preview_snapshot_contract"]["description"]
     assert states["definitions"]["machineStatus"]["properties"]["device_mode"]["enum"] == ["production", "test"]
     assert "运行时执行上下文单向派生" in states["definitions"]["machineStatus"]["properties"]["device_mode"]["description"]
     assert "device_mode" in states["definitions"]["machineStatus"]["properties"]
@@ -385,6 +394,19 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert fixture_result["device_mode"] == "production"
     assert fixture_result["machine_state"] == "Idle"
     assert fixture_result["machine_state_reason"] == "idle"
+    assert set(fixture_result["runtime_identity"].keys()) == {
+        "executable_path",
+        "working_directory",
+        "protocol_version",
+        "preview_snapshot_contract",
+    }
+    assert fixture_result["runtime_identity"]["executable_path"].endswith("siligen_runtime_gateway.exe")
+    assert fixture_result["runtime_identity"]["working_directory"].endswith("build\\ca\\bin")
+    assert fixture_result["runtime_identity"]["protocol_version"] == "siligen.application/1.0"
+    assert (
+        fixture_result["runtime_identity"]["preview_snapshot_contract"]
+        == "planned_glue_snapshot.glue_points+execution_trajectory_snapshot.polyline"
+    )
     assert set(fixture_result["safety_boundary"].keys()) == {
         "state",
         "motion_permitted",
@@ -506,6 +528,46 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert status.supervision.requested_state == "Idle"
     assert status.supervision.state_change_in_process is False
 
+    detailed_result = CommandProtocol(cast(Any, StubClient(fixture))).get_status_detailed()
+    assert detailed_result.ok is True
+    assert detailed_result.error_message == ""
+    assert detailed_result.error_code is None
+    assert detailed_result.runtime_identity is not None
+    assert detailed_result.status.runtime_identity is not None
+    assert detailed_result.status.runtime_identity.executable_path.endswith("siligen_runtime_gateway.exe")
+    assert detailed_result.status.runtime_identity.working_directory.endswith("build\\ca\\bin")
+    assert detailed_result.status.runtime_identity.protocol_version == "siligen.application/1.0"
+    assert (
+        detailed_result.status.runtime_identity.preview_snapshot_contract
+        == "planned_glue_snapshot.glue_points+execution_trajectory_snapshot.polyline"
+    )
+
+    missing_identity_fixture = json.loads(json.dumps(fixture))
+    missing_identity_fixture["result"].pop("runtime_identity", None)
+    missing_identity_result = CommandProtocol(cast(Any, StubClient(missing_identity_fixture))).get_status_detailed()
+    assert missing_identity_result.ok is True
+    assert missing_identity_result.error_message == ""
+    assert missing_identity_result.error_code is None
+    assert missing_identity_result.status.runtime_identity is None
+
+    rpc_error_result = CommandProtocol(
+        cast(
+            Any,
+            StubClient(
+                {
+                    "id": "10",
+                    "version": "1.0",
+                    "success": False,
+                    "error": {"code": 2101, "message": "status unavailable"},
+                }
+            ),
+        )
+    ).get_status_detailed()
+    assert rpc_error_result.ok is False
+    assert rpc_error_result.error_code == 2101
+    assert rpc_error_result.error_message == "status unavailable"
+    assert rpc_error_result.status.runtime_identity is None
+
     legacy_fixture = json.loads(json.dumps(fixture))
     legacy_result = legacy_fixture["result"]
     legacy_result.pop("device_mode", None)
@@ -528,6 +590,7 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert legacy_status.action_capabilities.manual_dispenser_resume_permitted is True
     assert legacy_status.action_capabilities.active_job_present is False
     assert legacy_status.action_capabilities.estop_reset_permitted is False
+    assert "BuildRuntimeIdentityJson(status_snapshot)" in tcp_source
     assert "BuildJobExecutionJson(status_snapshot)" in tcp_source
     assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
     assert "BuildRawIoJson(status_snapshot)" in tcp_source
@@ -540,12 +603,15 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "{\"machine_state\", status_snapshot.machine_state}" in tcp_source
     assert "{\"machine_state_reason\", status_snapshot.machine_state_reason}" in tcp_source
     assert "{\"supervision\", supervisionJson}" in tcp_source
+    assert "{\"runtime_identity\", runtimeIdentityJson}" in tcp_source
     assert "{\"safety_boundary\", safetyBoundaryJson}" in tcp_source
     assert "{\"action_capabilities\", actionCapabilitiesJson}" in tcp_source
     assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
     assert "{\"job_execution\", jobExecutionJson}" in tcp_source
     assert "{\"active_job_id\"" not in tcp_source
     assert "{\"active_job_state\"" not in tcp_source
+    assert "RuntimeIdentityExportSnapshot BuildRuntimeIdentitySnapshot()" in status_source
+    assert "snapshot.runtime_identity = BuildRuntimeIdentitySnapshot();" in status_source
     assert 'snapshot.device_mode = snapshot.job_execution.dry_run ? "test" : "production";' in status_source
     assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
     assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source

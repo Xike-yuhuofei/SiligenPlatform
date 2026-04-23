@@ -5,6 +5,7 @@ import math
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
@@ -21,6 +22,7 @@ sys.path.insert(0, str(TEST_KIT_SRC))
 
 import ui.main_window as main_window_module
 from client import SessionSnapshot, launch_result_from_snapshot
+from client.launch_supervision_contract import RuntimeIdentity
 from client.protocol import (
     ActionCapabilitiesStatus,
     AxisStatus,
@@ -597,6 +599,11 @@ class MainWindowTabsTest(unittest.TestCase):
             recoverable=False,
             last_error_message=None,
             updated_at="2026-04-01T00:00:00Z",
+            runtime_contract_verified=True,
+            runtime_identity=RuntimeIdentity(
+                executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+                working_directory="C:\\runtime",
+            ),
         )
         self.window._requested_launch_mode = "online"
         self.window._session_snapshot = snapshot
@@ -999,6 +1006,11 @@ class MainWindowTabsTest(unittest.TestCase):
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",
             updated_at="2026-04-01T07:58:49Z",
+            runtime_contract_verified=True,
+            runtime_identity=RuntimeIdentity(
+                executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+                working_directory="C:\\runtime",
+            ),
         )
         self.window._requested_launch_mode = "online"
         self.window._protocol = fake_protocol
@@ -1475,6 +1487,11 @@ class MainWindowTabsTest(unittest.TestCase):
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",
             updated_at="2026-04-01T07:58:49Z",
+            runtime_contract_verified=True,
+            runtime_identity=RuntimeIdentity(
+                executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+                working_directory="C:\\runtime",
+            ),
         )
         self.window._requested_launch_mode = "online"
         self.window._session_snapshot = failed_snapshot
@@ -3015,6 +3032,39 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(messages[-1][0], "胶点预览生成失败")
         self.assertIn("缺少非空 glue_points", messages[-1][1])
         self.assertTrue(messages[-1][2])
+
+    def test_build_operator_context_snapshot_exports_authority_and_execution_fields(self) -> None:
+        self.window._dxf_artifact_id = "artifact-1"
+        self.window._current_plan_id = "plan-1"
+        self.window._preview_source = "planned_glue_snapshot"
+        self.window._preview_session.state.preview_kind = "glue_points"
+        self.window._preview_session.state.glue_point_count = 3
+        self.window._preview_gate = SimpleNamespace(
+            snapshot=SimpleNamespace(snapshot_hash="snapshot-hash-1"),
+            get_confirmed_snapshot_hash=lambda: "snapshot-hash-1",
+        )
+        self.window._current_job_id = "job-1"
+        self.window._target_count = 3
+        self.window._completed_count = 1
+        self.window._global_progress.setValue(42)
+        self.window._operation_status.setText("生产运行中")
+
+        context = self.window.build_operator_context_snapshot()
+
+        self.assertEqual(context["artifact_id"], "artifact-1")
+        self.assertEqual(context["plan_id"], "plan-1")
+        self.assertEqual(context["preview_source"], "planned_glue_snapshot")
+        self.assertEqual(context["preview_kind"], "glue_points")
+        self.assertEqual(context["glue_point_count"], 3)
+        self.assertEqual(context["snapshot_hash"], "snapshot-hash-1")
+        self.assertEqual(context["confirmed_snapshot_hash"], "snapshot-hash-1")
+        self.assertTrue(context["snapshot_ready"])
+        self.assertTrue(context["preview_confirmed"])
+        self.assertEqual(context["job_id"], "job-1")
+        self.assertEqual(context["target_count"], 3)
+        self.assertEqual(context["completed_count"], "1/3")
+        self.assertEqual(context["global_progress_percent"], 42)
+        self.assertEqual(context["current_operation"], "生产运行中")
 
     def test_preview_snapshot_reports_legacy_backend_contract_when_glue_points_missing(self) -> None:
         messages = []

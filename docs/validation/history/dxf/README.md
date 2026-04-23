@@ -10,6 +10,7 @@
 
 当前内容：
 
+- [demo1-hmi-production-operator-test-2026-04-22.md](./demo1-hmi-production-operator-test-2026-04-22.md)
 - [dxf-contract-regression-resume-2026-03-21.md](./dxf-contract-regression-resume-2026-03-21.md)
 - [dxf-mainline-session-summary-2026-03-21.md](./dxf-mainline-session-summary-2026-03-21.md)
 - [dxf-motion-readiness-gates-validation-2026-04-12.md](./dxf-motion-readiness-gates-validation-2026-04-12.md)

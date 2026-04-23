@@ -1,14 +1,22 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from hmi_client.client.backend_manager import BackendStepResult
-from hmi_client.client.launch_supervision_contract import SessionSnapshot
+from hmi_client.client.launch_supervision_contract import RuntimeIdentity, SessionSnapshot
 from hmi_client.client.launch_supervision_session import SupervisorPolicy, SupervisorSession
+from hmi_client.client.protocol import RuntimeIdentityStatus, StatusQueryResult
+
+
+EXPECTED_RUNTIME_IDENTITY = RuntimeIdentity(
+    executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+    working_directory="C:\\runtime",
+)
 
 
 class _FakeBackend:
@@ -18,6 +26,8 @@ class _FakeBackend:
         self.start_calls = 0
         self.ready_calls = 0
         self.stop_calls = 0
+        self.exe_path = EXPECTED_RUNTIME_IDENTITY.executable_path
+        self.working_directory = EXPECTED_RUNTIME_IDENTITY.working_directory
 
     def start(self):
         self.start_calls += 1
@@ -64,6 +74,28 @@ class _FakeProtocol:
         return self.hardware_result
 
 
+class _FakeRuntimeProbe:
+    def __init__(self, status_result: StatusQueryResult | None = None) -> None:
+        self.status_result = status_result or StatusQueryResult(
+            ok=True,
+            status=SimpleNamespace(
+                runtime_identity=RuntimeIdentityStatus(
+                    executable_path=EXPECTED_RUNTIME_IDENTITY.executable_path,
+                    working_directory=EXPECTED_RUNTIME_IDENTITY.working_directory,
+                    protocol_version=EXPECTED_RUNTIME_IDENTITY.protocol_version,
+                    preview_snapshot_contract=EXPECTED_RUNTIME_IDENTITY.preview_snapshot_contract,
+                )
+            ),
+        )
+        self.calls = 0
+        self.timeouts: list[float] = []
+
+    def get_status_detailed(self, timeout: float = 5.0):
+        self.calls += 1
+        self.timeouts.append(timeout)
+        return self.status_result
+
+
 class _TimeoutAwareBackend(_FakeBackend):
     def __init__(self, start_result=(True, "started"), ready_result=(True, "ready")) -> None:
         super().__init__(start_result=start_result, ready_result=ready_result)
@@ -92,6 +124,8 @@ class _DetailedBackend:
         self.ready_detail = ready_detail
         self.start_calls = 0
         self.ready_calls = 0
+        self.exe_path = EXPECTED_RUNTIME_IDENTITY.executable_path
+        self.working_directory = EXPECTED_RUNTIME_IDENTITY.working_directory
 
     def start_detailed(self):
         self.start_calls += 1
@@ -111,6 +145,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="offline",
         )
         progress_events = []
@@ -126,6 +161,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(start_result=(False, "missing spec")),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshot = session.start()
@@ -147,6 +183,7 @@ class SupervisorSessionTest(unittest.TestCase):
             ),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshot = session.start()
@@ -160,6 +197,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(start_result=(True, "ok"), ready_result=(False, "timeout")),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshot = session.start()
@@ -174,6 +212,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshot = session.start(progress_callback=lambda message, percent: progress_events.append((message, percent)))
@@ -189,16 +228,20 @@ class SupervisorSessionTest(unittest.TestCase):
                 ("Backend ready", 30),
                 ("Connecting TCP...", 40),
                 ("TCP connected", 60),
-                ("Initializing hardware...", 70),
+                ("Verifying runtime contract...", 70),
+                ("Initializing hardware...", 80),
                 ("System ready", 100),
             ],
         )
+        self.assertTrue(snapshot.runtime_contract_verified)
+        self.assertEqual(snapshot.runtime_identity, EXPECTED_RUNTIME_IDENTITY)
 
     def test_start_emits_stage_snapshots_before_ready(self) -> None:
         session = SupervisorSession(
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshots = []
@@ -218,6 +261,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         events = []
@@ -231,6 +275,7 @@ class SupervisorSessionTest(unittest.TestCase):
                 "backend_ready",
                 "tcp_connecting",
                 "tcp_ready",
+                "runtime_contract_ready",
                 "hardware_probing",
                 "hardware_ready",
                 "online_ready",
@@ -243,6 +288,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(start_result=(True, "ok"), ready_result=(False, "timeout")),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshots = []
@@ -259,6 +305,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=client,
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshot = session.start()
@@ -281,6 +328,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=backend,
             client=client,
             protocol=protocol,
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
             policy=policy,
         )
@@ -296,6 +344,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(hardware_result=(False, "no card")),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         snapshot = session.start()
@@ -316,6 +365,8 @@ class SupervisorSessionTest(unittest.TestCase):
             recoverable=True,
             last_error_message="System ready",
             updated_at="2026-03-20T00:00:00Z",
+            runtime_contract_verified=True,
+            runtime_identity=EXPECTED_RUNTIME_IDENTITY,
         )
         degraded = SupervisorSession.detect_runtime_degradation(
             ready_snapshot,
@@ -340,6 +391,8 @@ class SupervisorSessionTest(unittest.TestCase):
             recoverable=True,
             last_error_message="System ready",
             updated_at="2026-03-20T00:00:00Z",
+            runtime_contract_verified=True,
+            runtime_identity=EXPECTED_RUNTIME_IDENTITY,
         )
         degraded = SupervisorSession.detect_runtime_degradation(
             ready_snapshot,
@@ -364,6 +417,8 @@ class SupervisorSessionTest(unittest.TestCase):
             recoverable=True,
             last_error_message="System ready",
             updated_at="2026-03-20T00:00:00Z",
+            runtime_contract_verified=True,
+            runtime_identity=EXPECTED_RUNTIME_IDENTITY,
         )
 
         result = SupervisorSession.detect_runtime_degradation_with_event(
@@ -388,6 +443,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=backend,
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         failed = session.start()
@@ -405,6 +461,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         failed = SessionSnapshot(
@@ -430,6 +487,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=backend,
             client=client,
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         failed = session.start()
@@ -448,6 +506,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=backend,
             client=client,
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         ready = SessionSnapshot(
@@ -461,6 +520,8 @@ class SupervisorSessionTest(unittest.TestCase):
             recoverable=True,
             last_error_message="System ready",
             updated_at="2026-03-20T00:00:00Z",
+            runtime_contract_verified=True,
+            runtime_identity=EXPECTED_RUNTIME_IDENTITY,
         )
 
         with self.assertRaisesRegex(ValueError, "failed online session snapshot"):
@@ -475,6 +536,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         starting = SessionSnapshot(
@@ -498,6 +560,7 @@ class SupervisorSessionTest(unittest.TestCase):
             backend=_FakeBackend(),
             client=_FakeClient(),
             protocol=_FakeProtocol(),
+            runtime_probe=_FakeRuntimeProbe(),
             launch_mode="online",
         )
         ready = session.start()

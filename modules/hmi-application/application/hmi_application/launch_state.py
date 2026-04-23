@@ -299,6 +299,8 @@ def detect_runtime_requalification_result(
         return None
     if session_snapshot.backend_state != "ready" or session_snapshot.tcp_state != "ready":
         return None
+    if not session_snapshot.runtime_contract_verified or session_snapshot.runtime_identity is None:
+        return None
     if tcp_connected is False or hardware_ready is not True:
         return None
 
@@ -312,6 +314,8 @@ def detect_runtime_requalification_result(
         recoverable=True,
         last_error_message=message,
         updated_at=snapshot_timestamp(),
+        runtime_contract_verified=session_snapshot.runtime_contract_verified,
+        runtime_identity=session_snapshot.runtime_identity,
     )
     stage_event = SessionStageEvent(
         event_type="stage_succeeded",
@@ -397,6 +401,8 @@ def build_startup_error_message(result: LaunchResult) -> str:
         "backend_ready": "Backend ready",
         "tcp_connecting": "TCP connecting",
         "tcp_ready": "TCP ready",
+        "runtime": "Runtime contract",
+        "runtime_contract_ready": "Runtime contract verification",
         "hardware_probing": "Hardware probing",
         "hardware_ready": "Hardware ready",
         "online_ready": "Online ready",
@@ -404,12 +410,22 @@ def build_startup_error_message(result: LaunchResult) -> str:
     stage_name = stage_names.get(result.phase, result.phase)
     code_text = f"\nFailure Code: {result.failure_code}" if result.failure_code else ""
     stage_text = f"\nFailure Stage: {result.failure_stage}" if result.failure_stage else ""
+    if result.phase == "runtime" or result.failure_stage == "runtime_contract_ready":
+        checks = (
+            "1. Local launch contract points to the expected runtime executable\n"
+            "2. Runtime working directory matches launch contract\n"
+            "3. Runtime protocol and preview snapshot contract match HMI expectation"
+        )
+    else:
+        checks = (
+            "1. Backend executable exists\n"
+            "2. Port is not in use\n"
+            "3. Gateway launched successfully"
+        )
     return (
         f"{stage_name} failed:\n{result.user_message}{code_text}{stage_text}\n\n"
         "Please check:\n"
-        "1. Backend executable exists\n"
-        "2. Port is not in use\n"
-        "3. Gateway launched successfully"
+        f"{checks}"
     )
 
 

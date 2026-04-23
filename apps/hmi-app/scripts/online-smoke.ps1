@@ -15,7 +15,9 @@ param(
     [switch]$UseSupervisorInjection,
     [switch]$ExerciseRuntimeActions,
     [string]$ScreenshotPath = "",
+    [string]$ScreenshotDir = "",
     [string]$PreviewPayloadPath = "",
+    [string]$DxfBrowsePath = "",
     [string]$RuntimeActionProfile = "",
     [switch]$VerboseMock
 )
@@ -53,18 +55,23 @@ function Assert-RuntimeActionParameterContract {
     param(
         [switch]$ExerciseRuntimeActions,
         [string]$PreviewPayloadPath,
-        [string]$RuntimeActionProfile
+        [string]$RuntimeActionProfile,
+        [string]$DxfBrowsePath
     )
 
     $hasPayload = -not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)
     $hasProfile = -not [string]::IsNullOrWhiteSpace($RuntimeActionProfile)
     $normalizedProfile = $RuntimeActionProfile.Trim().ToLowerInvariant()
+    $hasDxfBrowsePath = -not [string]::IsNullOrWhiteSpace($DxfBrowsePath)
 
     if ($hasPayload -and -not $ExerciseRuntimeActions) {
         throw "PreviewPayloadPath requires -ExerciseRuntimeActions and -RuntimeActionProfile snapshot_render"
     }
     if ($hasProfile -and -not $ExerciseRuntimeActions) {
         throw "RuntimeActionProfile requires -ExerciseRuntimeActions"
+    }
+    if ($hasDxfBrowsePath -and -not $ExerciseRuntimeActions) {
+        throw "DxfBrowsePath requires -ExerciseRuntimeActions"
     }
     if (-not $ExerciseRuntimeActions) {
         return
@@ -78,13 +85,22 @@ function Assert-RuntimeActionParameterContract {
     if ($normalizedProfile -eq "snapshot_render" -and -not $hasPayload) {
         throw "RuntimeActionProfile snapshot_render requires -PreviewPayloadPath"
     }
+    if ($normalizedProfile -in @("full", "operator_preview", "operator_production") -and -not $hasDxfBrowsePath) {
+        throw "RuntimeActionProfile $normalizedProfile requires explicit -DxfBrowsePath"
+    }
 }
 
 $normalizedRuntimeActionProfile = $RuntimeActionProfile.Trim().ToLowerInvariant()
+$effectiveRuntimeActionProfile = if ($ExerciseRuntimeActions -and [string]::IsNullOrWhiteSpace($normalizedRuntimeActionProfile)) {
+    "full"
+} else {
+    $normalizedRuntimeActionProfile
+}
 Assert-RuntimeActionParameterContract `
     -ExerciseRuntimeActions:$ExerciseRuntimeActions `
     -PreviewPayloadPath $PreviewPayloadPath `
-    -RuntimeActionProfile $normalizedRuntimeActionProfile
+    -RuntimeActionProfile $effectiveRuntimeActionProfile `
+    -DxfBrowsePath $DxfBrowsePath
 
 function Get-FreeTcpPort {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse($ListenHost), 0)
@@ -185,6 +201,7 @@ function New-TemporaryLaunchSpec {
     param(
         [string]$PythonPath,
         [string]$EntryPath,
+        [string]$WorkingDirectory,
         [string]$TargetHost,
         [int]$TargetPort
     )
@@ -198,10 +215,23 @@ function New-TemporaryLaunchSpec {
             throw "Cannot resolve python executable for launch spec: $PythonPath"
         }
     }
+    $resolvedEntryPath = if ([IO.Path]::IsPathRooted($EntryPath)) {
+        $EntryPath
+    } else {
+        (Resolve-Path $EntryPath -ErrorAction Stop).Path
+    }
+    $resolvedWorkingDirectory = $WorkingDirectory
+    if ([string]::IsNullOrWhiteSpace($resolvedWorkingDirectory)) {
+        $resolvedWorkingDirectory = Split-Path -Parent $resolvedEntryPath
+    }
+    if (-not [IO.Path]::IsPathRooted($resolvedWorkingDirectory)) {
+        $resolvedWorkingDirectory = (Resolve-Path $resolvedWorkingDirectory -ErrorAction Stop).Path
+    }
 
     $payload = @{
         executable = $resolvedPython
-        args       = @("-u", $EntryPath, "--host", $TargetHost, "--port", "$TargetPort")
+        cwd        = $resolvedWorkingDirectory
+        args       = @("-u", $resolvedEntryPath, "--host", $TargetHost, "--port", "$TargetPort")
     }
     $json = $payload | ConvertTo-Json -Depth 3
     [System.IO.File]::WriteAllText($specPath, $json, [System.Text.UTF8Encoding]::new($false))
@@ -340,9 +370,9 @@ function Invoke-UiSmoke {
 
     if ($ExerciseRuntimeActions -and -not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
         $previewPayloadContractFailure = ""
-        if ([string]::IsNullOrWhiteSpace($RuntimeActionProfile)) {
+        if ([string]::IsNullOrWhiteSpace($effectiveRuntimeActionProfile)) {
             $previewPayloadContractFailure = "PreviewPayloadPath requires explicit -RuntimeActionProfile snapshot_render"
-        } elseif ($RuntimeActionProfile -ine "snapshot_render") {
+        } elseif ($effectiveRuntimeActionProfile -ine "snapshot_render") {
             $previewPayloadContractFailure = "PreviewPayloadPath is only allowed with -RuntimeActionProfile snapshot_render"
         }
 
@@ -372,13 +402,19 @@ function Invoke-UiSmoke {
     if (-not [string]::IsNullOrWhiteSpace($ScreenshotPath)) {
         $uiArgs += @("--screenshot-path", $ScreenshotPath)
     }
+    if (-not [string]::IsNullOrWhiteSpace($ScreenshotDir)) {
+        $uiArgs += @("--screenshot-dir", $ScreenshotDir)
+    }
     if ($ExerciseRuntimeActions) {
         $uiArgs += "--exercise-runtime-actions"
         if (-not [string]::IsNullOrWhiteSpace($PreviewPayloadPath)) {
             $uiArgs += @("--preview-payload-path", $PreviewPayloadPath)
         }
-        if (-not [string]::IsNullOrWhiteSpace($normalizedRuntimeActionProfile)) {
-            $uiArgs += @("--runtime-action-profile", $normalizedRuntimeActionProfile)
+        if (-not [string]::IsNullOrWhiteSpace($effectiveRuntimeActionProfile)) {
+            $uiArgs += @("--runtime-action-profile", $effectiveRuntimeActionProfile)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($DxfBrowsePath)) {
+            $uiArgs += @("--dxf-browse-path", $DxfBrowsePath)
         }
     }
 
@@ -462,6 +498,7 @@ function Resolve-UiExitCode {
         "backend_starting",
         "backend_ready",
         "tcp_connecting",
+        "runtime_contract_ready",
         "hardware_probing",
         "online_ready"
     )
@@ -482,6 +519,10 @@ function Resolve-UiExitCode {
     }
     if ($Output -notmatch "SUPERVISOR_DIAG .*online_ready=true(\s|$)") {
         Write-Host "[online-smoke] missing SUPERVISOR_DIAG online_ready=true on success path"
+        return $ExitGuiAssertionFailed
+    }
+    if ($Output -notmatch "SUPERVISOR_DIAG .*runtime_contract_verified=true(\s|$)") {
+        Write-Host "[online-smoke] missing SUPERVISOR_DIAG runtime_contract_verified=true on success path"
         return $ExitGuiAssertionFailed
     }
 
@@ -536,11 +577,24 @@ try {
         $injectSource = if ([string]::IsNullOrWhiteSpace($MockCommand)) { $hangingServer } else { $MockCommand }
         $injectEntry = Resolve-MockEntry -Entry $injectSource
         Write-Host "[online-smoke] supervisor injection mode enabled host=$ListenHost port=$actualPort entry=$injectEntry"
-        $launchSpecPath = New-TemporaryLaunchSpec -PythonPath $PythonExe -EntryPath $injectEntry -TargetHost $ListenHost -TargetPort $actualPort
+        $launchSpecPath = New-TemporaryLaunchSpec `
+            -PythonPath $PythonExe `
+            -EntryPath $injectEntry `
+            -WorkingDirectory (Split-Path -Parent $injectEntry) `
+            -TargetHost $ListenHost `
+            -TargetPort $actualPort
         $ownsLaunchSpecPath = $true
         $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
     } else {
         $mockEntry = Resolve-MockEntry -Entry $MockCommand
+        $mockWorkingDirectory = Split-Path -Parent $mockEntry
+        $launchSpecPath = New-TemporaryLaunchSpec `
+            -PythonPath $PythonExe `
+            -EntryPath $mockEntry `
+            -WorkingDirectory $mockWorkingDirectory `
+            -TargetHost $ListenHost `
+            -TargetPort $actualPort
+        $ownsLaunchSpecPath = $true
         $stdoutLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stdout.log" -f [guid]::NewGuid().ToString("N"))
         $stderrLog = Join-Path ([IO.Path]::GetTempPath()) ("siligen-online-smoke-{0}-stderr.log" -f [guid]::NewGuid().ToString("N"))
         $mockArgs = @("-u", $mockEntry, "--host", $ListenHost, "--port", "$actualPort")
@@ -555,6 +609,7 @@ try {
             -PassThru `
             -RedirectStandardOutput $stdoutLog `
             -RedirectStandardError $stderrLog `
+            -WorkingDirectory $mockWorkingDirectory `
             -WindowStyle Hidden
 
         $deadline = (Get-Date).AddMilliseconds($MockStartupTimeoutMs)
@@ -588,7 +643,7 @@ try {
             exit $ExitMockReadyTimeout
         }
 
-        $uiResult = Invoke-UiSmoke -TargetPort $actualPort
+        $uiResult = Invoke-UiSmoke -TargetPort $actualPort -LaunchSpecPath $launchSpecPath
     }
 
     $exitCode = Resolve-UiExitCode -RawExitCode $uiResult.RawExitCode -Output $uiResult.Output

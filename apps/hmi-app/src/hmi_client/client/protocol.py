@@ -1,4 +1,6 @@
 """Command Protocol - High-level API for motion controller commands."""
+from __future__ import annotations
+
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingTypeArgument=false
 import base64
 from dataclasses import dataclass, field
@@ -31,6 +33,24 @@ def _as_list(value: object) -> list[object]:
 
 def _as_string_list(value: object) -> list[str]:
     return [str(item) for item in _as_list(value)]
+
+
+def _parse_runtime_identity_status(value: object) -> RuntimeIdentityStatus | None:
+    payload = _as_dict(value)
+    if not payload:
+        return None
+    executable_path = str(payload.get("executable_path", "") or "").strip()
+    working_directory = str(payload.get("working_directory", "") or "").strip()
+    protocol_version = str(payload.get("protocol_version", "") or "").strip()
+    preview_snapshot_contract = str(payload.get("preview_snapshot_contract", "") or "").strip()
+    if not any((executable_path, working_directory, protocol_version, preview_snapshot_contract)):
+        return None
+    return RuntimeIdentityStatus(
+        executable_path=executable_path,
+        working_directory=working_directory,
+        protocol_version=protocol_version,
+        preview_snapshot_contract=preview_snapshot_contract,
+    )
 
 
 def _resolve_homing_rpc_timeout_s(timeout_ms: int = 0) -> float:
@@ -138,6 +158,14 @@ class ActionCapabilitiesStatus:
 
 
 @dataclass
+class RuntimeIdentityStatus:
+    executable_path: str = ""
+    working_directory: str = ""
+    protocol_version: str = ""
+    preview_snapshot_contract: str = ""
+
+
+@dataclass
 class MachineStatus:
     connected: bool = False
     connection_state: str = "disconnected"
@@ -150,6 +178,7 @@ class MachineStatus:
     safety_boundary: SafetyBoundaryStatus = field(default_factory=SafetyBoundaryStatus)
     action_capabilities: ActionCapabilitiesStatus = field(default_factory=ActionCapabilitiesStatus)
     supervision: SupervisionStatus = field(default_factory=SupervisionStatus)
+    runtime_identity: RuntimeIdentityStatus | None = None
     dispenser_valve_open: bool = False
     supply_valve_open: bool = False
 
@@ -186,6 +215,18 @@ class MachineStatus:
         if axis_name == "Y":
             return bool(self.effective_interlocks.home_boundary_y_active)
         return False
+
+
+@dataclass
+class StatusQueryResult:
+    ok: bool = False
+    status: MachineStatus = field(default_factory=MachineStatus)
+    error_message: str = ""
+    error_code: int | None = None
+
+    @property
+    def runtime_identity(self) -> RuntimeIdentityStatus | None:
+        return self.status.runtime_identity
 
 
 def _resolve_gate_estop_known(io_status: IOStatus, effective_interlocks: EffectiveInterlocks) -> bool:
@@ -446,10 +487,28 @@ class CommandProtocol:
         result = _as_dict(resp.get("result"))
         return result.get("connected", False), result.get("message", "")
 
-    def get_status(self) -> MachineStatus:
-        resp = self._client.send_request("status")
+    def get_status_detailed(self, timeout: float = 5.0) -> StatusQueryResult:
+        resp = self._client.send_request("status", timeout=timeout)
         if "error" in resp:
-            return MachineStatus()
+            error_payload = _as_dict(resp.get("error"))
+            message = str(error_payload.get("message", "") or "Unknown error")
+            code_raw = error_payload.get("code")
+            error_code = None
+            if code_raw is not None:
+                try:
+                    error_code = int(code_raw)
+                except (TypeError, ValueError):
+                    error_code = None
+            return StatusQueryResult(
+                ok=False,
+                error_message=message,
+                error_code=error_code,
+            )
+        if "result" not in resp:
+            return StatusQueryResult(
+                ok=False,
+                error_message="响应缺少 result 字段",
+            )
         result = _as_dict(resp.get("result"))
 
         # Parse IO status
@@ -628,6 +687,7 @@ class CommandProtocol:
             safety_boundary=safety_boundary,
             action_capabilities=action_capabilities,
             supervision=supervision,
+            runtime_identity=_parse_runtime_identity_status(result.get("runtime_identity")),
             dispenser_valve_open=_as_dict(result.get("dispenser")).get("valve_open", False),
             supply_valve_open=_as_dict(result.get("dispenser")).get("supply_open", False),
         )
@@ -641,7 +701,10 @@ class CommandProtocol:
                 homed=bool(axis_data.get("homed", False)),
                 homing_state=str(axis_data.get("homing_state", "unknown")),
             )
-        return status
+        return StatusQueryResult(ok=True, status=status)
+
+    def get_status(self, timeout: float = 5.0) -> MachineStatus:
+        return self.get_status_detailed(timeout=timeout).status
 
     def get_motion_coord_status(self, coord_sys: int = 1) -> MotionCoordStatus:
         resp = self._client.send_request("motion.coord.status", {"coord_sys": int(coord_sys)})

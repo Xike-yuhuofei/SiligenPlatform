@@ -18,6 +18,12 @@
       "recoverable": true,
       "updated_at": "2026-03-26T00:00:00Z"
     },
+    "runtime_identity": {
+      "executable_path": "D:\\Projects\\SiligenSuite\\build\\ca\\bin\\siligen_runtime_gateway.exe",
+      "working_directory": "D:\\Projects\\SiligenSuite\\build\\ca\\bin",
+      "protocol_version": "siligen.application/1.0",
+      "preview_snapshot_contract": "planned_glue_snapshot.glue_points+execution_trajectory_snapshot.polyline"
+    },
     "safety_boundary": {
       "state": "safe",
       "motion_permitted": true,

@@ -1,7 +1,12 @@
 """Thin launch supervision seam over split flow/runtime services."""
 from __future__ import annotations
 
-from .adapters.launch_supervision_ports import BackendController, HardwareProtocolLike, TcpClientLike
+from .adapters.launch_supervision_ports import (
+    BackendController,
+    HardwareProtocolLike,
+    RuntimeStatusProbeLike,
+    TcpClientLike,
+)
 from .contracts.launch_supervision_contract import (
     BackendState,
     FailureCode,
@@ -40,6 +45,7 @@ class SupervisorSession:
         backend: BackendController,
         client: TcpClientLike,
         protocol: HardwareProtocolLike,
+        runtime_probe: RuntimeStatusProbeLike,
         launch_mode: str = "online",
         policy: SupervisorPolicy | None = None,
     ) -> None:
@@ -48,6 +54,7 @@ class SupervisorSession:
             backend=backend,
             client=client,
             protocol=protocol,
+            runtime_probe=runtime_probe,
             policy=policy if policy is not None else SupervisorPolicy(
                 backend_ready_timeout_s=self.BACKEND_READY_TIMEOUT,
                 tcp_connect_timeout_s=self.TCP_CONNECT_TIMEOUT,
@@ -183,6 +190,7 @@ class SupervisorSession:
 __all__ = [
     "BackendController",
     "HardwareProtocolLike",
+    "RuntimeStatusProbeLike",
     "SupervisorPolicy",
     "SupervisorSession",
     "TcpClientLike",

@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from bootstrap import ensure_hmi_application_test_paths
 
@@ -7,10 +8,20 @@ ensure_hmi_application_test_paths()
 from hmi_application.adapters.qt_workers import RecoveryWorker as ReexportRecoveryWorker
 from hmi_application.adapters.qt_workers import StartupWorker as ReexportStartupWorker
 from hmi_application.adapters.startup_qt_workers import RecoveryWorker, StartupWorker
-from hmi_application.contracts.launch_supervision_contract import SessionSnapshot, snapshot_timestamp
+from hmi_application.contracts.launch_supervision_contract import RuntimeIdentity, SessionSnapshot, snapshot_timestamp
+
+
+EXPECTED_RUNTIME_IDENTITY = RuntimeIdentity(
+    executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+    working_directory="C:\\runtime",
+)
 
 
 class _FakeBackend:
+    def __init__(self) -> None:
+        self.exe_path = EXPECTED_RUNTIME_IDENTITY.executable_path
+        self.working_directory = EXPECTED_RUNTIME_IDENTITY.working_directory
+
     def start(self):
         return True, "started"
 
@@ -39,6 +50,19 @@ class _FakeProtocol:
     def connect_hardware(self, card_ip: str = "", local_ip: str = "", timeout: float = 15.0):
         return self.hardware_result
 
+    def get_status_detailed(self, timeout: float = 5.0):
+        return SimpleNamespace(
+            ok=True,
+            status=SimpleNamespace(
+                runtime_identity=SimpleNamespace(
+                    executable_path=EXPECTED_RUNTIME_IDENTITY.executable_path,
+                    working_directory=EXPECTED_RUNTIME_IDENTITY.working_directory,
+                    protocol_version=EXPECTED_RUNTIME_IDENTITY.protocol_version,
+                    preview_snapshot_contract=EXPECTED_RUNTIME_IDENTITY.preview_snapshot_contract,
+                )
+            ),
+        )
+
 
 class StartupQtWorkersTest(unittest.TestCase):
     def test_qt_workers_module_reexports_split_startup_workers(self) -> None:
@@ -46,10 +70,12 @@ class StartupQtWorkersTest(unittest.TestCase):
         self.assertIs(ReexportRecoveryWorker, RecoveryWorker)
 
     def test_startup_worker_emits_launch_result(self) -> None:
+        protocol = _FakeProtocol(hardware_result=(True, "ready"))
         worker = StartupWorker(
             backend=_FakeBackend(),
             client=_FakeClient(connect_result=True),
-            protocol=_FakeProtocol(hardware_result=(True, "ready")),
+            protocol=protocol,
+            runtime_probe=protocol,
             launch_mode="online",
         )
         finished = []
@@ -62,6 +88,7 @@ class StartupQtWorkersTest(unittest.TestCase):
         self.assertTrue(finished[0].online_ready)
 
     def test_recovery_worker_emits_recovery_result(self) -> None:
+        protocol = _FakeProtocol(hardware_result=(True, "ready"))
         worker = RecoveryWorker(
             action="retry_stage",
             recovery_snapshot=SessionSnapshot(
@@ -78,7 +105,8 @@ class StartupQtWorkersTest(unittest.TestCase):
             ),
             backend=_FakeBackend(),
             client=_FakeClient(connect_result=True),
-            protocol=_FakeProtocol(hardware_result=(True, "ready")),
+            protocol=protocol,
+            runtime_probe=protocol,
         )
         finished = []
         worker.finished.connect(lambda result: finished.append(result))

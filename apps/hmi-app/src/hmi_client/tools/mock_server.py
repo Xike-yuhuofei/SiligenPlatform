@@ -7,6 +7,7 @@ import configparser
 import hashlib
 import json
 import math
+import os
 import socketserver
 import sys
 import threading
@@ -21,6 +22,10 @@ if str(TEST_KIT_SRC) not in sys.path:
     sys.path.insert(0, str(TEST_KIT_SRC))
 
 from test_kit.preview_snapshot_fixture import build_preview_snapshot_success_result
+from hmi_application.contracts.launch_supervision_contract import (
+    PREVIEW_SNAPSHOT_CONTRACT,
+    RUNTIME_PROTOCOL_VERSION,
+)
 
 
 @dataclass
@@ -587,6 +592,12 @@ class MockState:
                     "result": {
                         "connected": self.hardware_connected,
                         "connection_state": "connected" if self.hardware_connected else "disconnected",
+                        "runtime_identity": {
+                            "executable_path": sys.executable,
+                            "working_directory": os.getcwd(),
+                            "protocol_version": RUNTIME_PROTOCOL_VERSION,
+                            "preview_snapshot_contract": PREVIEW_SNAPSHOT_CONTRACT,
+                        },
                         "supervision": supervision,
                         "interlock_latched": bool(self.io.estop or self.io.door),
                         "job_execution": {

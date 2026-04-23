@@ -222,6 +222,12 @@ TEST(RuntimeStatusExportPortTest, ConnectedSnapshotIncludesAuthorityAndOptionalE
     EXPECT_EQ(snapshot.device_mode, "production");
     EXPECT_EQ(snapshot.machine_state, "Running");
     EXPECT_EQ(snapshot.machine_state_reason, "executing");
+    EXPECT_FALSE(snapshot.runtime_identity.executable_path.empty());
+    EXPECT_FALSE(snapshot.runtime_identity.working_directory.empty());
+    EXPECT_EQ(snapshot.runtime_identity.protocol_version, "siligen.application/1.0");
+    EXPECT_EQ(
+        snapshot.runtime_identity.preview_snapshot_contract,
+        "planned_glue_snapshot.glue_points+execution_trajectory_snapshot.polyline");
     EXPECT_TRUE(snapshot.interlock_latched);
     EXPECT_EQ(snapshot.supervision.current_state, "Running");
     EXPECT_EQ(snapshot.supervision.state_reason, "executing");
@@ -266,25 +272,32 @@ TEST(RuntimeStatusExportPortTest, DisconnectedSnapshotSkipsMotionReadsAndReturns
     auto result = port.ReadSnapshot();
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
-    EXPECT_FALSE(result.Value().connected);
-    EXPECT_EQ(result.Value().connection_state, "degraded");
-    EXPECT_EQ(result.Value().device_mode, "production");
-    EXPECT_EQ(result.Value().machine_state, "Unknown");
-    EXPECT_EQ(result.Value().machine_state_reason, "unknown");
-    EXPECT_TRUE(result.Value().axes.empty());
-    EXPECT_FALSE(result.Value().has_position);
-    EXPECT_EQ(result.Value().job_execution.state, "idle");
-    EXPECT_EQ(result.Value().safety_boundary.state, "unknown");
-    EXPECT_FALSE(result.Value().safety_boundary.motion_permitted);
-    EXPECT_FALSE(result.Value().safety_boundary.process_output_permitted);
-    EXPECT_FALSE(result.Value().action_capabilities.motion_commands_permitted);
-    EXPECT_FALSE(result.Value().action_capabilities.manual_output_commands_permitted);
-    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_pause_permitted);
-    EXPECT_FALSE(result.Value().action_capabilities.manual_dispenser_resume_permitted);
-    EXPECT_FALSE(result.Value().action_capabilities.active_job_present);
-    EXPECT_FALSE(result.Value().action_capabilities.estop_reset_permitted);
+    const auto& snapshot = result.Value();
+    EXPECT_FALSE(snapshot.connected);
+    EXPECT_EQ(snapshot.connection_state, "degraded");
+    EXPECT_EQ(snapshot.device_mode, "production");
+    EXPECT_EQ(snapshot.machine_state, "Unknown");
+    EXPECT_EQ(snapshot.machine_state_reason, "unknown");
+    EXPECT_FALSE(snapshot.runtime_identity.executable_path.empty());
+    EXPECT_FALSE(snapshot.runtime_identity.working_directory.empty());
+    EXPECT_EQ(snapshot.runtime_identity.protocol_version, "siligen.application/1.0");
     EXPECT_EQ(
-        result.Value().safety_boundary.blocking_reasons,
+        snapshot.runtime_identity.preview_snapshot_contract,
+        "planned_glue_snapshot.glue_points+execution_trajectory_snapshot.polyline");
+    EXPECT_TRUE(snapshot.axes.empty());
+    EXPECT_FALSE(snapshot.has_position);
+    EXPECT_EQ(snapshot.job_execution.state, "idle");
+    EXPECT_EQ(snapshot.safety_boundary.state, "unknown");
+    EXPECT_FALSE(snapshot.safety_boundary.motion_permitted);
+    EXPECT_FALSE(snapshot.safety_boundary.process_output_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.motion_commands_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.manual_output_commands_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.manual_dispenser_pause_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.manual_dispenser_resume_permitted);
+    EXPECT_FALSE(snapshot.action_capabilities.active_job_present);
+    EXPECT_FALSE(snapshot.action_capabilities.estop_reset_permitted);
+    EXPECT_EQ(
+        snapshot.safety_boundary.blocking_reasons,
         std::vector<std::string>({"estop_unknown", "door_unknown"}));
     EXPECT_EQ(motion_reader_state->all_status_reads, 0);
     EXPECT_EQ(motion_reader_state->current_position_reads, 0);

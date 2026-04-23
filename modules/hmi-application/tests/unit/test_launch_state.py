@@ -16,6 +16,7 @@ from hmi_application.contracts.launch_supervision_contract import (
     FailureStage,
     HardwareState,
     LaunchMode,
+    RuntimeIdentity,
     SessionSnapshot,
     SessionStageEvent,
     SessionState,
@@ -23,6 +24,12 @@ from hmi_application.contracts.launch_supervision_contract import (
     snapshot_timestamp,
 )
 from hmi_application.startup import launch_result_from_snapshot
+
+
+RUNTIME_IDENTITY = RuntimeIdentity(
+    executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+    working_directory="C:\\runtime",
+)
 
 
 def _snapshot(
@@ -36,7 +43,13 @@ def _snapshot(
     failure_stage=None,
     recoverable: bool = True,
     last_error_message: str | None = "System ready",
+    runtime_contract_verified: bool | None = None,
+    runtime_identity: RuntimeIdentity | None = None,
 ) -> SessionSnapshot:
+    if runtime_contract_verified is None:
+        runtime_contract_verified = mode == "online" and session_state == "ready"
+    if runtime_identity is None and runtime_contract_verified:
+        runtime_identity = RUNTIME_IDENTITY
     return SessionSnapshot(
         mode=mode,
         session_state=session_state,
@@ -48,6 +61,8 @@ def _snapshot(
         recoverable=recoverable,
         last_error_message=last_error_message,
         updated_at=snapshot_timestamp(),
+        runtime_contract_verified=runtime_contract_verified,
+        runtime_identity=runtime_identity,
     )
 
 
@@ -259,6 +274,8 @@ class LaunchStateOwnerTest(unittest.TestCase):
             failure_stage="hardware_ready",
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",
+            runtime_contract_verified=True,
+            runtime_identity=RUNTIME_IDENTITY,
         )
         launch_result = launch_result_from_snapshot("online", failed_snapshot)
 

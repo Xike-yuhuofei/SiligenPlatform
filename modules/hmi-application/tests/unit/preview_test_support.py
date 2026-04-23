@@ -148,12 +148,15 @@ class WorkerFakeProtocol:
         self,
         plan_id: str,
         max_polyline_points: int = 4000,
+        max_glue_points: int = 5000,
         timeout: float = 15.0,
     ) -> tuple:
-        type(self).calls.append(("dxf.preview.snapshot", plan_id, max_polyline_points, timeout))
+        type(self).calls.append(
+            ("dxf.preview.snapshot", plan_id, max_polyline_points, max_glue_points, timeout)
+        )
         payload = build_preview_snapshot_success_result(
             snapshot_id="snapshot-1",
-            snapshot_hash="hash-1",
+            snapshot_hash="fp-1",
             plan_id=plan_id,
             segment_count=2,
             glue_points=[{"x": 0.0, "y": 0.0}, {"x": 6.0, "y": 0.0}],

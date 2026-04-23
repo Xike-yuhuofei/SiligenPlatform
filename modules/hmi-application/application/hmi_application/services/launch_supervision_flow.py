@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import os
 from typing import cast
 from uuid import uuid4
 
-from ..adapters.launch_supervision_ports import BackendController, BackendManagerBasic, HardwareProtocolLike, TcpClientLike
+from ..adapters.launch_supervision_ports import (
+    BackendController,
+    BackendManagerBasic,
+    HardwareProtocolLike,
+    RuntimeStatusProbeLike,
+    TcpClientLike,
+)
 from ..contracts.launch_supervision_contract import (
     BackendState,
     FailureCode,
     FailureStage,
     HardwareState,
     RecoveryAction,
+    RuntimeIdentity,
     SessionSnapshot,
     SessionStageEvent,
     StageEventType,
@@ -25,12 +33,67 @@ from ..domain.launch_supervision_types import (
     HARDWARE_READY_STAGE,
     ONLINE_READY_STAGE,
     ProgressCallback,
+    RUNTIME_CONTRACT_READY_STAGE,
     SnapshotCallback,
     StepResult,
     SupervisorPolicy,
     TCP_CONNECTING_STAGE,
     TCP_READY_STAGE,
 )
+
+
+def _normalize_identity_path(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return os.path.normcase(os.path.normpath(text))
+
+
+def _coerce_runtime_identity(candidate: object | None) -> RuntimeIdentity | None:
+    if candidate is None:
+        return None
+    executable_path = str(getattr(candidate, "executable_path", "") or "").strip()
+    working_directory = str(getattr(candidate, "working_directory", "") or "").strip()
+    protocol_version = str(getattr(candidate, "protocol_version", "") or "").strip()
+    preview_snapshot_contract = str(getattr(candidate, "preview_snapshot_contract", "") or "").strip()
+    if not any((executable_path, working_directory, protocol_version, preview_snapshot_contract)):
+        return None
+    identity = RuntimeIdentity(
+        executable_path=executable_path,
+        working_directory=working_directory,
+        protocol_version=protocol_version,
+        preview_snapshot_contract=preview_snapshot_contract,
+    )
+    if not identity.is_complete():
+        return None
+    return identity
+
+
+def _compare_runtime_identity(actual: RuntimeIdentity | None, expected: RuntimeIdentity) -> str | None:
+    if actual is None:
+        return "status.runtime_identity is missing"
+
+    mismatches: list[str] = []
+    if _normalize_identity_path(actual.executable_path) != _normalize_identity_path(expected.executable_path):
+        mismatches.append(
+            f"executable_path expected={expected.executable_path} actual={actual.executable_path}"
+        )
+    if _normalize_identity_path(actual.working_directory) != _normalize_identity_path(expected.working_directory):
+        mismatches.append(
+            f"working_directory expected={expected.working_directory} actual={actual.working_directory}"
+        )
+    if actual.protocol_version != expected.protocol_version:
+        mismatches.append(
+            f"protocol_version expected={expected.protocol_version} actual={actual.protocol_version}"
+        )
+    if actual.preview_snapshot_contract != expected.preview_snapshot_contract:
+        mismatches.append(
+            "preview_snapshot_contract "
+            f"expected={expected.preview_snapshot_contract} actual={actual.preview_snapshot_contract}"
+        )
+    if mismatches:
+        return "; ".join(mismatches)
+    return None
 
 
 class LaunchSupervisionFlow:
@@ -40,11 +103,13 @@ class LaunchSupervisionFlow:
         backend: BackendController,
         client: TcpClientLike,
         protocol: HardwareProtocolLike,
+        runtime_probe: RuntimeStatusProbeLike,
         policy: SupervisorPolicy,
     ) -> None:
         self._backend = backend
         self._client = client
         self._protocol = protocol
+        self._runtime_probe = runtime_probe
         self._policy = policy
         self._active_session_id: str | None = None
         self._last_snapshot: SessionSnapshot | None = None
@@ -174,9 +239,14 @@ class LaunchSupervisionFlow:
                 event_callback=event_callback,
                 session_id=session_id,
             )
-        if stage in (HARDWARE_PROBING_STAGE, HARDWARE_READY_STAGE, ONLINE_READY_STAGE):
+        if stage in (
+            RUNTIME_CONTRACT_READY_STAGE,
+            HARDWARE_PROBING_STAGE,
+            HARDWARE_READY_STAGE,
+            ONLINE_READY_STAGE,
+        ):
             return self._run_online_flow(
-                start_stage=HARDWARE_PROBING_STAGE,
+                start_stage=RUNTIME_CONTRACT_READY_STAGE,
                 progress_callback=progress_callback,
                 snapshot_callback=snapshot_callback,
                 event_callback=event_callback,
@@ -246,6 +316,8 @@ class LaunchSupervisionFlow:
             recoverable=True,
             last_error_message="Stopping session...",
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=snapshot.runtime_contract_verified,
+            runtime_identity=snapshot.runtime_identity,
         )
         self._emit_snapshot(stopping, snapshot_callback)
 
@@ -262,6 +334,8 @@ class LaunchSupervisionFlow:
             recoverable=True,
             last_error_message="Session stopped.",
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=False,
+            runtime_identity=None,
         )
         return self._emit_snapshot(idle, snapshot_callback)
 
@@ -275,6 +349,8 @@ class LaunchSupervisionFlow:
         session_id: str,
     ) -> SessionSnapshot:
         states = _initial_states_for(start_stage)
+        runtime_contract_verified = False
+        runtime_identity: RuntimeIdentity | None = None
 
         if start_stage == BACKEND_STARTING_STAGE:
             self._emit_stage_event(event_callback, session_id, "stage_entered", BACKEND_STARTING_STAGE)
@@ -296,6 +372,8 @@ class LaunchSupervisionFlow:
                     backend_state="failed",
                     tcp_state="disconnected",
                     hardware_state="unavailable",
+                    runtime_contract_verified=runtime_contract_verified,
+                    runtime_identity=runtime_identity,
                     snapshot_callback=snapshot_callback,
                     event_callback=event_callback,
                     session_id=session_id,
@@ -323,6 +401,8 @@ class LaunchSupervisionFlow:
                     backend_state="failed",
                     tcp_state="disconnected",
                     hardware_state="unavailable",
+                    runtime_contract_verified=runtime_contract_verified,
+                    runtime_identity=runtime_identity,
                     snapshot_callback=snapshot_callback,
                     event_callback=event_callback,
                     session_id=session_id,
@@ -351,6 +431,8 @@ class LaunchSupervisionFlow:
                     backend_state="ready",
                     tcp_state="failed",
                     hardware_state="unavailable",
+                    runtime_contract_verified=runtime_contract_verified,
+                    runtime_identity=runtime_identity,
                     snapshot_callback=snapshot_callback,
                     event_callback=event_callback,
                     session_id=session_id,
@@ -371,6 +453,8 @@ class LaunchSupervisionFlow:
                     backend_state="ready",
                     tcp_state="failed",
                     hardware_state="unavailable",
+                    runtime_contract_verified=runtime_contract_verified,
+                    runtime_identity=runtime_identity,
                     snapshot_callback=snapshot_callback,
                     event_callback=event_callback,
                     session_id=session_id,
@@ -382,18 +466,59 @@ class LaunchSupervisionFlow:
             BACKEND_READY_STAGE,
             TCP_CONNECTING_STAGE,
             TCP_READY_STAGE,
+            RUNTIME_CONTRACT_READY_STAGE,
+        ):
+            self._emit_stage_event(event_callback, session_id, "stage_entered", RUNTIME_CONTRACT_READY_STAGE)
+            self._emit_progress(progress_callback, "Verifying runtime contract...", 70)
+            self._emit_starting_snapshot(
+                snapshot_callback=snapshot_callback,
+                message="Verifying runtime contract...",
+                backend_state="ready",
+                tcp_state="ready",
+                hardware_state="unavailable",
+                runtime_contract_verified=False,
+                runtime_identity=None,
+            )
+            runtime_res, actual_runtime_identity = self._runtime_contract_ready()
+            runtime_identity = actual_runtime_identity
+            if not runtime_res.ok:
+                return self._failed(
+                    stage=RUNTIME_CONTRACT_READY_STAGE,
+                    code=runtime_res.failure_code,
+                    message=runtime_res.message,
+                    recoverable=runtime_res.recoverable,
+                    backend_state="ready",
+                    tcp_state="ready",
+                    hardware_state="unavailable",
+                    runtime_contract_verified=False,
+                    runtime_identity=runtime_identity,
+                    snapshot_callback=snapshot_callback,
+                    event_callback=event_callback,
+                    session_id=session_id,
+                )
+            runtime_contract_verified = True
+            self._emit_stage_event(event_callback, session_id, "stage_succeeded", RUNTIME_CONTRACT_READY_STAGE)
+
+        if start_stage in (
+            BACKEND_STARTING_STAGE,
+            BACKEND_READY_STAGE,
+            TCP_CONNECTING_STAGE,
+            TCP_READY_STAGE,
+            RUNTIME_CONTRACT_READY_STAGE,
             HARDWARE_PROBING_STAGE,
             HARDWARE_READY_STAGE,
             ONLINE_READY_STAGE,
         ):
             self._emit_stage_event(event_callback, session_id, "stage_entered", HARDWARE_PROBING_STAGE)
-            self._emit_progress(progress_callback, "Initializing hardware...", 70)
+            self._emit_progress(progress_callback, "Initializing hardware...", 80)
             self._emit_starting_snapshot(
                 snapshot_callback=snapshot_callback,
                 message="Initializing hardware...",
                 backend_state="ready",
                 tcp_state="ready",
                 hardware_state="probing",
+                runtime_contract_verified=runtime_contract_verified,
+                runtime_identity=runtime_identity,
             )
             hw_res = self._hardware_connect()
             if not hw_res.ok:
@@ -405,6 +530,8 @@ class LaunchSupervisionFlow:
                     backend_state="ready",
                     tcp_state="ready",
                     hardware_state="failed",
+                    runtime_contract_verified=runtime_contract_verified,
+                    runtime_identity=runtime_identity,
                     snapshot_callback=snapshot_callback,
                     event_callback=event_callback,
                     session_id=session_id,
@@ -417,6 +544,8 @@ class LaunchSupervisionFlow:
                 backend_state="ready",
                 tcp_state="ready",
                 hardware_state="ready",
+                runtime_contract_verified=runtime_contract_verified,
+                runtime_identity=runtime_identity,
             )
             self._emit_stage_event(event_callback, session_id, "stage_succeeded", HARDWARE_READY_STAGE)
 
@@ -433,6 +562,8 @@ class LaunchSupervisionFlow:
             recoverable=True,
             last_error_message="System ready",
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=runtime_contract_verified,
+            runtime_identity=runtime_identity,
         )
         if not is_online_ready(ready_snapshot):
             return self._failed(
@@ -443,6 +574,8 @@ class LaunchSupervisionFlow:
                 backend_state=ready_snapshot.backend_state,
                 tcp_state=ready_snapshot.tcp_state,
                 hardware_state=ready_snapshot.hardware_state,
+                runtime_contract_verified=ready_snapshot.runtime_contract_verified,
+                runtime_identity=ready_snapshot.runtime_identity,
                 snapshot_callback=snapshot_callback,
                 event_callback=event_callback,
                 session_id=session_id,
@@ -473,6 +606,8 @@ class LaunchSupervisionFlow:
         backend_state: BackendState,
         tcp_state: TcpState,
         hardware_state: HardwareState,
+        runtime_contract_verified: bool = False,
+        runtime_identity: RuntimeIdentity | None = None,
     ) -> SessionSnapshot:
         return self._emit_snapshot(
             SessionSnapshot(
@@ -486,6 +621,8 @@ class LaunchSupervisionFlow:
                 recoverable=True,
                 last_error_message=message,
                 updated_at=snapshot_timestamp(),
+                runtime_contract_verified=runtime_contract_verified,
+                runtime_identity=runtime_identity,
             ),
             snapshot_callback,
         )
@@ -524,6 +661,8 @@ class LaunchSupervisionFlow:
         backend_state: BackendState,
         tcp_state: TcpState,
         hardware_state: HardwareState,
+        runtime_contract_verified: bool,
+        runtime_identity: RuntimeIdentity | None,
         snapshot_callback: SnapshotCallback | None,
         event_callback: EventCallback | None,
         session_id: str,
@@ -540,6 +679,8 @@ class LaunchSupervisionFlow:
             recoverable=recoverable,
             last_error_message=message,
             updated_at=snapshot_timestamp(),
+            runtime_contract_verified=runtime_contract_verified,
+            runtime_identity=runtime_identity,
         )
         self._emit_stage_event(
             event_callback=event_callback,
@@ -625,6 +766,79 @@ class LaunchSupervisionFlow:
             recoverable=True,
         )
 
+    def _resolve_expected_runtime_identity(self) -> tuple[RuntimeIdentity | None, str | None]:
+        executable_path = str(getattr(self._backend, "exe_path", "") or "").strip()
+        working_directory = str(getattr(self._backend, "working_directory", "") or "").strip()
+        if not executable_path:
+            return None, "Local launch contract missing expected executable_path"
+        if not working_directory:
+            return None, "Local launch contract missing expected working_directory"
+        return (
+            RuntimeIdentity(
+                executable_path=executable_path,
+                working_directory=working_directory,
+            ),
+            None,
+        )
+
+    def _runtime_contract_ready(self) -> tuple[StepResult, RuntimeIdentity | None]:
+        get_status_detailed = getattr(self._runtime_probe, "get_status_detailed", None)
+        if not callable(get_status_detailed):
+            return (
+                StepResult(
+                    ok=False,
+                    message="Runtime status probe unavailable",
+                    failure_code="SUP_RUNTIME_STATUS_FAILED",
+                    recoverable=True,
+                ),
+                None,
+            )
+
+        try:
+            status_result = get_status_detailed(timeout=5.0)
+        except TypeError:
+            status_result = get_status_detailed()
+
+        if not bool(getattr(status_result, "ok", False)):
+            message = str(getattr(status_result, "error_message", "") or "status query failed")
+            return (
+                StepResult(
+                    ok=False,
+                    message=message,
+                    failure_code="SUP_RUNTIME_STATUS_FAILED",
+                    recoverable=True,
+                ),
+                None,
+            )
+
+        status = getattr(status_result, "status", None)
+        actual_runtime_identity = _coerce_runtime_identity(getattr(status, "runtime_identity", None))
+        expected_runtime_identity, contract_error = self._resolve_expected_runtime_identity()
+        if expected_runtime_identity is None:
+            return (
+                StepResult(
+                    ok=False,
+                    message=contract_error or "Local launch contract unavailable",
+                    failure_code="SUP_RUNTIME_CONTRACT_MISMATCH",
+                    recoverable=True,
+                ),
+                actual_runtime_identity,
+            )
+
+        mismatch = _compare_runtime_identity(actual_runtime_identity, expected_runtime_identity)
+        if mismatch is not None:
+            return (
+                StepResult(
+                    ok=False,
+                    message=f"Runtime contract mismatch: {mismatch}",
+                    failure_code="SUP_RUNTIME_CONTRACT_MISMATCH",
+                    recoverable=True,
+                ),
+                actual_runtime_identity,
+            )
+
+        return StepResult(ok=True, message="Runtime contract verified"), actual_runtime_identity
+
 
 def _assert_recovery_allowed(action: RecoveryAction, snapshot: SessionSnapshot) -> None:
     if snapshot.mode != "online":
@@ -652,12 +866,18 @@ def _initial_states_for(start_stage: str) -> dict[str, str]:
     if start_stage in (
         TCP_CONNECTING_STAGE,
         TCP_READY_STAGE,
+        RUNTIME_CONTRACT_READY_STAGE,
         HARDWARE_PROBING_STAGE,
         HARDWARE_READY_STAGE,
         ONLINE_READY_STAGE,
     ):
         states["backend_state"] = "ready"
-    if start_stage in (HARDWARE_PROBING_STAGE, HARDWARE_READY_STAGE, ONLINE_READY_STAGE):
+    if start_stage in (
+        RUNTIME_CONTRACT_READY_STAGE,
+        HARDWARE_PROBING_STAGE,
+        HARDWARE_READY_STAGE,
+        ONLINE_READY_STAGE,
+    ):
         states["tcp_state"] = "ready"
     if start_stage == ONLINE_READY_STAGE:
         states["hardware_state"] = "ready"

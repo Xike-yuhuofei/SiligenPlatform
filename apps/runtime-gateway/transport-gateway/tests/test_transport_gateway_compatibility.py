@@ -420,16 +420,22 @@ def test_status_dispatcher_only_serializes_authority_status_fields():
     assert "BuildRawIoJson(status_snapshot)" in source
     assert "BuildEffectiveInterlocksJson(status_snapshot)" in source
     assert "BuildSupervisionJson(status_snapshot)" in source
+    assert "BuildRuntimeIdentityJson(status_snapshot)" in source
     assert "BuildJobExecutionJson(status_snapshot)" in source
     assert "BuildCompatMachineState(" not in source
     assert '{"machine_state", status_snapshot.machine_state}' in source
     assert '{"machine_state_reason", status_snapshot.machine_state_reason}' in source
     assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
     assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
+    assert "RuntimeIdentityExportSnapshot BuildRuntimeIdentitySnapshot()" in status_source
+    assert "snapshot.runtime_identity = BuildRuntimeIdentitySnapshot();" in status_source
+    assert 'snapshot.protocol_version = kRuntimeProtocolVersion;' in status_source
+    assert 'snapshot.preview_snapshot_contract = kPreviewSnapshotContract;' in status_source
     assert "snapshot.dispenser.completedCount = dispenser.completedCount;" in status_source
     assert "snapshot.dispenser.totalCount = dispenser.totalCount;" in status_source
     assert "snapshot.dispenser.progress = dispenser.progress;" in status_source
     assert '{"supervision", supervisionJson}' in source
+    assert '{"runtime_identity", runtimeIdentityJson}' in source
     assert '{"effective_interlocks", effectiveInterlocksJson}' in source
     assert '{"job_execution", jobExecutionJson}' in source
     assert '{"execution_budget_s", snapshot.job_execution.execution_budget_s}' in source
@@ -438,6 +444,10 @@ def test_status_dispatcher_only_serializes_authority_status_fields():
     assert '{"completedCount", snapshot.dispenser.completedCount}' in source
     assert '{"totalCount", snapshot.dispenser.totalCount}' in source
     assert '{"progress", snapshot.dispenser.progress}' in source
+    assert '{"executable_path", snapshot.runtime_identity.executable_path}' in source
+    assert '{"working_directory", snapshot.runtime_identity.working_directory}' in source
+    assert '{"protocol_version", snapshot.runtime_identity.protocol_version}' in source
+    assert '{"preview_snapshot_contract", snapshot.runtime_identity.preview_snapshot_contract}' in source
 
 
 def test_manual_dispenser_pause_resume_do_not_stop_dxf_job_implicitly():
