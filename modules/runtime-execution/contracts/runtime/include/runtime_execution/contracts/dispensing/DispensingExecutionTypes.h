@@ -6,21 +6,74 @@
 #include "runtime_execution/contracts/dispensing/JobExecutionMode.h"
 #include "runtime_execution/contracts/dispensing/ProcessOutputPolicy.h"
 #include "runtime_execution/contracts/machine/MachineMode.h"
+#include "shared/types/Point.h"
 #include "shared/types/Error.h"
 #include "shared/types/Result.h"
 #include "shared/types/Types.h"
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace Siligen::Domain::Dispensing::ValueObjects {
 
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
+using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::Result;
 using Siligen::Shared::Types::float32;
 using Siligen::Shared::Types::int32;
 using Siligen::Shared::Types::uint32;
+
+struct ProfileCompareExpectedTraceItem {
+    uint32 cycle_index = 1U;
+    uint32 trigger_sequence_id = 0U;
+    uint32 authority_trigger_index = 0U;
+    uint32 span_index = 0U;
+    uint32 component_index = 0U;
+    uint32 span_order_index = 0U;
+    uint32 source_segment_index = 0U;
+    uint32 execution_interpolation_index = 0U;
+    float32 authority_distance_mm = 0.0f;
+    float32 execution_profile_position_mm = 0.0f;
+    Point2D execution_position_mm{};
+    Point2D execution_trigger_position_mm{};
+    short compare_source_axis = 0;
+    long compare_position_pulse = 0L;
+    uint32 pulse_width_us = 0U;
+    std::string authority_trigger_ref;
+    std::string authority_span_ref;
+    std::string trigger_mode;
+};
+
+struct ProfileCompareActualTraceItem {
+    uint32 cycle_index = 1U;
+    uint32 trigger_sequence_id = 0U;
+    uint32 completion_sequence = 0U;
+    uint32 span_index = 0U;
+    uint32 local_completed_trigger_count = 0U;
+    uint32 observed_completed_trigger_count = 0U;
+    short compare_source_axis = 0;
+    long compare_position_pulse = 0L;
+    std::string authority_trigger_ref;
+    std::string trigger_mode;
+};
+
+struct ProfileCompareTraceabilityMismatch {
+    uint32 cycle_index = 1U;
+    uint32 trigger_sequence_id = 0U;
+    std::string code;
+    std::string message;
+};
+
+struct ProfileCompareExpectedTrace {
+    std::vector<ProfileCompareExpectedTraceItem> items;
+
+    [[nodiscard]] bool Empty() const noexcept {
+        return items.empty();
+    }
+};
 
 struct DispensingRuntimeOverrides {
     bool dry_run = false;
@@ -139,11 +192,17 @@ struct DispensingExecutionOptions {
     GuardDecision guard_decision{};
     std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
         profile_compare_schedule;
+    std::shared_ptr<const ProfileCompareExpectedTrace> expected_trace;
 };
 
 struct DispensingExecutionReport {
     uint32 executed_segments = 0;
     float32 total_distance = 0.0f;
+    std::vector<ProfileCompareActualTraceItem> actual_trace;
+    std::vector<ProfileCompareTraceabilityMismatch> traceability_mismatches;
+    std::string traceability_verdict = "failed";
+    std::string traceability_verdict_reason;
+    bool strict_one_to_one_proven = false;
 };
 
 }  // namespace Siligen::Domain::Dispensing::ValueObjects

@@ -265,6 +265,8 @@ class DispensingWorkflowUseCase {
         std::shared_ptr<Domain::Dispensing::Contracts::ExecutionPackageValidated> execution_package;
         std::shared_ptr<const Siligen::RuntimeExecution::Contracts::Dispensing::ProfileCompareExecutionSchedule>
             profile_compare_schedule;
+        std::shared_ptr<const Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace>
+            expected_trace;
         PreparePlanRuntimeOverrides runtime_overrides;
     };
 
@@ -440,6 +442,8 @@ class DispensingWorkflowUseCase {
     std::string ResolveProductionGateFailure(const PlanRecord& plan_record) const;
     void RefreshProfileCompareSchedule(PlanRecord& plan_record) const;
     Siligen::Shared::Types::Result<void> MaterializeProfileCompareSchedule(PlanRecord& plan_record) const;
+    Siligen::Shared::Types::Result<std::shared_ptr<const Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace>>
+    BuildExpectedTrace(const PlanRecord& plan_record) const;
     void RefreshPlanImportDiagnostics(PlanRecord& plan_record) const;
     std::optional<Siligen::Shared::Types::Error> BuildPreviewGateError(
         PlanRecord& plan_record,

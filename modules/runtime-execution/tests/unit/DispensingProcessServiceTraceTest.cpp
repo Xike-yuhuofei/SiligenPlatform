@@ -22,6 +22,8 @@ using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionOptions;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionPlan;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingExecutionReport;
 using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
+using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareProgramSpan;
 using Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode;
 using Siligen::Domain::Motion::Ports::CoordinateSystemConfig;
@@ -920,6 +922,39 @@ Result<ProfileCompareExecutionSchedule> CompileProfileCompareScheduleForTest(
     return CompileProfileCompareExecutionSchedule(input);
 }
 
+std::shared_ptr<const ProfileCompareExpectedTrace> BuildExpectedTraceForTest(
+    const DispensingExecutionPlan& plan,
+    const ProfileCompareExecutionSchedule& schedule) {
+    auto trace = std::make_shared<ProfileCompareExpectedTrace>();
+    trace->items.reserve(plan.profile_compare_program.trigger_points.size());
+
+    for (const auto& span : schedule.spans) {
+        const auto future_compare_offset = span.trigger_begin_index + span.start_boundary_trigger_count;
+        for (uint32 trigger_index = span.trigger_begin_index; trigger_index <= span.trigger_end_index; ++trigger_index) {
+            const auto& trigger = plan.profile_compare_program.trigger_points[trigger_index];
+
+            ProfileCompareExpectedTraceItem item;
+            item.cycle_index = 1U;
+            item.trigger_sequence_id = trigger.sequence_index;
+            item.span_index = span.span_index;
+            item.compare_source_axis = span.compare_source_axis;
+            item.authority_trigger_ref = "trigger-" + std::to_string(trigger_index);
+            if (trigger_index == span.trigger_begin_index && span.start_boundary_trigger_count == 1U) {
+                item.trigger_mode = "start_boundary";
+                item.compare_position_pulse = 0L;
+            } else {
+                const auto future_compare_index =
+                    static_cast<std::size_t>(trigger_index - future_compare_offset);
+                item.trigger_mode = "future_compare";
+                item.compare_position_pulse = span.compare_positions_pulse[future_compare_index];
+            }
+            trace->items.push_back(std::move(item));
+        }
+    }
+
+    return trace;
+}
+
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalKeepsDispatchOrderWithPreviewTraceEnabled) {
     auto interpolation_port = std::make_shared<FakeInterpolationPort>();
     auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
@@ -1031,6 +1066,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesProfileCompareSin
     options.dispense_enabled = true;
     options.use_hardware_trigger = true;
     options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule_result.Value());
+    options.expected_trace = BuildExpectedTraceForTest(plan, schedule_result.Value());
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> pause_flag{false};
     std::atomic<bool> pause_applied_flag{false};
@@ -1057,6 +1093,15 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesProfileCompareSin
     ASSERT_EQ(valve_port->last_profile_compare_request.compare_positions_pulse.size(), 1U);
     EXPECT_EQ(valve_port->last_profile_compare_request.compare_positions_pulse[0], 2000);
     EXPECT_EQ(valve_port->last_profile_compare_request.compare_source_axis, 1);
+    ASSERT_EQ(result.Value().actual_trace.size(), 2U);
+    EXPECT_EQ(result.Value().traceability_verdict, "passed");
+    EXPECT_TRUE(result.Value().traceability_verdict_reason.empty());
+    EXPECT_TRUE(result.Value().strict_one_to_one_proven);
+    EXPECT_TRUE(result.Value().traceability_mismatches.empty());
+    EXPECT_EQ(result.Value().actual_trace.front().trigger_mode, "start_boundary");
+    EXPECT_EQ(result.Value().actual_trace.front().compare_position_pulse, 0L);
+    EXPECT_EQ(result.Value().actual_trace.back().trigger_mode, "future_compare");
+    EXPECT_EQ(result.Value().actual_trace.back().compare_position_pulse, 2000L);
 }
 
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalMapsDiagonalProfileCompareToAxisPositionInsteadOfPathLength) {
@@ -1086,6 +1131,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalMapsDiagonalProfileCo
     options.dispense_enabled = true;
     options.use_hardware_trigger = true;
     options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule_result.Value());
+    options.expected_trace = BuildExpectedTraceForTest(plan, schedule_result.Value());
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> pause_flag{false};
     std::atomic<bool> pause_applied_flag{false};
@@ -1106,6 +1152,46 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalMapsDiagonalProfileCo
     EXPECT_EQ(valve_port->last_profile_compare_request.compare_source_axis, 1);
     ASSERT_EQ(valve_port->last_profile_compare_request.compare_positions_pulse.size(), 1U);
     EXPECT_EQ(valve_port->last_profile_compare_request.compare_positions_pulse[0], 2000);
+}
+
+TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalRejectsProfileCompareWithoutExpectedTrace) {
+    auto valve_port = std::make_shared<FakeValvePort>();
+    auto interpolation_port = std::make_shared<FakeInterpolationPort>();
+    auto motion_state_port = std::make_shared<SequencedMotionStatePort>(
+        std::vector<Point2D>{Point2D{0.0f, 0.0f}, Point2D{10.0f, 0.0f}});
+    DispensingProcessService service(valve_port,
+                                     interpolation_port,
+                                     motion_state_port,
+                                     nullptr,
+                                     nullptr);
+
+    auto plan = BuildProfileCompareExecutionPlan();
+    auto params = BuildRuntimeParams();
+    auto schedule_result = CompileProfileCompareScheduleForTest(plan, params);
+    ASSERT_TRUE(schedule_result.IsSuccess()) << schedule_result.GetError().GetMessage();
+
+    auto options = BuildExecutionOptions();
+    options.dispense_enabled = true;
+    options.use_hardware_trigger = true;
+    options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule_result.Value());
+    std::atomic<bool> stop_flag{false};
+    std::atomic<bool> pause_flag{false};
+    std::atomic<bool> pause_applied_flag{false};
+    const auto execute_plan_internal = GetPrivateMember(ExecutePlanInternalTag{});
+
+    const auto result = (service.*execute_plan_internal)(
+        plan,
+        0.0f,
+        params,
+        options,
+        &stop_flag,
+        &pause_flag,
+        &pause_applied_flag,
+        nullptr);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_PARAMETER);
+    EXPECT_NE(result.GetError().GetMessage().find("expected trace"), std::string::npos);
 }
 
 TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalSelectsYAxisForPureYProfileComparePath) {
@@ -1132,6 +1218,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalSelectsYAxisForPureYP
     options.dispense_enabled = true;
     options.use_hardware_trigger = true;
     options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule_result.Value());
+    options.expected_trace = BuildExpectedTraceForTest(plan, schedule_result.Value());
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> pause_flag{false};
     std::atomic<bool> pause_applied_flag{false};
@@ -1179,6 +1266,7 @@ TEST(DispensingProcessServiceTraceTest, ExecutePlanInternalUsesMultipleProfileCo
     options.dispense_enabled = true;
     options.use_hardware_trigger = true;
     options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule);
+    options.expected_trace = BuildExpectedTraceForTest(plan, schedule);
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> pause_flag{false};
     std::atomic<bool> pause_applied_flag{false};
@@ -1282,6 +1370,7 @@ TEST(DispensingProcessServiceTraceTest,
     options.dispense_enabled = true;
     options.use_hardware_trigger = true;
     options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule);
+    options.expected_trace = BuildExpectedTraceForTest(plan, schedule);
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> pause_flag{false};
     std::atomic<bool> pause_applied_flag{false};
@@ -1388,6 +1477,7 @@ TEST(DispensingProcessServiceTraceTest,
     options.dispense_enabled = true;
     options.use_hardware_trigger = true;
     options.profile_compare_schedule = std::make_shared<ProfileCompareExecutionSchedule>(schedule);
+    options.expected_trace = BuildExpectedTraceForTest(plan, schedule);
     std::atomic<bool> stop_flag{false};
     std::atomic<bool> pause_flag{false};
     std::atomic<bool> pause_applied_flag{false};

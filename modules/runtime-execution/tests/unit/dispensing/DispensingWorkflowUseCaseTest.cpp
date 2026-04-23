@@ -53,6 +53,7 @@ using Siligen::Application::UseCases::Dispensing::PlanningResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRequest;
 using Siligen::Application::UseCases::Dispensing::PreparePlanResponse;
 using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
+using Siligen::Application::UseCases::Dispensing::RuntimeJobTraceabilityResponse;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::StartJobResponse;
 using Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter;
@@ -143,6 +144,7 @@ public:
         runtime_request.cycle_advance_mode = request.cycle_advance_mode;
         runtime_request.execution_request.execution_package = request.execution_request.execution_package;
         runtime_request.execution_request.profile_compare_schedule = request.execution_request.profile_compare_schedule;
+        runtime_request.execution_request.expected_trace = request.execution_request.expected_trace;
         runtime_request.execution_request.source_path = request.execution_request.source_path;
         runtime_request.execution_request.dry_run = request.execution_request.dry_run;
         runtime_request.execution_request.machine_mode = request.execution_request.machine_mode;
@@ -1386,7 +1388,7 @@ class FakeDispensingProcessPort final : public RuntimeDispensingProcessPort {
     Result<DispensingExecutionReport> ExecuteProcess(
         const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
         const DispensingRuntimeParams&,
-        const DispensingExecutionOptions&,
+        const DispensingExecutionOptions& options,
         std::atomic<bool>* stop_flag,
         std::atomic<bool>* pause_flag,
         std::atomic<bool>* pause_applied_flag,
@@ -1454,6 +1456,26 @@ class FakeDispensingProcessPort final : public RuntimeDispensingProcessPort {
         if (observer != nullptr) {
             observer->OnMotionStop();
         }
+        if (options.expected_trace && !options.expected_trace->Empty()) {
+            report.traceability_verdict = "passed";
+            report.strict_one_to_one_proven = true;
+            report.actual_trace.reserve(options.expected_trace->items.size());
+            for (std::size_t index = 0; index < options.expected_trace->items.size(); ++index) {
+                const auto& expected_item = options.expected_trace->items[index];
+                Siligen::Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem actual_item;
+                actual_item.cycle_index = expected_item.cycle_index;
+                actual_item.trigger_sequence_id = expected_item.trigger_sequence_id;
+                actual_item.completion_sequence = static_cast<uint32>(index + 1U);
+                actual_item.span_index = expected_item.span_index;
+                actual_item.local_completed_trigger_count = static_cast<uint32>(index + 1U);
+                actual_item.observed_completed_trigger_count = static_cast<uint32>(index + 1U);
+                actual_item.compare_source_axis = expected_item.compare_source_axis;
+                actual_item.compare_position_pulse = expected_item.compare_position_pulse;
+                actual_item.authority_trigger_ref = expected_item.authority_trigger_ref;
+                actual_item.trigger_mode = expected_item.trigger_mode;
+                report.actual_trace.push_back(std::move(actual_item));
+            }
+        }
         return Result<DispensingExecutionReport>::Success(report);
     }
 
@@ -1490,10 +1512,134 @@ void SeedAuthorityMetadata(
 void SeedAuthorityTriggerPoints(
     DispensingWorkflowUseCase::PlanRecord& plan_record,
     const std::vector<Point2D>& points) {
-    plan_record.authority_trigger_layout.trigger_points.clear();
-    plan_record.authority_trigger_layout.bindings.clear();
-    plan_record.authority_trigger_layout.trigger_points.reserve(points.size());
-    plan_record.authority_trigger_layout.bindings.reserve(points.size());
+    auto& authority_layout = plan_record.authority_trigger_layout;
+    authority_layout.trigger_points.clear();
+    authority_layout.bindings.clear();
+    authority_layout.spans.clear();
+    authority_layout.components.clear();
+    authority_layout.validation_outcomes.clear();
+    authority_layout.effective_component_count = 0U;
+    authority_layout.ignored_component_count = 0U;
+
+    const auto execution_package = plan_record.execution_launch.execution_package;
+    if (execution_package &&
+        execution_package->execution_plan.production_trigger_mode ==
+            Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode::PROFILE_COMPARE &&
+        !execution_package->execution_plan.profile_compare_program.Empty()) {
+        const auto& execution_plan = execution_package->execution_plan;
+        const auto& program = execution_plan.profile_compare_program;
+        authority_layout.state =
+            Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayoutState::BindingReady;
+        authority_layout.trigger_points.reserve(program.trigger_points.size());
+        authority_layout.bindings.reserve(program.trigger_points.size());
+        authority_layout.spans.reserve(program.spans.size());
+
+        const std::string component_id = authority_layout.layout_id + "-component-0";
+        for (std::size_t span_index = 0; span_index < program.spans.size(); ++span_index) {
+            const auto& owner_span = program.spans[span_index];
+
+            Siligen::Domain::Dispensing::ValueObjects::DispenseSpan span;
+            span.span_id = authority_layout.layout_id + "-span-" + std::to_string(span_index);
+            span.layout_ref = authority_layout.layout_id;
+            span.component_id = component_id;
+            span.component_index = 0U;
+            span.order_index = span_index;
+            span.source_segment_indices = {span_index};
+            span.total_length_mm =
+                owner_span.end_profile_position_mm >= owner_span.start_profile_position_mm
+                ? owner_span.end_profile_position_mm - owner_span.start_profile_position_mm
+                : 0.0f;
+            span.interval_count =
+                owner_span.ExpectedTriggerCount() > 0U ? owner_span.ExpectedTriggerCount() - 1U : 0U;
+            span.anchor_constraints_satisfied = true;
+            authority_layout.spans.push_back(span);
+
+            for (uint32 trigger_index = owner_span.trigger_begin_index;
+                 trigger_index <= owner_span.trigger_end_index;
+                 ++trigger_index) {
+                const auto& owner_trigger = program.trigger_points[trigger_index];
+                const auto local_trigger_index =
+                    static_cast<std::size_t>(trigger_index - owner_span.trigger_begin_index);
+
+                Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint trigger_point;
+                trigger_point.trigger_id = authority_layout.layout_id + "-trigger-" + std::to_string(trigger_index);
+                trigger_point.layout_ref = authority_layout.layout_id;
+                trigger_point.span_ref = span.span_id;
+                trigger_point.sequence_index_global = trigger_index;
+                trigger_point.sequence_index_span = local_trigger_index;
+                trigger_point.distance_mm_global = owner_trigger.profile_position_mm;
+                trigger_point.distance_mm_span =
+                    owner_trigger.profile_position_mm - owner_span.start_profile_position_mm;
+                trigger_point.position = owner_trigger.trigger_position_mm;
+                trigger_point.source_segment_index = span.source_segment_indices.front();
+                authority_layout.trigger_points.push_back(trigger_point);
+
+                Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding binding;
+                binding.binding_id = authority_layout.layout_id + "-binding-" + std::to_string(trigger_index);
+                binding.layout_ref = authority_layout.layout_id;
+                binding.trigger_ref = trigger_point.trigger_id;
+
+                std::size_t binding_index = 0U;
+                if (!execution_plan.interpolation_points.empty()) {
+                    binding_index = std::min<std::size_t>(
+                        static_cast<std::size_t>(trigger_index),
+                        execution_plan.interpolation_points.size() - 1U);
+                    auto best_distance = static_cast<float>(
+                        execution_plan.interpolation_points[binding_index].position.DistanceTo(
+                            owner_trigger.trigger_position_mm));
+                    for (std::size_t interpolation_index = 0U;
+                         interpolation_index < execution_plan.interpolation_points.size();
+                         ++interpolation_index) {
+                        const auto distance = static_cast<float>(
+                            execution_plan.interpolation_points[interpolation_index].position.DistanceTo(
+                                owner_trigger.trigger_position_mm));
+                        if (distance < best_distance) {
+                            best_distance = distance;
+                            binding_index = interpolation_index;
+                        }
+                    }
+                    binding.execution_position = execution_plan.interpolation_points[binding_index].position;
+                    binding.match_error_mm = best_distance;
+                    binding.bound = true;
+                } else {
+                    binding.execution_position = owner_trigger.trigger_position_mm;
+                    binding.match_error_mm = 0.0f;
+                    binding.bound = false;
+                }
+
+                binding.interpolation_index = binding_index;
+                binding.monotonic = true;
+                authority_layout.bindings.push_back(binding);
+            }
+        }
+
+        if (!authority_layout.spans.empty()) {
+            Siligen::Domain::Dispensing::ValueObjects::AuthorityLayoutComponent component;
+            component.component_id = component_id;
+            component.layout_ref = authority_layout.layout_id;
+            component.component_index = 0U;
+            component.span_refs.reserve(authority_layout.spans.size());
+            component.source_segment_indices.reserve(authority_layout.spans.size());
+            for (const auto& span : authority_layout.spans) {
+                component.span_refs.push_back(span.span_id);
+                component.source_segment_indices.insert(
+                    component.source_segment_indices.end(),
+                    span.source_segment_indices.begin(),
+                    span.source_segment_indices.end());
+            }
+            authority_layout.components.push_back(std::move(component));
+            authority_layout.effective_component_count = 1U;
+        }
+
+        plan_record.response.total_length_mm =
+            execution_package->total_length_mm > 0.0f
+            ? execution_package->total_length_mm
+            : execution_plan.total_length_mm;
+        return;
+    }
+
+    authority_layout.trigger_points.reserve(points.size());
+    authority_layout.bindings.reserve(points.size());
     float cumulative_length_mm = 0.0f;
     for (std::size_t index = 0; index < points.size(); ++index) {
         if (index > 0U) {
@@ -1501,22 +1647,22 @@ void SeedAuthorityTriggerPoints(
         }
         Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint trigger_point;
         trigger_point.trigger_id = "trigger-" + std::to_string(index);
-        trigger_point.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        trigger_point.layout_ref = authority_layout.layout_id;
         trigger_point.sequence_index_global = index;
         trigger_point.distance_mm_global = cumulative_length_mm;
         trigger_point.position = points[index];
-        plan_record.authority_trigger_layout.trigger_points.push_back(trigger_point);
+        authority_layout.trigger_points.push_back(trigger_point);
 
         Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding binding;
-        binding.binding_id = plan_record.authority_trigger_layout.layout_id + "-binding-" + std::to_string(index);
-        binding.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        binding.binding_id = authority_layout.layout_id + "-binding-" + std::to_string(index);
+        binding.layout_ref = authority_layout.layout_id;
         binding.trigger_ref = trigger_point.trigger_id;
         binding.interpolation_index = index;
         binding.execution_position = points[index];
         binding.match_error_mm = 0.0f;
         binding.monotonic = true;
         binding.bound = true;
-        plan_record.authority_trigger_layout.bindings.push_back(binding);
+        authority_layout.bindings.push_back(binding);
     }
     plan_record.response.total_length_mm = cumulative_length_mm;
 }
@@ -1693,21 +1839,29 @@ void ConfigureClosedLoopBranchRevisitProfileComparePlan(DispensingWorkflowUseCas
     plan_record.response.total_length_mm = package->total_length_mm;
     plan_record.response.point_count = static_cast<std::uint32_t>(plan_record.execution_trajectory_points.size());
     plan_record.authority_trigger_layout.branch_revisit_split_applied = true;
+    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
     plan_record.authority_trigger_layout.spans.clear();
     {
         Siligen::Domain::Dispensing::ValueObjects::DispenseSpan closed_span;
         closed_span.span_id = "closed-span";
+        closed_span.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        closed_span.component_id = plan_record.authority_trigger_layout.layout_id + "-component-0";
+        closed_span.component_index = 0U;
+        closed_span.order_index = 0U;
         closed_span.closed = true;
         plan_record.authority_trigger_layout.spans.push_back(closed_span);
     }
     {
         Siligen::Domain::Dispensing::ValueObjects::DispenseSpan revisit_span;
         revisit_span.span_id = "revisit-span";
+        revisit_span.layout_ref = plan_record.authority_trigger_layout.layout_id;
+        revisit_span.component_id = plan_record.authority_trigger_layout.layout_id + "-component-0";
+        revisit_span.component_index = 0U;
+        revisit_span.order_index = 1U;
         revisit_span.split_reason =
             Siligen::Domain::Dispensing::ValueObjects::DispenseSpanSplitReason::BranchOrRevisit;
         plan_record.authority_trigger_layout.spans.push_back(revisit_span);
     }
-    SeedAuthorityTriggerPoints(plan_record, plan_record.glue_points);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     ApplyOwnerExecutionContractState(plan_record);
 }
@@ -2160,8 +2314,10 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
 TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityPreviewRequests) {
     ScopedTempPbFile temp_pb_file;
     auto load_calls = std::make_shared<std::atomic<int>>(0);
-    auto planning_use_case =
-        CreatePlanningUseCaseWithPathSource(std::make_shared<SlowCountingLinePathSourceStub>(load_calls));
+    auto planning_use_case = CreatePlanningUseCaseWithPathSource(
+        std::make_shared<SlowCountingLinePathSourceStub>(
+            load_calls,
+            std::chrono::milliseconds(500)));
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
     auto homing_port = std::make_shared<FakeHomingPort>();
@@ -3398,11 +3554,41 @@ TEST(DispensingWorkflowUseCaseTest, StartJobAllowsProfileComparePlanRequiringMul
     EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
     EXPECT_TRUE(plan_record.response.import_diagnostics.production_ready);
     ASSERT_TRUE(plan_record.execution_launch.profile_compare_schedule);
+    ASSERT_TRUE(plan_record.execution_launch.expected_trace);
     EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans.size(), 2U);
     EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[0].compare_source_axis, 1);
     EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[0].start_boundary_trigger_count, 1U);
     EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[1].compare_source_axis, 2);
     EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans[1].start_boundary_trigger_count, 0U);
+    EXPECT_EQ(plan_record.authority_trigger_layout.spans.size(), 2U);
+    EXPECT_EQ(plan_record.execution_launch.expected_trace->items.size(), 3U);
+    EXPECT_EQ(plan_record.execution_launch.expected_trace->items.front().trigger_mode, "start_boundary");
+    EXPECT_EQ(plan_record.execution_launch.expected_trace->items.front().authority_span_ref,
+        plan_record.authority_trigger_layout.spans[0].span_id);
+    EXPECT_EQ(plan_record.execution_launch.expected_trace->items.back().authority_span_ref,
+        plan_record.authority_trigger_layout.spans[1].span_id);
+
+    RuntimeJobTraceabilityResponse traceability_response;
+    const auto wait_for_traceability = SpinUntil(
+        [&]() {
+            const auto traceability_result = execution_use_case->GetJobTraceability(result.Value().job_id);
+            if (traceability_result.IsError()) {
+                return false;
+            }
+            traceability_response = traceability_result.Value();
+            return traceability_response.terminal_state == "completed";
+        },
+        std::chrono::milliseconds(1000));
+    ASSERT_TRUE(wait_for_traceability);
+    EXPECT_EQ(traceability_response.verdict, "passed");
+    EXPECT_TRUE(traceability_response.strict_one_to_one_proven);
+    EXPECT_EQ(traceability_response.expected_trace.size(), 3U);
+    EXPECT_EQ(traceability_response.actual_trace.size(), 3U);
+    EXPECT_TRUE(traceability_response.mismatches.empty());
+    EXPECT_EQ(traceability_response.expected_trace.front().trigger_mode, "start_boundary");
+    EXPECT_EQ(traceability_response.expected_trace.back().compare_source_axis, 2);
+    EXPECT_EQ(traceability_response.actual_trace.front().compare_source_axis, 1);
+    EXPECT_EQ(traceability_response.actual_trace.back().compare_source_axis, 2);
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobCompilesProfileCompareScheduleFromInterpolationAnchorInsteadOfMotionLeadIn) {
@@ -3856,6 +4042,11 @@ TEST(DispensingWorkflowUseCaseTest, OnRuntimeJobTerminalClearsConfirmedPreviewSt
     plan_record.glue_points.emplace_back(10.0f, 0.0f);
     plan_record.execution_launch.profile_compare_schedule =
         std::make_shared<ProfileCompareExecutionSchedule>();
+    auto expected_trace =
+        std::make_shared<Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace>();
+    expected_trace->items.push_back(
+        Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem{});
+    plan_record.execution_launch.expected_trace = expected_trace;
     SeedAuthorityMetadata(plan_record, "layout-plan-finish");
     plan_record.execution_assembly.success = true;
     plan_record.execution_assembly.execution_trajectory_points = plan_record.execution_trajectory_points;
@@ -3888,6 +4079,7 @@ TEST(DispensingWorkflowUseCaseTest, OnRuntimeJobTerminalClearsConfirmedPreviewSt
     EXPECT_TRUE(use_case.plans_.at("plan-finish").execution_failure_reason.empty());
     EXPECT_TRUE(use_case.plans_.at("plan-finish").execution_diagnostic_code.empty());
     EXPECT_FALSE(static_cast<bool>(use_case.plans_.at("plan-finish").execution_launch.profile_compare_schedule));
+    EXPECT_FALSE(static_cast<bool>(use_case.plans_.at("plan-finish").execution_launch.expected_trace));
     EXPECT_TRUE(use_case.plans_.at("plan-finish").profile_compare_schedule_failure.empty());
     EXPECT_EQ(use_case.plans_.at("plan-finish").glue_points.size(), retained_glue_points);
     EXPECT_EQ(use_case.plans_.at("plan-finish").execution_trajectory_points.size(), retained_preview_points);

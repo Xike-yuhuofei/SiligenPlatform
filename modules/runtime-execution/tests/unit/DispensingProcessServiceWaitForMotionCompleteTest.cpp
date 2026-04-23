@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -72,7 +73,8 @@ struct WaitForMotionCompleteTag {
                                                             uint32,
                                                             uint32,
                                                             bool,
-                                                            IDispensingExecutionObserver*) noexcept;
+                                                            IDispensingExecutionObserver*,
+                                                            const std::function<Result<void>(const ProfileCompareStatus&)>&) noexcept;
     friend type GetPrivateMember(WaitForMotionCompleteTag);
 };
 
@@ -533,6 +535,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, StablePositionAwayFromTa
         9U,
         0U,
         false,
+        nullptr,
         nullptr);
 
     ASSERT_TRUE(result.IsError());
@@ -569,6 +572,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, NearTargetLowVelocityFal
         9U,
         0U,
         false,
+        nullptr,
         nullptr);
 
     ASSERT_TRUE(result.IsSuccess());
@@ -610,6 +614,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, FifoFinishedWithLatchedR
         9U,
         0U,
         false,
+        nullptr,
         nullptr);
 
     ASSERT_TRUE(result.IsSuccess());
@@ -646,6 +651,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest, IdleCoordinateSystemAway
         9U,
         0U,
         false,
+        nullptr,
         nullptr);
 
     ASSERT_TRUE(result.IsError());
@@ -704,6 +710,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest,
         9U,
         request.expected_trigger_count,
         false,
+        nullptr,
         nullptr);
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
@@ -762,6 +769,7 @@ TEST(DispensingProcessServiceWaitForMotionCompleteTest,
         9U,
         request.expected_trigger_count,
         false,
+        nullptr,
         nullptr);
 
     ASSERT_TRUE(result.IsError());
