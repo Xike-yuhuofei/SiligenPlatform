@@ -69,6 +69,7 @@ target_link_libraries(siligen_transport_gateway PUBLIC
     siligen_dispense_packaging_application_public
     siligen_valve_core
     siligen_job_ingest_application_public
+    siligen_application_motion
     siligen_runtime_execution_application_public
     siligen_process_planning_contracts_public
     siligen_shared
