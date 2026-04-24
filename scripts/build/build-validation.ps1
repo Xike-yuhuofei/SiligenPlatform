@@ -264,7 +264,10 @@ function Invoke-ControlAppsBuild {
     # intermittent file-lock failures under parallel builds.
     $usePchFlag = "OFF"
     $parallelCompileFlag = "ON"
-    $parallelBuildJobs = [Math]::Max(1, [Math]::Floor([Environment]::ProcessorCount * 0.8))
+    $parallelCompileJobs = [Math]::Max(1, [Math]::Floor([Environment]::ProcessorCount * 0.8))
+    # Keep compiler-level /MP enabled, but serialize the outer MSBuild target
+    # scheduling to avoid nondeterministic .tlog write races on Windows.
+    $parallelBuildJobs = 1
     Reset-ControlAppsBuildIfSourceRootChanged
     $controlAppsConfigureArgs = @(
         "-S", $workspaceSourceRoot,
@@ -273,7 +276,7 @@ function Invoke-ControlAppsBuild {
         "-DSILIGEN_ENABLE_COVERAGE=$coverageFlag",
         "-DSILIGEN_USE_PCH=$usePchFlag",
         "-DSILIGEN_PARALLEL_COMPILE=$parallelCompileFlag",
-        "-DSILIGEN_PARALLEL_COMPILE_JOBS=$parallelBuildJobs"
+        "-DSILIGEN_PARALLEL_COMPILE_JOBS=$parallelCompileJobs"
     )
     & cmake @controlAppsConfigureArgs
     if ($LASTEXITCODE -ne 0) {
