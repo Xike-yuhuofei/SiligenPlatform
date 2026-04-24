@@ -357,14 +357,14 @@ def normalize_coord_status_sample(
     )
 
 
-def collect_poll_observation(
+def collect_job_observation(
     client: TcpJsonClient,
     *,
     job_id: str,
     poll_index: int,
     coord_sys: int = DEFAULT_COORD_SYS,
 ) -> dict[str, dict[str, Any]]:
-    return hil_observation.collect_poll_observation(
+    return hil_observation.collect_job_observation(
         client,
         job_id=job_id,
         poll_index=poll_index,
@@ -1274,7 +1274,7 @@ def main() -> int:
         deadline = time.time() + effective_job_timeout_seconds
         poll_index = 0
         while time.time() < deadline:
-            observation = collect_poll_observation(
+            observation = collect_job_observation(
                 client,
                 job_id=job_id,
                 poll_index=poll_index,

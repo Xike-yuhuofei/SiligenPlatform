@@ -6,13 +6,32 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[4]
 MODULE_PATH = ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_hmi_operator_production_test.py"
+UI_QTEST_PATH = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "tools" / "ui_qtest.py"
 SPEC = importlib.util.spec_from_file_location("run_hmi_operator_production_test", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 operator_runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(operator_runner)
+
+
+class StubTcpJsonClient:
+    def __init__(self, response: dict[str, object]) -> None:
+        self._response = response
+        self.calls: list[tuple[str, object | None, float | None]] = []
+
+    def send_request(
+        self,
+        method: str,
+        params: object | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, object]:
+        self.calls.append((method, params, timeout_seconds))
+        return dict(self._response)
 
 
 def test_default_max_glue_points_is_5000() -> None:
@@ -144,6 +163,246 @@ def test_refresh_operator_exclusive_windows_tracks_home_auto_markers(tmp_path: P
     assert active == set()
 
 
+def test_refresh_production_started_job_id_reads_live_operator_context(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "hmi-stdout.log"
+    stdout_path.write_text(
+        "\n".join(
+            [
+                "OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-1",
+                "OPERATOR_CONTEXT stage=production-started artifact_id=artifact-1 job_id=job-42 target_count=1 completed_count=0/1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    offset, job_id = operator_runner.refresh_production_started_job_id(
+        stdout_path=stdout_path,
+        read_offset=0,
+        current_job_id="",
+    )
+
+    assert offset > 0
+    assert job_id == "job-42"
+
+
+def test_refresh_operator_job_tracking_clears_active_job_after_terminal_stage(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "hmi-stdout.log"
+    stdout_path.write_text(
+        "\n".join(
+            [
+                "OPERATOR_CONTEXT stage=production-started artifact_id=artifact-1 job_id=job-42 target_count=1 completed_count=0/1",
+                "OPERATOR_CONTEXT stage=production-completed artifact_id=artifact-1 job_id=null target_count=1 completed_count=1/1",
+                "OPERATOR_EXCLUSIVE_WINDOW kind=next_job_ready_recovery state=started",
+                "OPERATOR_CONTEXT stage=next-job-ready artifact_id=artifact-1 job_id=null target_count=1 completed_count=1/1",
+                "OPERATOR_EXCLUSIVE_WINDOW kind=next_job_ready_recovery state=completed",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    offset, active_job_id, production_job_id = operator_runner.refresh_operator_job_tracking(
+        stdout_path=stdout_path,
+        read_offset=0,
+        current_job_id="",
+        production_job_id="",
+    )
+
+    assert offset > 0
+    assert active_job_id == ""
+    assert production_job_id == "job-42"
+
+
+def test_terminal_job_states_match_runtime_contract() -> None:
+    assert operator_runner.TERMINAL_JOB_STATES == {"completed", "failed", "cancelled"}
+
+
+def test_ui_qtest_marks_next_job_ready_recovery_as_operator_exclusive() -> None:
+    source = UI_QTEST_PATH.read_text(encoding="utf-8")
+
+    assert '_emit_operator_exclusive_window(kind="next_job_ready_recovery", state="started")' in source
+    assert '_emit_operator_exclusive_window(kind="next_job_ready_recovery", state="completed")' in source
+    assert '_emit_operator_exclusive_window(kind="next_job_ready_recovery", state="failed")' in source
+
+
+def test_collect_observer_sample_uses_single_job_observation_query() -> None:
+    client = StubTcpJsonClient(
+        {
+            "result": {
+                "sampled_at": "2026-04-24T05:00:00Z",
+                "machine_status": {
+                    "connected": True,
+                    "supervision": {
+                        "current_state": "Online",
+                        "requested_state": "Online",
+                        "state_reason": "",
+                        "state_change_in_process": False,
+                        "failure_stage": "",
+                        "failure_code": "",
+                    },
+                    "job_execution": {"job_id": "job-1", "state": "running"},
+                    "io": {},
+                    "effective_interlocks": {},
+                    "axes": {},
+                    "position": {"x": 1.0, "y": 2.0},
+                },
+                "job_status": {
+                    "job_id": "job-1",
+                    "state": "running",
+                    "completed_count": 0,
+                    "target_count": 1,
+                    "current_cycle": 1,
+                    "current_segment": 3,
+                    "total_segments": 10,
+                    "cycle_progress_percent": 10,
+                    "overall_progress_percent": 10,
+                    "elapsed_seconds": 0.5,
+                    "error_message": "",
+                    "dry_run": False,
+                },
+                "coord_status": {
+                    "coord_sys": 1,
+                    "state": 1,
+                    "is_moving": True,
+                    "remaining_segments": 7,
+                    "current_velocity": 12.5,
+                    "raw_status_word": 33,
+                    "raw_segment": 7,
+                    "mc_status_ret": 0,
+                    "position": {"x": 1.0, "y": 2.0},
+                    "axes": {},
+                },
+            }
+        }
+    )
+
+    sample = operator_runner.collect_observer_sample(
+        client,
+        poll_index=3,
+        job_id="job-1",
+        timeout_seconds=2.5,
+    )
+
+    assert client.calls == [
+        (
+            "dxf.job.observation",
+            {"job_id": "job-1", "coord_sys": operator_runner.DEFAULT_COORD_SYS},
+            2.5,
+        )
+    ]
+    assert sample["machine_status"]["job_execution"]["job_id"] == "job-1"
+    assert sample["job_status"]["job_id"] == "job-1"
+    assert sample["coord_status"]["coord_sys"] == operator_runner.DEFAULT_COORD_SYS
+
+
+def test_collect_observer_sample_requires_explicit_job_id() -> None:
+    client = StubTcpJsonClient({"result": {}})
+
+    with pytest.raises(ValueError, match="non-empty job_id"):
+        operator_runner.collect_observer_sample(client, poll_index=0, job_id="")
+
+    assert client.calls == []
+
+
+def test_collect_observer_sample_fail_closes_on_partial_observation_payload() -> None:
+    client = StubTcpJsonClient(
+        {
+            "result": {
+                "sampled_at": "2026-04-24T05:00:00Z",
+                "machine_status": {},
+                "job_status": {},
+            }
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="partial observation payload"):
+        operator_runner.collect_observer_sample(client, poll_index=0, job_id="job-1")
+
+
+def test_collect_terminal_job_readback_queries_formal_observation_after_hmi_exit() -> None:
+    client = StubTcpJsonClient(
+        {
+            "result": {
+                "sampled_at": "2026-04-24T05:00:00Z",
+                "machine_status": {
+                    "connected": True,
+                    "supervision": {
+                        "current_state": "Online",
+                        "requested_state": "Online",
+                        "state_reason": "",
+                        "state_change_in_process": False,
+                        "failure_stage": "",
+                        "failure_code": "",
+                    },
+                    "job_execution": {"job_id": "job-1", "state": "completed"},
+                    "io": {},
+                    "effective_interlocks": {},
+                    "axes": {},
+                    "position": {"x": 1.0, "y": 2.0},
+                },
+                "job_status": {
+                    "job_id": "job-1",
+                    "state": "completed",
+                    "completed_count": 1,
+                    "target_count": 1,
+                    "current_cycle": 1,
+                    "current_segment": 394,
+                    "total_segments": 394,
+                    "cycle_progress_percent": 100,
+                    "overall_progress_percent": 100,
+                    "elapsed_seconds": 3.0,
+                    "error_message": "",
+                    "dry_run": False,
+                },
+                "coord_status": {
+                    "coord_sys": 1,
+                    "state": 1,
+                    "is_moving": False,
+                    "remaining_segments": 0,
+                    "current_velocity": 0.0,
+                    "raw_status_word": 48,
+                    "raw_segment": 0,
+                    "mc_status_ret": 0,
+                    "position": {"x": 1.0, "y": 2.0},
+                    "axes": {},
+                },
+            }
+        }
+    )
+
+    sample = operator_runner.collect_terminal_job_readback(
+        client,
+        poll_index=17,
+        job_id="job-1",
+        final_job_status={"state": "running"},
+    )
+
+    assert client.calls == [
+        (
+            "dxf.job.observation",
+            {"job_id": "job-1", "coord_sys": operator_runner.DEFAULT_COORD_SYS},
+            2.0,
+        )
+    ]
+    assert sample is not None
+    assert sample["job_status"]["state"] == "completed"
+
+
+def test_collect_terminal_job_readback_skips_when_final_state_already_terminal() -> None:
+    client = StubTcpJsonClient({"result": {}})
+
+    sample = operator_runner.collect_terminal_job_readback(
+        client,
+        poll_index=4,
+        job_id="job-1",
+        final_job_status={"state": "completed"},
+    )
+
+    assert sample is None
+    assert client.calls == []
+
+
 def test_summarize_operator_output_requires_formal_stage_sequence_and_staged_screenshots() -> None:
     output = "\n".join(
         [
@@ -165,6 +424,7 @@ def test_summarize_operator_output_requires_formal_stage_sequence_and_staged_scr
     assert tuple(summary["operator_context_stages"]) == operator_runner.REQUIRED_OPERATOR_STAGES
     assert summary["preview_confirmed"] is True
     assert summary["plan_fingerprint"] == "fp-1"
+    assert summary["job_id"] == "job-1"
     assert summary["screenshots_by_stage"]["production-running"].endswith("01-production-running.png")
 
 
@@ -184,6 +444,27 @@ def test_summarize_operator_output_fail_closes_on_partial_preview_evidence() -> 
     assert summary["preview_gate_state"] == "failed"
     assert summary["preview_gate_error"] == "preview_timeout"
     assert "required stage sequence" in summary["contract_error"]
+
+
+def test_summarize_operator_output_fail_closes_when_production_started_job_id_missing() -> None:
+    output = "\n".join(
+        [
+            "OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=null snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
+            "OPERATOR_CONTEXT stage=preview-refreshed artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=null snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
+            "OPERATOR_CONTEXT stage=production-started artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=confirmed preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=生产运行中 preview_confirmed=true",
+            "OPERATOR_CONTEXT stage=production-running artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=confirmed preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=job-1 target_count=1 completed_count=0/1 global_progress_percent=12 current_operation=生产运行中 preview_confirmed=true",
+            "OPERATOR_CONTEXT stage=production-completed artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=confirmed preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=null target_count=1 completed_count=1/1 global_progress_percent=100 current_operation=完成 preview_confirmed=true",
+            "OPERATOR_CONTEXT stage=next-job-ready artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 snapshot_ready=true job_id=null target_count=1 completed_count=1/1 global_progress_percent=100 current_operation=完成 preview_confirmed=true",
+            "HMI_SCREENSHOT stage=production-running path=D:/reports/01-production-running.png",
+            "HMI_SCREENSHOT stage=production-completed path=D:/reports/02-production-completed.png",
+            "HMI_SCREENSHOT stage=next-job-ready path=D:/reports/03-next-job-ready.png",
+        ]
+    )
+
+    summary = operator_runner.summarize_operator_output(output)
+
+    assert summary["job_id"] == "null"
+    assert summary["contract_ok"] is False
 
 
 def test_evaluate_operator_execution_requires_next_job_ready_stage() -> None:
@@ -330,6 +611,14 @@ def test_observation_integrity_warns_on_recovered_supervisor_drop() -> None:
             ]
         ),
         observer_poll_errors=["tcp response timeout method=status"],
+        observer_poll_failures=[
+            {
+                "phase": "polling",
+                "poll_index": 4,
+                "job_id": "job-1",
+                "message": "tcp response timeout method=status",
+            }
+        ],
         job_status_history=[{"state": "completed"}],
         machine_status_history=[{"position": {"x": 0.0, "y": 0.0}}],
         coord_status_history=[],
@@ -340,6 +629,31 @@ def test_observation_integrity_warns_on_recovered_supervisor_drop() -> None:
     assert integrity["status"] == "warning"
     assert integrity["recoverable_stage_failure_count"] == 1
     assert integrity["recovered_online_ready"] is True
+    assert integrity["observer_poll_error_count"] == 1
+
+
+def test_build_observer_poll_failure_captures_timeout_metadata() -> None:
+    exc = TimeoutError("tcp response timeout method=dxf.job.observation")
+    setattr(exc, "method", "dxf.job.observation")
+    setattr(exc, "request_id", "17")
+    setattr(exc, "elapsed_ms", 2034.5)
+
+    failure = operator_runner.build_observer_poll_failure(
+        phase="polling",
+        poll_index=8,
+        job_id="job-42",
+        exc=exc,
+    )
+
+    assert failure == {
+        "phase": "polling",
+        "poll_index": 8,
+        "job_id": "job-42",
+        "message": "tcp response timeout method=dxf.job.observation",
+        "method": "dxf.job.observation",
+        "request_id": "17",
+        "elapsed_ms": 2034.5,
+    }
 
 
 def test_determine_overall_status_requires_strict_traceability_pass() -> None:
@@ -362,8 +676,89 @@ def test_determine_overall_status_rejects_observation_integrity_warning() -> Non
     assert status == "failed"
 
 
+def test_build_report_emits_canonical_schema_and_timing_metadata() -> None:
+    report = operator_runner.build_report(
+        args=SimpleNamespace(
+            dxf_file=Path("D:/Projects/SiligenSuite/samples/dxf/Demo-1.dxf"),
+            gateway_exe=Path("D:/build/ca/bin/Debug/siligen_runtime_gateway.exe"),
+            config_path=Path("D:/Projects/SiligenSuite/config/machine/machine_config.ini"),
+            host="127.0.0.1",
+        ),
+        effective_port=61234,
+        started_at="2026-04-24T08:40:07+00:00",
+        finished_at="2026-04-24T08:47:55+00:00",
+        duration_seconds=468.0,
+        overall_status="passed",
+        steps=[
+            {
+                "step": "input-check",
+                "status": "passed",
+                "detail": "{}",
+                "timestamp": "2026-04-24T08:40:07+00:00",
+            }
+        ],
+        operator_execution={
+            "status": "passed",
+            "issues": [],
+            "operator_context": {
+                "operator_context_stages": list(operator_runner.REQUIRED_OPERATOR_STAGES),
+            },
+        },
+        traceability={"status": "passed"},
+        observation_alignment={"status": "passed"},
+        observation_integrity={"status": "passed"},
+        artifacts={"report_json": "D:/reports/report.json"},
+        snapshot_result={"plan_id": "plan-1"},
+        log_summary={"execution_complete_count": 1},
+        observer_poll_errors=[],
+        observer_poll_failures=[],
+        error_message="",
+        hmi_command=["python", "ui_qtest.py"],
+    )
+
+    assert set(report) == {
+        "schema_version",
+        "started_at",
+        "finished_at",
+        "duration_seconds",
+        "overall_status",
+        "test_goal",
+        "scope",
+        "operator_execution",
+        "traceability_correspondence",
+        "observation_alignment",
+        "observation_integrity",
+        "control_script_capability",
+        "steps",
+        "artifacts",
+        "snapshot_result",
+        "log_summary",
+        "observer_poll_errors",
+        "observer_poll_failures",
+        "error",
+    }
+    assert report["schema_version"] == operator_runner.REPORT_SCHEMA_VERSION
+    assert report["started_at"] == "2026-04-24T08:40:07+00:00"
+    assert report["finished_at"] == "2026-04-24T08:47:55+00:00"
+    assert report["duration_seconds"] == 468.0
+    assert report["scope"]["dxf_file"].endswith("Demo-1.dxf")
+    assert report["scope"]["bypass_hmi_allowed"] is False
+    assert report["control_script_capability"]["entry_script"].endswith("ui_qtest.py")
+    assert report["control_script_capability"]["covers_production_start"] is True
+    assert report["control_script_capability"]["status"] == "allow"
+    assert report["control_script_capability"]["gaps"] == []
+    assert all(set(step) == {"step", "status", "detail", "timestamp"} for step in report["steps"])
+    assert "generated_at" not in report
+    assert "input" not in report
+    assert "operation_issues" not in report
+
+
 def test_build_report_markdown_explicitly_marks_runtime_log_gap() -> None:
     report = {
+        "schema_version": operator_runner.REPORT_SCHEMA_VERSION,
+        "started_at": "2026-04-24T08:40:07+00:00",
+        "finished_at": "2026-04-24T08:47:55+00:00",
+        "duration_seconds": 468.0,
         "test_goal": ["goal"],
         "scope": {
             "dxf_file": "Demo-1.dxf",
@@ -421,6 +816,9 @@ def test_build_report_markdown_explicitly_marks_runtime_log_gap() -> None:
     assert "runtime strict traceability 已明确失败" in markdown
     assert "summary-level alignment" in markdown
     assert "observation integrity 有告警" in markdown
+    assert "- 测试开始：`2026-04-24T08:40:07+00:00`" in markdown
+    assert "- 测试结束：`2026-04-24T08:47:55+00:00`" in markdown
+    assert "- 总耗时（秒）：`468.0`" in markdown
     assert "- runtime：`D:/reports/gateway-stdout.log`" not in markdown
 
 

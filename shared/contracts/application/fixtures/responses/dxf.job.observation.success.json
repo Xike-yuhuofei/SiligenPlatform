@@ -1,0 +1,230 @@
+{
+  "id": "25",
+  "version": "1.0",
+  "success": true,
+  "result": {
+    "sampled_at": "2026-03-26T00:00:00Z",
+    "machine_status": {
+      "connected": true,
+      "connection_state": "connected",
+      "device_mode": "test",
+      "machine_state": "Dispensing",
+      "machine_state_reason": "job_running",
+      "supervision": {
+        "current_state": "Online",
+        "requested_state": "Online",
+        "state_change_in_process": false,
+        "state_reason": "operator_production",
+        "failure_code": "",
+        "failure_stage": "",
+        "recoverable": true,
+        "updated_at": "2026-03-26T00:00:00Z"
+      },
+      "runtime_identity": {
+        "executable_path": "D:\\Projects\\SiligenSuite\\build\\ca\\bin\\siligen_runtime_gateway.exe",
+        "working_directory": "D:\\Projects\\SiligenSuite\\build\\ca\\bin",
+        "protocol_version": "siligen.application/1.0",
+        "preview_snapshot_contract": "planned_glue_snapshot.glue_points+execution_trajectory_snapshot.polyline"
+      },
+      "safety_boundary": {
+        "state": "safe",
+        "motion_permitted": true,
+        "process_output_permitted": true,
+        "estop_active": false,
+        "estop_known": true,
+        "door_open_active": false,
+        "door_open_known": true,
+        "interlock_latched": false,
+        "blocking_reasons": []
+      },
+      "action_capabilities": {
+        "motion_commands_permitted": true,
+        "manual_output_commands_permitted": false,
+        "manual_dispenser_pause_permitted": true,
+        "manual_dispenser_resume_permitted": false,
+        "active_job_present": true,
+        "estop_reset_permitted": false
+      },
+      "interlock_latched": false,
+      "job_execution": {
+        "job_id": "job-20260321-001",
+        "plan_id": "plan-8b2649f36dcb4a79",
+        "plan_fingerprint": "8b2649f36dcb4a79",
+        "state": "running",
+        "target_count": 2,
+        "completed_count": 0,
+        "current_cycle": 1,
+        "current_segment": 12,
+        "total_segments": 128,
+        "cycle_progress_percent": 10,
+        "overall_progress_percent": 5,
+        "elapsed_seconds": 1.2,
+        "execution_budget_s": 158.3,
+        "execution_budget_breakdown": {
+          "execution_nominal_time_s": 41.0,
+          "motion_completion_grace_s": 6.15,
+          "owner_span_count": 32,
+          "owner_span_overhead_s": 32.0,
+          "cycle_budget_s": 79.15,
+          "target_count": 2,
+          "total_budget_s": 158.3
+        },
+        "error_message": "",
+        "dry_run": true
+      },
+      "axes": {
+        "X": {
+          "position": 12.5,
+          "velocity": 12.4,
+          "enabled": true,
+          "homed": true,
+          "homing_state": "homed"
+        },
+        "Y": {
+          "position": 8.0,
+          "velocity": 0.3,
+          "enabled": true,
+          "homed": true,
+          "homing_state": "homed"
+        }
+      },
+      "position": {
+        "x": 12.5,
+        "y": 8.0
+      },
+      "effective_interlocks": {
+        "estop_active": false,
+        "estop_known": true,
+        "door_open_active": false,
+        "door_open_known": true,
+        "home_boundary_x_active": false,
+        "home_boundary_y_active": false,
+        "positive_escape_only_axes": [],
+        "sources": {
+          "estop": "system_interlock",
+          "door_open": "dispensing_interlock",
+          "home_boundary_x": "none",
+          "home_boundary_y": "none"
+        }
+      },
+      "io": {
+        "limit_x_pos": false,
+        "limit_x_neg": false,
+        "limit_y_pos": false,
+        "limit_y_neg": false,
+        "estop": false,
+        "estop_known": true,
+        "door": false,
+        "door_known": true
+      },
+      "dispenser": {
+        "valve_open": true,
+        "supply_open": true,
+        "completedCount": 0,
+        "totalCount": 2,
+        "progress": 0.05
+      },
+      "alarms": []
+    },
+    "job_status": {
+      "job_id": "job-20260321-001",
+      "plan_id": "plan-8b2649f36dcb4a79",
+      "plan_fingerprint": "8b2649f36dcb4a79",
+      "state": "running",
+      "target_count": 2,
+      "completed_count": 0,
+      "current_cycle": 1,
+      "current_segment": 12,
+      "total_segments": 128,
+      "cycle_progress_percent": 10,
+      "overall_progress_percent": 5,
+      "elapsed_seconds": 1.2,
+      "execution_budget_s": 158.3,
+      "execution_budget_breakdown": {
+        "execution_nominal_time_s": 41.0,
+        "motion_completion_grace_s": 6.15,
+        "owner_span_count": 32,
+        "owner_span_overhead_s": 32.0,
+        "cycle_budget_s": 79.15,
+        "target_count": 2,
+        "total_budget_s": 158.3
+      },
+      "error_message": "",
+      "dry_run": true
+    },
+    "coord_status": {
+      "coord_sys": 1,
+      "state": 1,
+      "is_moving": true,
+      "remaining_segments": 7,
+      "current_velocity": 12.5,
+      "raw_status_word": 33,
+      "raw_segment": 7,
+      "mc_status_ret": 0,
+      "buffer_space": 42,
+      "lookahead_space": 3,
+      "position": {
+        "x": 12.5,
+        "y": 8.0
+      },
+      "axes": {
+        "X": {
+          "position": 12.5,
+          "velocity": 12.4,
+          "state": 1,
+          "enabled": true,
+          "homed": true,
+          "in_position": false,
+          "has_error": false,
+          "error_code": 0,
+          "servo_alarm": false,
+          "following_error": false,
+          "home_failed": false,
+          "hard_limit_positive": false,
+          "hard_limit_negative": false,
+          "soft_limit_positive": false,
+          "soft_limit_negative": false,
+          "home_signal": false,
+          "index_signal": false,
+          "selected_feedback_source": "profile",
+          "prf_position_mm": 12.5,
+          "enc_position_mm": 0.0,
+          "prf_velocity_mm_s": 12.4,
+          "enc_velocity_mm_s": 0.0,
+          "prf_position_ret": 0,
+          "enc_position_ret": -1,
+          "prf_velocity_ret": 0,
+          "enc_velocity_ret": -1
+        },
+        "Y": {
+          "position": 8.0,
+          "velocity": 0.3,
+          "state": 1,
+          "enabled": true,
+          "homed": true,
+          "in_position": false,
+          "has_error": false,
+          "error_code": 0,
+          "servo_alarm": false,
+          "following_error": false,
+          "home_failed": false,
+          "hard_limit_positive": false,
+          "hard_limit_negative": false,
+          "soft_limit_positive": false,
+          "soft_limit_negative": false,
+          "home_signal": false,
+          "index_signal": false,
+          "selected_feedback_source": "profile",
+          "prf_position_mm": 8.0,
+          "enc_position_mm": 0.0,
+          "prf_velocity_mm_s": 0.3,
+          "enc_velocity_mm_s": 0.0,
+          "prf_position_ret": 0,
+          "enc_position_ret": -1,
+          "prf_velocity_ret": 0,
+          "enc_velocity_ret": -1
+        }
+      }
+    }
+  }
+}

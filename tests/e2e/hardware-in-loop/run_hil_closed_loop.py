@@ -27,6 +27,7 @@ if str(TEST_KIT_SRC) not in sys.path:
 from runtime_gateway_harness import build_process_env  # noqa: E402
 from runtime_gateway_harness import load_connection_params as _shared_load_connection_params  # noqa: E402
 from runtime_gateway_harness import resolve_default_exe  # noqa: E402
+from runtime_gateway_harness import TcpJsonClient  # noqa: E402
 from runtime_gateway_harness import tcp_connect_and_ensure_ready  # noqa: E402
 from test_kit.evidence_bundle import (
     EvidenceBundle,
@@ -68,82 +69,6 @@ class StepResult:
     note: str = ""
     stdout: str = ""
     stderr: str = ""
-
-
-class TcpJsonClient:
-    def __init__(self, host: str, port: int) -> None:
-        self._host = host
-        self._port = port
-        self._socket: socket.socket | None = None
-        self._recv_buffer = ""
-        self._request_id = 0
-
-    def connect(self, timeout_seconds: float) -> None:
-        self._socket = socket.create_connection((self._host, self._port), timeout=timeout_seconds)
-        self._socket.settimeout(timeout_seconds)
-        self._recv_buffer = ""
-        self._request_id = 0
-
-    def close(self) -> None:
-        if self._socket is None:
-            return
-        try:
-            self._socket.close()
-        finally:
-            self._socket = None
-            self._recv_buffer = ""
-
-    def is_connected(self) -> bool:
-        return self._socket is not None
-
-    def send_request(self, method: str, params: dict[str, Any] | None, timeout_seconds: float) -> dict[str, Any]:
-        if self._socket is None:
-            raise RuntimeError("tcp session not connected")
-
-        self._request_id += 1
-        request_id = str(self._request_id)
-        payload: dict[str, Any] = {"id": request_id, "method": method}
-        if params:
-            payload["params"] = params
-
-        wire = json.dumps(payload, ensure_ascii=True) + "\n"
-        self._socket.settimeout(timeout_seconds)
-        self._socket.sendall(wire.encode("utf-8"))
-
-        deadline = time.perf_counter() + max(0.1, timeout_seconds)
-        while time.perf_counter() < deadline:
-            line = self._recv_line(deadline)
-            if line is None:
-                break
-            if not line.strip():
-                continue
-            message = json.loads(line)
-            if str(message.get("id", "")) == request_id:
-                return message
-
-        raise TimeoutError(f"tcp response timeout method={method}")
-
-    def _recv_line(self, deadline: float) -> str | None:
-        if self._socket is None:
-            return None
-
-        while True:
-            if "\n" in self._recv_buffer:
-                line, self._recv_buffer = self._recv_buffer.split("\n", 1)
-                return line
-
-            remaining = deadline - time.perf_counter()
-            if remaining <= 0:
-                return None
-
-            self._socket.settimeout(min(1.0, max(0.05, remaining)))
-            try:
-                chunk = self._socket.recv(4096)
-            except TimeoutError:
-                continue
-            if not chunk:
-                raise ConnectionError("tcp socket closed by peer")
-            self._recv_buffer += chunk.decode("utf-8", errors="replace")
 
 
 def _truncate(text: str, limit: int = 2000) -> str:

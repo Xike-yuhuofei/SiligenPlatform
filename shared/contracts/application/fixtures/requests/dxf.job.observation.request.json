@@ -1,0 +1,8 @@
+{
+  "id": "25",
+  "method": "dxf.job.observation",
+  "params": {
+    "job_id": "job-20260321-001",
+    "coord_sys": 1
+  }
+}

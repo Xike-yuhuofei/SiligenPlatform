@@ -22,7 +22,7 @@ from dxf_hil_observation import (  # noqa: E402
     DEFAULT_COORD_SYS,
     DEFAULT_POSITION_EPSILON_MM,
     DEFAULT_VELOCITY_EPSILON_MM_S,
-    collect_poll_observation,
+    collect_machine_snapshot,
     normalize_job_status_sample,
     normalize_machine_status_sample,
     summarize_blocked_motion_observation,
@@ -237,7 +237,7 @@ def observe_blocked_motion_window(
     deadline = time.time() + observation_window_seconds
     poll_index = 0
     while True:
-        observation = collect_poll_observation(
+        observation = collect_machine_snapshot(
             client,
             poll_index=poll_index,
             coord_sys=coord_sys,

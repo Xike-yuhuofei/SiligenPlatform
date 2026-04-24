@@ -728,6 +728,13 @@ bool IsAxisStatusHomed(const Siligen::Domain::Motion::Ports::MotionStatus& statu
 }
 
 using RuntimeStatusExportSnapshot = Siligen::RuntimeExecution::Contracts::System::RuntimeStatusExportSnapshot;
+using WorkflowJobStatusResponse = Application::UseCases::Dispensing::JobStatusResponse;
+
+enum class MotionCoordStatusJsonErrorKind {
+    None,
+    MissingFacade,
+    QueryFailed,
+};
 
 nlohmann::json BuildRawIoJson(const RuntimeStatusExportSnapshot& snapshot) {
     return {
@@ -888,6 +895,191 @@ nlohmann::json BuildJobExecutionJson(const RuntimeStatusExportSnapshot& snapshot
     };
 }
 
+nlohmann::json BuildMachineStatusJson(const RuntimeStatusExportSnapshot& snapshot) {
+    const nlohmann::json axes_json = BuildAxesJson(snapshot);
+    const nlohmann::json position_json = BuildPositionJson(snapshot);
+    const nlohmann::json dispenser_json = BuildDispenserJson(snapshot);
+    const nlohmann::json job_execution_json = BuildJobExecutionJson(snapshot);
+    const nlohmann::json io_json = BuildRawIoJson(snapshot);
+    const nlohmann::json effective_interlocks_json = BuildEffectiveInterlocksJson(snapshot);
+    const nlohmann::json supervision_json = BuildSupervisionJson(snapshot);
+    const nlohmann::json safety_boundary_json = BuildSafetyBoundaryJson(snapshot);
+    const nlohmann::json action_capabilities_json = BuildActionCapabilitiesJson(snapshot);
+    const nlohmann::json runtime_identity_json = BuildRuntimeIdentityJson(snapshot);
+
+    return {
+        {"connected", snapshot.connected},
+        {"connection_state", snapshot.connection_state},
+        {"device_mode", snapshot.device_mode},
+        {"machine_state", snapshot.machine_state},
+        {"machine_state_reason", snapshot.machine_state_reason},
+        {"supervision", supervision_json},
+        {"runtime_identity", runtime_identity_json},
+        {"safety_boundary", safety_boundary_json},
+        {"action_capabilities", action_capabilities_json},
+        {"interlock_latched", snapshot.interlock_latched},
+        {"job_execution", job_execution_json},
+        {"axes", axes_json},
+        {"position", position_json},
+        {"effective_interlocks", effective_interlocks_json},
+        {"io", io_json},
+        {"dispenser", dispenser_json},
+        {"alarms", nlohmann::json::array()}
+    };
+}
+
+nlohmann::json BuildDxfJobStatusJson(const WorkflowJobStatusResponse& status) {
+    return {
+        {"job_id", status.job_id},
+        {"plan_id", status.plan_id},
+        {"plan_fingerprint", status.plan_fingerprint},
+        {"state", status.state},
+        {"target_count", status.target_count},
+        {"completed_count", status.completed_count},
+        {"current_cycle", status.current_cycle},
+        {"current_segment", status.current_segment},
+        {"total_segments", status.total_segments},
+        {"cycle_progress_percent", status.cycle_progress_percent},
+        {"overall_progress_percent", status.overall_progress_percent},
+        {"elapsed_seconds", status.elapsed_seconds},
+        {"execution_budget_s", status.execution_budget_s},
+        {"execution_budget_breakdown", BuildExecutionBudgetBreakdownJson(status.execution_budget_breakdown)},
+        {"error_message", status.error_message},
+        {"dry_run", status.dry_run}
+    };
+}
+
+void MaybeClearActiveDxfJobId(
+    const std::string& job_id,
+    const std::string& state,
+    std::mutex& dxf_mutex,
+    std::string& active_dxf_job_id) {
+    if (state != "completed" && state != "failed" && state != "cancelled") {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(dxf_mutex);
+    if (active_dxf_job_id == job_id) {
+        active_dxf_job_id.clear();
+    }
+}
+
+bool TryBuildMotionCoordStatusJson(
+    const std::shared_ptr<TcpFacades::TcpMotionFacade>& motion_facade,
+    int16_t coord_sys,
+    nlohmann::json& response,
+    MotionCoordStatusJsonErrorKind& error_kind,
+    std::string& error_message) {
+    error_kind = MotionCoordStatusJsonErrorKind::None;
+    error_message.clear();
+
+    if (!motion_facade) {
+        error_kind = MotionCoordStatusJsonErrorKind::MissingFacade;
+        error_message = "TcpMotionFacade not available";
+        return false;
+    }
+
+    auto coord_result = motion_facade->GetCoordinateSystemStatus(coord_sys);
+    if (coord_result.IsError()) {
+        error_kind = MotionCoordStatusJsonErrorKind::QueryFailed;
+        error_message = coord_result.GetError().GetMessage();
+        return false;
+    }
+
+    auto position_result = motion_facade->GetCurrentPosition();
+    auto x_status_result = motion_facade->GetAxisMotionStatus(LogicalAxisId::X);
+    auto y_status_result = motion_facade->GetAxisMotionStatus(LogicalAxisId::Y);
+    auto buffer_space_result = motion_facade->GetInterpolationBufferSpace(coord_sys);
+    auto lookahead_space_result = motion_facade->GetLookAheadBufferSpace(coord_sys);
+
+    const auto& coord_status = coord_result.Value();
+    response = {
+        {"coord_sys", coord_sys},
+        {"state", static_cast<int>(coord_status.state)},
+        {"is_moving", coord_status.is_moving},
+        {"remaining_segments", coord_status.remaining_segments},
+        {"current_velocity", coord_status.current_velocity},
+        {"raw_status_word", coord_status.raw_status_word},
+        {"raw_segment", coord_status.raw_segment},
+        {"mc_status_ret", coord_status.mc_status_ret},
+    };
+
+    if (buffer_space_result.IsSuccess()) {
+        response["buffer_space"] = buffer_space_result.Value();
+    }
+    if (lookahead_space_result.IsSuccess()) {
+        response["lookahead_space"] = lookahead_space_result.Value();
+    }
+    if (position_result.IsSuccess()) {
+        response["position"] = {
+            {"x", position_result.Value().x},
+            {"y", position_result.Value().y},
+        };
+    }
+    if (x_status_result.IsSuccess()) {
+        response["axes"]["X"] = {
+            {"position", x_status_result.Value().axis_position_mm},
+            {"velocity", x_status_result.Value().velocity},
+            {"state", static_cast<int>(x_status_result.Value().state)},
+            {"enabled", x_status_result.Value().enabled},
+            {"homed", x_status_result.Value().homing_state == "homed"},
+            {"in_position", x_status_result.Value().in_position},
+            {"has_error", x_status_result.Value().has_error},
+            {"error_code", x_status_result.Value().error_code},
+            {"servo_alarm", x_status_result.Value().servo_alarm},
+            {"following_error", x_status_result.Value().following_error},
+            {"home_failed", x_status_result.Value().home_failed},
+            {"hard_limit_positive", x_status_result.Value().hard_limit_positive},
+            {"hard_limit_negative", x_status_result.Value().hard_limit_negative},
+            {"soft_limit_positive", x_status_result.Value().soft_limit_positive},
+            {"soft_limit_negative", x_status_result.Value().soft_limit_negative},
+            {"home_signal", x_status_result.Value().home_signal},
+            {"index_signal", x_status_result.Value().index_signal},
+            {"selected_feedback_source", x_status_result.Value().selected_feedback_source},
+            {"prf_position_mm", x_status_result.Value().profile_position_mm},
+            {"enc_position_mm", x_status_result.Value().encoder_position_mm},
+            {"prf_velocity_mm_s", x_status_result.Value().profile_velocity_mm_s},
+            {"enc_velocity_mm_s", x_status_result.Value().encoder_velocity_mm_s},
+            {"prf_position_ret", x_status_result.Value().profile_position_ret},
+            {"enc_position_ret", x_status_result.Value().encoder_position_ret},
+            {"prf_velocity_ret", x_status_result.Value().profile_velocity_ret},
+            {"enc_velocity_ret", x_status_result.Value().encoder_velocity_ret},
+        };
+    }
+    if (y_status_result.IsSuccess()) {
+        response["axes"]["Y"] = {
+            {"position", y_status_result.Value().axis_position_mm},
+            {"velocity", y_status_result.Value().velocity},
+            {"state", static_cast<int>(y_status_result.Value().state)},
+            {"enabled", y_status_result.Value().enabled},
+            {"homed", y_status_result.Value().homing_state == "homed"},
+            {"in_position", y_status_result.Value().in_position},
+            {"has_error", y_status_result.Value().has_error},
+            {"error_code", y_status_result.Value().error_code},
+            {"servo_alarm", y_status_result.Value().servo_alarm},
+            {"following_error", y_status_result.Value().following_error},
+            {"home_failed", y_status_result.Value().home_failed},
+            {"hard_limit_positive", y_status_result.Value().hard_limit_positive},
+            {"hard_limit_negative", y_status_result.Value().hard_limit_negative},
+            {"soft_limit_positive", y_status_result.Value().soft_limit_positive},
+            {"soft_limit_negative", y_status_result.Value().soft_limit_negative},
+            {"home_signal", y_status_result.Value().home_signal},
+            {"index_signal", y_status_result.Value().index_signal},
+            {"selected_feedback_source", y_status_result.Value().selected_feedback_source},
+            {"prf_position_mm", y_status_result.Value().profile_position_mm},
+            {"enc_position_mm", y_status_result.Value().encoder_position_mm},
+            {"prf_velocity_mm_s", y_status_result.Value().profile_velocity_mm_s},
+            {"enc_velocity_mm_s", y_status_result.Value().encoder_velocity_mm_s},
+            {"prf_position_ret", y_status_result.Value().profile_position_ret},
+            {"enc_position_ret", y_status_result.Value().encoder_position_ret},
+            {"prf_velocity_ret", y_status_result.Value().profile_velocity_ret},
+            {"enc_velocity_ret", y_status_result.Value().encoder_velocity_ret},
+        };
+    }
+
+    return true;
+}
+
 struct ManualInterlockSnapshot {
     bool emergency_stop_active = false;
     bool safety_door_open = false;
@@ -1008,6 +1200,7 @@ void TcpCommandDispatcher::RegisterDxfCommands() {
     RegisterCommand("dxf.plan.prepare", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfPlanPrepare(id, params); });
     RegisterCommand("dxf.job.start", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStart(id, params); });
     RegisterCommand("dxf.job.status", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobStatus(id, params); });
+    RegisterCommand("dxf.job.observation", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobObservation(id, params); });
     RegisterCommand("dxf.job.traceability", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobTraceability(id, params); });
     RegisterCommand("dxf.job.pause", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobPause(id, params); });
     RegisterCommand("dxf.job.resume", [this](const std::string& id, const nlohmann::json& params) { return HandleDxfJobResume(id, params); });
@@ -1206,39 +1399,7 @@ std::string TcpCommandDispatcher::HandleStatus(const std::string& id, const nloh
     if (status_result.IsError()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2101, status_result.GetError().GetMessage());
     }
-    const auto& status_snapshot = status_result.Value();
-    const nlohmann::json axesJson = BuildAxesJson(status_snapshot);
-    const nlohmann::json positionJson = BuildPositionJson(status_snapshot);
-    const nlohmann::json dispenserJson = BuildDispenserJson(status_snapshot);
-    const nlohmann::json jobExecutionJson = BuildJobExecutionJson(status_snapshot);
-    const nlohmann::json ioJson = BuildRawIoJson(status_snapshot);
-    const nlohmann::json effectiveInterlocksJson = BuildEffectiveInterlocksJson(status_snapshot);
-    const nlohmann::json supervisionJson = BuildSupervisionJson(status_snapshot);
-    const nlohmann::json safetyBoundaryJson = BuildSafetyBoundaryJson(status_snapshot);
-    const nlohmann::json actionCapabilitiesJson = BuildActionCapabilitiesJson(status_snapshot);
-    const nlohmann::json runtimeIdentityJson = BuildRuntimeIdentityJson(status_snapshot);
-
-    nlohmann::json resultJson = {
-        {"connected", status_snapshot.connected},
-        {"connection_state", status_snapshot.connection_state},
-        {"device_mode", status_snapshot.device_mode},
-        {"machine_state", status_snapshot.machine_state},
-        {"machine_state_reason", status_snapshot.machine_state_reason},
-        {"supervision", supervisionJson},
-        {"runtime_identity", runtimeIdentityJson},
-        {"safety_boundary", safetyBoundaryJson},
-        {"action_capabilities", actionCapabilitiesJson},
-        {"interlock_latched", status_snapshot.interlock_latched},
-        {"job_execution", jobExecutionJson},
-        {"axes", axesJson},
-        {"position", positionJson},
-        {"effective_interlocks", effectiveInterlocksJson},
-        {"io", ioJson},
-        {"dispenser", dispenserJson},
-        {"alarms", nlohmann::json::array()}
-    };
-
-    return GatewayJsonProtocol::MakeSuccessResponse(id, resultJson);
+    return GatewayJsonProtocol::MakeSuccessResponse(id, BuildMachineStatusJson(status_result.Value()));
 }
 
 std::string TcpCommandDispatcher::HandleHome(const std::string& id, const nlohmann::json& params) {
@@ -2218,31 +2379,59 @@ std::string TcpCommandDispatcher::HandleDxfJobStatus(const std::string& id, cons
         return GatewayJsonProtocol::MakeErrorResponse(id, 2904, status_result.GetError().GetMessage());
     }
     const auto& status = status_result.Value();
+    MaybeClearActiveDxfJobId(job_id, status.state, dxf_mutex_, active_dxf_job_id_);
+    return GatewayJsonProtocol::MakeSuccessResponse(id, BuildDxfJobStatusJson(status));
+}
 
-    if (status.state == "completed" || status.state == "failed" || status.state == "cancelled") {
-        std::lock_guard<std::mutex> lock(dxf_mutex_);
-        if (active_dxf_job_id_ == job_id) {
-            active_dxf_job_id_.clear();
-        }
+std::string TcpCommandDispatcher::HandleDxfJobObservation(const std::string& id, const nlohmann::json& params) {
+    if (!dispensingFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2930, "TcpDispensingFacade not available");
     }
 
+    const std::string job_id = params.value("job_id", "");
+    if (job_id.empty()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2931, "Missing job_id");
+    }
+    if (!runtimeStatusExportPort_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2932, "RuntimeStatusExportPort not available");
+    }
+    if (!motionFacade_) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2932, "TcpMotionFacade not available");
+    }
+
+    auto machine_status_result = runtimeStatusExportPort_->ReadSnapshot();
+    if (machine_status_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2933, machine_status_result.GetError().GetMessage());
+    }
+
+    auto job_status_result = dispensingFacade_->GetDxfJobStatus(job_id);
+    if (job_status_result.IsError()) {
+        return GatewayJsonProtocol::MakeErrorResponse(id, 2933, job_status_result.GetError().GetMessage());
+    }
+
+    const auto coord_sys = static_cast<int16_t>(params.value("coord_sys", 1));
+    nlohmann::json coord_status_json;
+    MotionCoordStatusJsonErrorKind motion_error_kind = MotionCoordStatusJsonErrorKind::None;
+    std::string motion_error_message;
+    if (!TryBuildMotionCoordStatusJson(
+            motionFacade_,
+            coord_sys,
+            coord_status_json,
+            motion_error_kind,
+            motion_error_message)) {
+        const int error_code =
+            motion_error_kind == MotionCoordStatusJsonErrorKind::MissingFacade ? 2932 : 2933;
+        return GatewayJsonProtocol::MakeErrorResponse(id, error_code, motion_error_message);
+    }
+
+    const auto& job_status = job_status_result.Value();
+    MaybeClearActiveDxfJobId(job_id, job_status.state, dxf_mutex_, active_dxf_job_id_);
+
     return GatewayJsonProtocol::MakeSuccessResponse(id, {
-        {"job_id", status.job_id},
-        {"plan_id", status.plan_id},
-        {"plan_fingerprint", status.plan_fingerprint},
-        {"state", status.state},
-        {"target_count", status.target_count},
-        {"completed_count", status.completed_count},
-        {"current_cycle", status.current_cycle},
-        {"current_segment", status.current_segment},
-        {"total_segments", status.total_segments},
-        {"cycle_progress_percent", status.cycle_progress_percent},
-        {"overall_progress_percent", status.overall_progress_percent},
-        {"elapsed_seconds", status.elapsed_seconds},
-        {"execution_budget_s", status.execution_budget_s},
-        {"execution_budget_breakdown", BuildExecutionBudgetBreakdownJson(status.execution_budget_breakdown)},
-        {"error_message", status.error_message},
-        {"dry_run", status.dry_run}
+        {"sampled_at", ToIso8601UtcNow()},
+        {"machine_status", BuildMachineStatusJson(machine_status_result.Value())},
+        {"job_status", BuildDxfJobStatusJson(job_status)},
+        {"coord_status", coord_status_json}
     });
 }
 
@@ -2829,107 +3018,20 @@ std::string TcpCommandDispatcher::HandleAlarmsAcknowledge(const std::string& id,
 }
 
 std::string TcpCommandDispatcher::HandleMotionCoordStatus(const std::string& id, const nlohmann::json& params) {
-    if (!motionFacade_) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2200, "TcpMotionFacade not available");
-    }
-
     const auto coord_sys = static_cast<int16_t>(params.value("coord_sys", 1));
-    auto coord_result = motionFacade_->GetCoordinateSystemStatus(coord_sys);
-    if (coord_result.IsError()) {
-        return GatewayJsonProtocol::MakeErrorResponse(id, 2201, coord_result.GetError().GetMessage());
+    nlohmann::json response;
+    MotionCoordStatusJsonErrorKind error_kind = MotionCoordStatusJsonErrorKind::None;
+    std::string error_message;
+    if (!TryBuildMotionCoordStatusJson(
+            motionFacade_,
+            coord_sys,
+            response,
+            error_kind,
+            error_message)) {
+        const int error_code =
+            error_kind == MotionCoordStatusJsonErrorKind::MissingFacade ? 2200 : 2201;
+        return GatewayJsonProtocol::MakeErrorResponse(id, error_code, error_message);
     }
-
-    auto position_result = motionFacade_->GetCurrentPosition();
-    auto x_status_result = motionFacade_->GetAxisMotionStatus(LogicalAxisId::X);
-    auto y_status_result = motionFacade_->GetAxisMotionStatus(LogicalAxisId::Y);
-    auto buffer_space_result = motionFacade_->GetInterpolationBufferSpace(coord_sys);
-    auto lookahead_space_result = motionFacade_->GetLookAheadBufferSpace(coord_sys);
-
-    const auto& coord_status = coord_result.Value();
-    nlohmann::json response{
-        {"coord_sys", coord_sys},
-        {"state", static_cast<int>(coord_status.state)},
-        {"is_moving", coord_status.is_moving},
-        {"remaining_segments", coord_status.remaining_segments},
-        {"current_velocity", coord_status.current_velocity},
-        {"raw_status_word", coord_status.raw_status_word},
-        {"raw_segment", coord_status.raw_segment},
-        {"mc_status_ret", coord_status.mc_status_ret},
-    };
-
-    if (buffer_space_result.IsSuccess()) {
-        response["buffer_space"] = buffer_space_result.Value();
-    }
-    if (lookahead_space_result.IsSuccess()) {
-        response["lookahead_space"] = lookahead_space_result.Value();
-    }
-    if (position_result.IsSuccess()) {
-        response["position"] = {
-            {"x", position_result.Value().x},
-            {"y", position_result.Value().y},
-        };
-    }
-    if (x_status_result.IsSuccess()) {
-        response["axes"]["X"] = {
-            {"position", x_status_result.Value().axis_position_mm},
-            {"velocity", x_status_result.Value().velocity},
-            {"state", static_cast<int>(x_status_result.Value().state)},
-            {"enabled", x_status_result.Value().enabled},
-            {"homed", x_status_result.Value().homing_state == "homed"},
-            {"in_position", x_status_result.Value().in_position},
-            {"has_error", x_status_result.Value().has_error},
-            {"error_code", x_status_result.Value().error_code},
-            {"servo_alarm", x_status_result.Value().servo_alarm},
-            {"following_error", x_status_result.Value().following_error},
-            {"home_failed", x_status_result.Value().home_failed},
-            {"hard_limit_positive", x_status_result.Value().hard_limit_positive},
-            {"hard_limit_negative", x_status_result.Value().hard_limit_negative},
-            {"soft_limit_positive", x_status_result.Value().soft_limit_positive},
-            {"soft_limit_negative", x_status_result.Value().soft_limit_negative},
-            {"home_signal", x_status_result.Value().home_signal},
-            {"index_signal", x_status_result.Value().index_signal},
-            {"selected_feedback_source", x_status_result.Value().selected_feedback_source},
-            {"prf_position_mm", x_status_result.Value().profile_position_mm},
-            {"enc_position_mm", x_status_result.Value().encoder_position_mm},
-            {"prf_velocity_mm_s", x_status_result.Value().profile_velocity_mm_s},
-            {"enc_velocity_mm_s", x_status_result.Value().encoder_velocity_mm_s},
-            {"prf_position_ret", x_status_result.Value().profile_position_ret},
-            {"enc_position_ret", x_status_result.Value().encoder_position_ret},
-            {"prf_velocity_ret", x_status_result.Value().profile_velocity_ret},
-            {"enc_velocity_ret", x_status_result.Value().encoder_velocity_ret},
-        };
-    }
-    if (y_status_result.IsSuccess()) {
-        response["axes"]["Y"] = {
-            {"position", y_status_result.Value().axis_position_mm},
-            {"velocity", y_status_result.Value().velocity},
-            {"state", static_cast<int>(y_status_result.Value().state)},
-            {"enabled", y_status_result.Value().enabled},
-            {"homed", y_status_result.Value().homing_state == "homed"},
-            {"in_position", y_status_result.Value().in_position},
-            {"has_error", y_status_result.Value().has_error},
-            {"error_code", y_status_result.Value().error_code},
-            {"servo_alarm", y_status_result.Value().servo_alarm},
-            {"following_error", y_status_result.Value().following_error},
-            {"home_failed", y_status_result.Value().home_failed},
-            {"hard_limit_positive", y_status_result.Value().hard_limit_positive},
-            {"hard_limit_negative", y_status_result.Value().hard_limit_negative},
-            {"soft_limit_positive", y_status_result.Value().soft_limit_positive},
-            {"soft_limit_negative", y_status_result.Value().soft_limit_negative},
-            {"home_signal", y_status_result.Value().home_signal},
-            {"index_signal", y_status_result.Value().index_signal},
-            {"selected_feedback_source", y_status_result.Value().selected_feedback_source},
-            {"prf_position_mm", y_status_result.Value().profile_position_mm},
-            {"enc_position_mm", y_status_result.Value().encoder_position_mm},
-            {"prf_velocity_mm_s", y_status_result.Value().profile_velocity_mm_s},
-            {"enc_velocity_mm_s", y_status_result.Value().encoder_velocity_mm_s},
-            {"prf_position_ret", y_status_result.Value().profile_position_ret},
-            {"enc_position_ret", y_status_result.Value().encoder_position_ret},
-            {"prf_velocity_ret", y_status_result.Value().profile_velocity_ret},
-            {"enc_velocity_ret", y_status_result.Value().encoder_velocity_ret},
-        };
-    }
-
     return GatewayJsonProtocol::MakeSuccessResponse(id, response);
 }
 

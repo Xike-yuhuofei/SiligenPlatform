@@ -34,6 +34,24 @@
       ]
     },
     {
+      "method": "dxf.job.observation",
+      "kind": "query",
+      "paramsSchema": {
+        "type": "object",
+        "required": ["job_id"],
+        "properties": {
+          "job_id": { "type": "string" },
+          "coord_sys": { "type": "integer" }
+        },
+        "additionalProperties": false
+      },
+      "resultRef": "../models/states.json#/definitions/dxfJobObservationSnapshot",
+      "errorCodes": [2930, 2931, 2932, 2933],
+      "consumers": [
+        "hmi-client CommandProtocol.dxf_get_job_observation"
+      ]
+    },
+    {
       "method": "dxf.job.traceability",
       "kind": "query",
       "paramsSchema": {

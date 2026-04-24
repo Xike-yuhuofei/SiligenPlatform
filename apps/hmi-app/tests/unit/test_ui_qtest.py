@@ -33,6 +33,8 @@ def _operator_context(**overrides: object) -> dict[str, object]:
         "completed_count": "0 / 1",
         "global_progress_percent": 0,
         "current_operation": "生产 运行中",
+        "preview_resync_pending": False,
+        "preview_refresh_inflight": False,
     }
     base.update(overrides)
     return base
@@ -177,6 +179,55 @@ class _PreviewJourneyRunner(GuiContractRunner):
         self.captured_stages.append(stage_name or description)
 
 
+class _ExclusiveWindowRunner(GuiContractRunner):
+    def __init__(self, *, context: dict[str, object]) -> None:
+        fake_window = SimpleNamespace(
+            build_operator_context_snapshot=lambda: dict(context),
+        )
+        super().__init__(
+            app=cast(Any, _FakeApp()),
+            window=cast(Any, fake_window),
+            launch_mode="online",
+            timeout_ms=1000,
+        )
+        self.emitted_windows: list[tuple[str, str]] = []
+
+        class _ValueBox:
+            def __init__(self, value: int) -> None:
+                self._value = value
+
+            def value(self) -> int:
+                return self._value
+
+        class _TextBox:
+            def __init__(self, text: str) -> None:
+                self._text = text
+
+            def text(self) -> str:
+                return self._text
+
+        preview_state = SimpleNamespace(
+            preview_state_resync_pending=bool(context.get("preview_resync_pending", False)),
+            preview_refresh_inflight=bool(context.get("preview_refresh_inflight", False)),
+        )
+        self.window._preview_session = SimpleNamespace(state=preview_state)
+        self.window._target_count = int(context.get("target_count", 0) or 0)
+        completed_count = str(context.get("completed_count", "0/0")).replace(" ", "").split("/")[0]
+        self.window._completed_count = int(completed_count or 0)
+        self.window._current_job_id = str(context.get("job_id", "") or "")
+        self.window._global_progress = _ValueBox(int(context.get("global_progress_percent", 0) or 0))
+        self.window._operation_status = _TextBox(str(context.get("current_operation", "") or ""))
+        self.sync_calls = 0
+
+        def _sync_preview_state_from_runtime() -> None:
+            self.sync_calls += 1
+
+        self.window._sync_preview_state_from_runtime = _sync_preview_state_from_runtime
+
+    def _emit_operator_exclusive_window(self, *, kind: str, state: str) -> None:
+        self.emitted_windows.append((kind, state))
+
+
 class _RuntimeActionProfileRunner(GuiContractRunner):
     def __init__(self, *, runtime_action_profile: str) -> None:
         super().__init__(
@@ -277,6 +328,40 @@ class GuiQtestContractTest(unittest.TestCase):
         self.assertIn("global_progress_percent=100", output)
         self.assertIn("current_operation=等待_下一批", output)
         self.assertIn("preview_confirmed=true", output)
+        self.assertIn("preview_resync_pending=false", output)
+        self.assertIn("preview_refresh_inflight=false", output)
+
+    def test_operator_next_job_ready_recovery_window_wraps_post_completion_resync(self) -> None:
+        runner = _ExclusiveWindowRunner(
+            context=_operator_context(
+                job_id="",
+                completed_count="1 / 1",
+                global_progress_percent=100,
+                current_operation="完成",
+                preview_resync_pending=True,
+            )
+        )
+
+        with runner._operator_next_job_ready_recovery_window():
+            runner.window._sync_preview_state_from_runtime()
+
+        self.assertEqual(runner.sync_calls, 1)
+        self.assertEqual(
+            runner.emitted_windows,
+            [
+                ("next_job_ready_recovery", "started"),
+                ("next_job_ready_recovery", "completed"),
+            ],
+        )
+
+    def test_operator_next_job_ready_recovery_window_ignores_non_terminal_sync(self) -> None:
+        runner = _ExclusiveWindowRunner(context=_operator_context(preview_resync_pending=True))
+
+        with runner._operator_next_job_ready_recovery_window():
+            runner.window._sync_preview_state_from_runtime()
+
+        self.assertEqual(runner.sync_calls, 1)
+        self.assertEqual(runner.emitted_windows, [])
 
     def test_preview_journey_fail_closed_does_not_emit_preview_ready_on_timeout(self) -> None:
         runner = _PreviewJourneyRunner(wait_results=[True, False])

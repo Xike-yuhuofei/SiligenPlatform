@@ -60,6 +60,8 @@ REQUIRED_OPERATOR_CONTEXT_FIELDS = (
     "completed_count",
     "global_progress_percent",
     "current_operation",
+    "preview_resync_pending",
+    "preview_refresh_inflight",
 )
 
 
@@ -610,6 +612,8 @@ class GuiContractRunner:
         job_id = str(context.get("job_id") or "null")
         target_count = int(context.get("target_count", 0) or 0)
         global_progress = int(context.get("global_progress_percent", 0) or 0)
+        preview_resync_pending = str(bool(context.get("preview_resync_pending", False))).lower()
+        preview_refresh_inflight = str(bool(context.get("preview_refresh_inflight", False))).lower()
         last_error_message = self._context_token(getattr(preview_gate, "last_error_message", ""))
         print(
             "OPERATOR_CONTEXT "
@@ -630,7 +634,9 @@ class GuiContractRunner:
             f"completed_count={completed_count or '0/0'} "
             f"global_progress_percent={global_progress} "
             f"current_operation={current_operation} "
-            f"preview_confirmed={str(bool(context.get('preview_confirmed', False))).lower()}",
+            f"preview_confirmed={str(bool(context.get('preview_confirmed', False))).lower()} "
+            f"preview_resync_pending={preview_resync_pending} "
+            f"preview_refresh_inflight={preview_refresh_inflight}",
             flush=True,
         )
 
@@ -641,6 +647,65 @@ class GuiContractRunner:
             f"state={state}",
             flush=True,
         )
+
+    def _operator_next_job_ready_recovery_active(self) -> bool:
+        preview_state = self._preview_session_state()
+        target_count = int(getattr(self.window, "_target_count", 0) or 0)
+        completed_count = int(getattr(self.window, "_completed_count", 0) or 0)
+        current_job_id = str(getattr(self.window, "_current_job_id", "") or "").strip()
+        global_progress = 0
+        if hasattr(self.window, "_global_progress") and hasattr(self.window._global_progress, "value"):
+            global_progress = int(self.window._global_progress.value() or 0)
+        current_operation = ""
+        if hasattr(self.window, "_operation_status") and hasattr(self.window._operation_status, "text"):
+            current_operation = str(self.window._operation_status.text() or "")
+        return bool(
+            target_count > 0
+            and completed_count >= target_count
+            and global_progress == 100
+            and not current_job_id
+            and current_operation == "完成"
+            and (
+                bool(getattr(preview_state, "preview_state_resync_pending", False))
+                or bool(getattr(preview_state, "preview_refresh_inflight", False))
+            )
+        )
+
+    @contextmanager
+    def _operator_next_job_ready_recovery_window(self) -> Iterator[None]:
+        sync_preview_state = getattr(self.window, "_sync_preview_state_from_runtime", None)
+        if not callable(sync_preview_state):
+            yield
+            return
+
+        active_calls = 0
+
+        def wrapped(*args, **kwargs):
+            nonlocal active_calls
+            should_emit = self._operator_next_job_ready_recovery_active()
+            if should_emit and active_calls == 0:
+                self._emit_operator_exclusive_window(kind="next_job_ready_recovery", state="started")
+            if should_emit:
+                active_calls += 1
+            try:
+                return sync_preview_state(*args, **kwargs)
+            except Exception:
+                if should_emit:
+                    active_calls = max(0, active_calls - 1)
+                    if active_calls == 0:
+                        self._emit_operator_exclusive_window(kind="next_job_ready_recovery", state="failed")
+                raise
+            finally:
+                if should_emit and active_calls > 0:
+                    active_calls -= 1
+                    if active_calls == 0:
+                        self._emit_operator_exclusive_window(kind="next_job_ready_recovery", state="completed")
+
+        setattr(self.window, "_sync_preview_state_from_runtime", wrapped)
+        try:
+            yield
+        finally:
+            setattr(self.window, "_sync_preview_state_from_runtime", sync_preview_state)
 
     def _record_operator_stage_failure(self, stage: str, description: str) -> None:
         self._emit_operator_context(stage)
@@ -757,40 +822,44 @@ class GuiContractRunner:
         self._emit_operator_context("production-running")
         self._capture_screenshot("operator production running screenshot", stage_name="production-running")
 
-        if not self._wait_for(
-            "operator production terminal completed",
-            lambda: self._operator_context_satisfies(
-                lambda context: not bool(str(context.get("job_id") or "").strip())
-                and str(context.get("current_operation") or "") == "完成"
-                and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
-                and int(context.get("global_progress_percent", 0) or 0) == 100
-            ),
-            timeout_ms=self.timeout_ms,
-        ):
-            self._record_operator_stage_failure("production-completed-failed", "operator production completion failed screenshot")
-            return
-        self._emit_operator_context("production-completed")
-        self._capture_screenshot("operator production completed screenshot", stage_name="production-completed")
+        with self._operator_next_job_ready_recovery_window():
+            if not self._wait_for(
+                "operator production terminal completed",
+                lambda: self._operator_context_satisfies(
+                    lambda context: not bool(str(context.get("job_id") or "").strip())
+                    and str(context.get("current_operation") or "") == "完成"
+                    and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
+                    and int(context.get("global_progress_percent", 0) or 0) == 100
+                ),
+                timeout_ms=self.timeout_ms,
+            ):
+                self._record_operator_stage_failure("production-completed-failed", "operator production completion failed screenshot")
+                return
+            self._emit_operator_context("production-completed")
+            self._capture_screenshot("operator production completed screenshot", stage_name="production-completed")
 
-        target_input = self._require_widget("input-target-count")
-        if not self._wait_for(
-            "operator production recovers next job readiness",
-            lambda: start_button is not None
-            and target_input is not None
-            and start_button.isEnabled()
-            and target_input.isEnabled()
-            and not bool(getattr(self.window, "_pending_production_action", ""))
-            and self._operator_context_satisfies(
-                lambda context: not bool(str(context.get("job_id") or "").strip())
-                and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
-                and int(context.get("global_progress_percent", 0) or 0) == 100
-            ),
-            timeout_ms=15000,
-        ):
-            self._record_operator_stage_failure("next-job-ready-failed", "operator production next job ready failed screenshot")
-            return
-        self._emit_operator_context("next-job-ready")
-        self._capture_screenshot("operator production next job ready screenshot", stage_name="next-job-ready")
+            target_input = self._require_widget("input-target-count")
+            next_job_ready_recovered = self._wait_for(
+                "operator production recovers next job readiness",
+                lambda: start_button is not None
+                and target_input is not None
+                and start_button.isEnabled()
+                and target_input.isEnabled()
+                and not bool(getattr(self.window, "_pending_production_action", ""))
+                and self._operator_context_satisfies(
+                    lambda context: not bool(str(context.get("job_id") or "").strip())
+                    and str(context.get("completed_count") or "").replace(" ", "") == "1/1"
+                    and int(context.get("global_progress_percent", 0) or 0) == 100
+                    and not bool(context.get("preview_resync_pending", False))
+                    and not bool(context.get("preview_refresh_inflight", False))
+                ),
+                timeout_ms=15000,
+            )
+            if not next_job_ready_recovered:
+                self._record_operator_stage_failure("next-job-ready-failed", "operator production next job ready failed screenshot")
+                return
+            self._emit_operator_context("next-job-ready")
+            self._capture_screenshot("operator production next job ready screenshot", stage_name="next-job-ready")
 
     def _ensure_runtime_motion_ready(self) -> None:
         if (

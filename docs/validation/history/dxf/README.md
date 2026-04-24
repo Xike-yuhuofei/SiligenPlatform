@@ -10,6 +10,7 @@
 
 当前内容：
 
+- [demo1-hmi-production-operator-test-2026-04-24.md](./demo1-hmi-production-operator-test-2026-04-24.md)
 - [demo1-hmi-production-operator-test-2026-04-22.md](./demo1-hmi-production-operator-test-2026-04-22.md)
 - [dxf-contract-regression-resume-2026-03-21.md](./dxf-contract-regression-resume-2026-03-21.md)
 - [dxf-mainline-session-summary-2026-03-21.md](./dxf-mainline-session-summary-2026-03-21.md)
