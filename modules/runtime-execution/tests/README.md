@@ -2,6 +2,16 @@
 
 runtime-execution 的模块级验证入口应收敛到此目录。
 
+- canonical C++ targets:
+  - `siligen_runtime_execution_unit_tests`
+  - `runtime_execution_motion_runtime_assembly_test`
+  - `siligen_runtime_execution_workflow_seam_tests`
+  - `siligen_runtime_host_unit_tests`
+  - `runtime_execution_integration_host_bootstrap_smoke`
+  - `runtime_execution_regression_host_core`
+- 推荐执行顺序：
+  - `ctest --test-dir .\build\ca -C Debug --output-on-failure -R "^(siligen_runtime_execution_unit_tests|siligen_runtime_host_unit_tests)$"`
+  - `ctest --test-dir .\build\ca -C Debug --output-on-failure -R "^(siligen_runtime_execution_workflow_seam_tests|runtime_execution_integration_host_bootstrap_smoke|runtime_execution_regression_host_core)$"`
 - `tests/python/`
   - 对应命令：`python -m pytest modules/runtime-execution/tests/python -q`
   - 冻结 `simulation_input` runtime concrete owner lane，覆盖 canonical fixture 对齐、trigger CSV/投影与 `runtime_execution.export_simulation_input` CLI smoke。

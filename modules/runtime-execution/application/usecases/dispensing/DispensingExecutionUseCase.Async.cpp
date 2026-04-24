@@ -1,6 +1,8 @@
 #define MODULE_NAME "DispensingExecutionUseCase"
 
 #include "DispensingExecutionUseCase.Internal.h"
+#include "ExecutionTransitionKernel.h"
+#include "TraceabilityAggregator.h"
 
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
@@ -75,33 +77,6 @@ struct ParsedJobStateForTesting {
     JobState job_state = JobState::FAILED;
     ExecutionTransitionState transition_state = ExecutionTransitionState::FAILED;
 };
-
-ExecutionTransitionState ResolveJobTransitionState(
-    JobState state,
-    ExecutionTransitionState requested_transition_state) {
-    switch (state) {
-        case JobState::PENDING:
-            return ExecutionTransitionState::PENDING;
-        case JobState::RUNNING:
-            return ExecutionTransitionState::RUNNING;
-        case JobState::WAITING_CONTINUE:
-            return ExecutionTransitionState::AWAITING_CONTINUE;
-        case JobState::STOPPING:
-            return requested_transition_state == ExecutionTransitionState::CANCELING
-                ? ExecutionTransitionState::CANCELING
-                : ExecutionTransitionState::STOPPING;
-        case JobState::PAUSED:
-            return ExecutionTransitionState::PAUSED;
-        case JobState::COMPLETED:
-            return ExecutionTransitionState::COMPLETED;
-        case JobState::FAILED:
-            return ExecutionTransitionState::FAILED;
-        case JobState::CANCELLED:
-            return ExecutionTransitionState::CANCELLED;
-        default:
-            return ExecutionTransitionState::UNKNOWN;
-    }
-}
 
 ParsedJobStateForTesting ParseJobStateForTesting(const std::string& state) {
     ParsedJobStateForTesting parsed;
@@ -1098,12 +1073,15 @@ RuntimeJobStatusResponse DispensingExecutionUseCase::Impl::BuildJobStatusRespons
     const std::shared_ptr<JobExecutionContext>& context) const {
     RuntimeJobStatusResponse response;
     const auto transition_state =
-        ResolveJobTransitionState(context->state.load(), context->requested_transition_state.load());
+        ExecutionTransitionKernel::ResolveJobTransitionState(
+            context->state.load(),
+            context->requested_transition_state.load(),
+            context->pause_requested.load());
     response.job_id = context->job_id;
     response.plan_id = context->plan_id;
     response.plan_fingerprint = context->plan_fingerprint;
     response.transition_state = transition_state;
-    response.state = Siligen::Application::Services::Motion::Execution::ToString(transition_state);
+    response.state = JobStateToString(context->state.load());
     response.target_count = context->target_count.load();
     response.completed_count = context->completed_count.load();
     response.current_cycle = context->current_cycle.load();
@@ -1324,49 +1302,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                 }
             } else if (task_status.state == "completed") {
                 const auto cycle_index = cycle + 1U;
-                {
-                    std::lock_guard<std::mutex> lock(context->mutex_);
-                    for (const auto& actual_item : task_context->result.actual_trace) {
-                        auto cycle_item = actual_item;
-                        cycle_item.cycle_index = cycle_index;
-                        context->actual_trace.push_back(std::move(cycle_item));
-                    }
-                    for (const auto& mismatch : task_context->result.traceability_mismatches) {
-                        auto cycle_mismatch = mismatch;
-                        cycle_mismatch.cycle_index = cycle_index;
-                        context->mismatches.push_back(std::move(cycle_mismatch));
-                    }
-
-                    if (task_context->result.traceability_verdict == "failed") {
-                        context->traceability_verdict = "failed";
-                        context->strict_one_to_one_proven = false;
-                        if (context->traceability_verdict_reason.empty()) {
-                            context->traceability_verdict_reason =
-                                task_context->result.traceability_verdict_reason.empty()
-                                    ? ("traceability failed at cycle " + std::to_string(cycle_index))
-                                    : ("cycle " + std::to_string(cycle_index) + ": " +
-                                       task_context->result.traceability_verdict_reason);
-                        }
-                    } else if (task_context->result.traceability_verdict == "insufficient_evidence") {
-                        if (context->traceability_verdict != "failed") {
-                            context->traceability_verdict = "insufficient_evidence";
-                        }
-                        context->strict_one_to_one_proven = false;
-                        if (context->traceability_verdict_reason.empty() ||
-                            context->traceability_verdict_reason ==
-                                "strict traceability evidence is pending runtime terminal proof") {
-                            context->traceability_verdict_reason =
-                                task_context->result.traceability_verdict_reason.empty()
-                                    ? ("strict traceability evidence remained incomplete at cycle " +
-                                       std::to_string(cycle_index))
-                                    : ("cycle " + std::to_string(cycle_index) + ": " +
-                                       task_context->result.traceability_verdict_reason);
-                        }
-                    } else {
-                        context->strict_one_to_one_proven =
-                            context->strict_one_to_one_proven && task_context->result.strict_one_to_one_proven;
-                    }
-                }
+                TraceabilityAggregator::AppendCycleTraceability(context, task_context, cycle_index);
                 context->completed_count.store(cycle + 1);
                 context->current_segment.store(0);
                 context->total_segments.store(0);
@@ -1424,45 +1360,7 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
         }
     }
 
-    {
-        std::lock_guard<std::mutex> lock(context->mutex_);
-        if (!context->expected_trace.empty()) {
-            if (context->actual_trace.size() != context->expected_trace.size()) {
-                Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch mismatch;
-                mismatch.cycle_index = 1U;
-                mismatch.code = "actual_trace_count_mismatch";
-                mismatch.message =
-                    "actual trace count does not match expected trace count at terminal state";
-                context->mismatches.push_back(std::move(mismatch));
-                if (context->traceability_verdict != "failed") {
-                    context->traceability_verdict = "insufficient_evidence";
-                }
-                if (context->traceability_verdict_reason.empty() ||
-                    context->traceability_verdict_reason ==
-                        "strict traceability evidence is pending runtime terminal proof") {
-                    context->traceability_verdict_reason =
-                        "actual trace count does not match expected trace count at terminal state";
-                }
-                context->strict_one_to_one_proven = false;
-            } else if (context->mismatches.empty() &&
-                       context->traceability_verdict != "failed") {
-                context->traceability_verdict = "passed";
-                context->traceability_verdict_reason.clear();
-                context->strict_one_to_one_proven = true;
-            } else if (context->traceability_verdict == "failed") {
-                if (context->traceability_verdict_reason.empty()) {
-                    context->traceability_verdict_reason = "traceability mismatches detected";
-                }
-                context->strict_one_to_one_proven = false;
-            } else {
-                if (context->traceability_verdict_reason.empty()) {
-                    context->traceability_verdict_reason = "strict traceability evidence remains incomplete";
-                }
-                context->traceability_verdict = "insufficient_evidence";
-                context->strict_one_to_one_proven = false;
-            }
-        }
-    }
+    TraceabilityAggregator::FinalizeTerminalTraceability(context);
 
     FinalizeJob(context, JobState::COMPLETED);
 }

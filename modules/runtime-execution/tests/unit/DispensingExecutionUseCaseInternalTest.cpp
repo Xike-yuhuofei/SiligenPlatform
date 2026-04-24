@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -12,6 +13,7 @@
 
 #include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "usecases/dispensing/DispensingExecutionUseCase.Internal.h"
+#include "usecases/dispensing/VelocityTracePathPolicy.h"
 
 namespace {
 
@@ -804,7 +806,92 @@ TEST(DispensingExecutionUseCaseInternalTest, RequestJobTransitionReturnsCancelin
     auto job_status_result = use_case->GetJobStatus(job_context->job_id);
     ASSERT_TRUE(job_status_result.IsSuccess());
     EXPECT_EQ(job_status_result.Value().transition_state, ExecutionTransitionState::CANCELING);
-    EXPECT_EQ(job_status_result.Value().state, "canceling");
+    EXPECT_EQ(job_status_result.Value().state, "stopping");
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, PauseJobKeepsCoarseRunningStateWhileTransitionStateIsPausing) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto job_context = std::make_shared<JobExecutionContext>();
+    job_context->job_id = "job-pausing";
+    job_context->plan_id = "plan-pausing";
+    job_context->plan_fingerprint = "fp-pausing";
+    auto execution_request = std::make_shared<DispensingExecutionRequest>(BuildExecutionRequest(true));
+    execution_request->dry_run = true;
+    job_context->execution_request = execution_request;
+    job_context->state.store(JobState::RUNNING);
+    job_context->requested_transition_state.store(ExecutionTransitionState::RUNNING);
+    job_context->dry_run = true;
+    job_context->start_time = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    use_case->jobs_[job_context->job_id] = job_context;
+
+    auto pause_result = use_case->PauseJob(job_context->job_id);
+
+    ASSERT_TRUE(pause_result.IsSuccess()) << pause_result.GetError().GetMessage();
+
+    auto job_status_result = use_case->GetJobStatus(job_context->job_id);
+    ASSERT_TRUE(job_status_result.IsSuccess());
+    EXPECT_EQ(job_status_result.Value().state, "running");
+    EXPECT_EQ(job_status_result.Value().transition_state, ExecutionTransitionState::PAUSING);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ResumeJobClearsPendingPauseBeforeTaskPauseApplies) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto job_context = std::make_shared<JobExecutionContext>();
+    job_context->job_id = "job-resume-pending-pause";
+    job_context->plan_id = "plan-resume-pending-pause";
+    job_context->plan_fingerprint = "fp-resume-pending-pause";
+    auto execution_request = std::make_shared<DispensingExecutionRequest>(BuildExecutionRequest(true));
+    execution_request->dry_run = true;
+    job_context->execution_request = execution_request;
+    job_context->state.store(JobState::RUNNING);
+    job_context->requested_transition_state.store(ExecutionTransitionState::RUNNING);
+    job_context->pause_requested.store(true);
+    job_context->dry_run = true;
+    job_context->start_time = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    use_case->jobs_[job_context->job_id] = job_context;
+
+    auto resume_result = use_case->ResumeJob(job_context->job_id);
+
+    ASSERT_TRUE(resume_result.IsSuccess()) << resume_result.GetError().GetMessage();
+
+    auto job_status_result = use_case->GetJobStatus(job_context->job_id);
+    ASSERT_TRUE(job_status_result.IsSuccess());
+    EXPECT_EQ(job_status_result.Value().state, "running");
+    EXPECT_EQ(job_status_result.Value().transition_state, ExecutionTransitionState::RUNNING);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ContinueJobMarksAwaitingContinueJobAsReadyToAdvance) {
+    auto use_case = CreateExecutionUseCase();
+
+    auto job_context = std::make_shared<JobExecutionContext>();
+    job_context->job_id = "job-awaiting-continue";
+    job_context->plan_id = "plan-awaiting-continue";
+    job_context->plan_fingerprint = "fp-awaiting-continue";
+    auto execution_request = std::make_shared<DispensingExecutionRequest>(BuildExecutionRequest(true));
+    execution_request->dry_run = true;
+    job_context->execution_request = execution_request;
+    job_context->state.store(JobState::WAITING_CONTINUE);
+    job_context->requested_transition_state.store(ExecutionTransitionState::AWAITING_CONTINUE);
+    job_context->target_count.store(2U);
+    job_context->current_cycle.store(1U);
+    job_context->dry_run = true;
+    job_context->start_time = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    use_case->jobs_[job_context->job_id] = job_context;
+
+    auto continue_result = use_case->ContinueJob(job_context->job_id);
+
+    ASSERT_TRUE(continue_result.IsSuccess()) << continue_result.GetError().GetMessage();
+
+    const auto job_it = use_case->jobs_.find(job_context->job_id);
+    ASSERT_NE(job_it, use_case->jobs_.end());
+    EXPECT_TRUE(job_it->second->continue_requested.load());
+
+    auto job_status_result = use_case->GetJobStatus(job_context->job_id);
+    ASSERT_TRUE(job_status_result.IsSuccess());
+    EXPECT_EQ(job_status_result.Value().state, "awaiting_continue");
+    EXPECT_EQ(job_status_result.Value().transition_state, ExecutionTransitionState::AWAITING_CONTINUE);
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, StopJobLeavesJobInStoppingTransitionAfterTaskCancelConfirmed) {
@@ -1286,4 +1373,104 @@ TEST(DispensingExecutionUseCaseInternalTest, PointFlyingExecutionRequestIsAccept
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     EXPECT_EQ(result.Value().total_segments, 1U);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ValidateExecutionPreconditionsRejectsDisconnectedProductionRun) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    connection_port->connected = false;
+    auto use_case = CreateExecutionUseCase(
+        std::make_shared<StubDispensingProcessPort>(),
+        nullptr,
+        connection_port);
+
+    const auto result = use_case->ValidateExecutionPreconditions(false);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::HARDWARE_NOT_CONNECTED);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ValidateExecutionPreconditionsAllowsDisconnectedDryRun) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    connection_port->connected = false;
+    auto use_case = CreateExecutionUseCase(
+        std::make_shared<StubDispensingProcessPort>(),
+        nullptr,
+        connection_port);
+
+    const auto result = use_case->ValidateExecutionPreconditions(true);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, ValidateExecutionPreconditionsRejectsUnhomedAxis) {
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    motion_state_port->status.state = MotionState::MOVING;
+    motion_state_port->status.position = Point2D{0.0f, 0.0f};
+    motion_state_port->status.velocity = 1.0f;
+    motion_state_port->status.in_position = false;
+    motion_state_port->status.enabled = true;
+
+    auto use_case = CreateExecutionUseCase(
+        std::make_shared<StubDispensingProcessPort>(),
+        nullptr,
+        std::make_shared<FakeHardwareConnectionPort>(),
+        motion_state_port);
+
+    const auto result = use_case->ValidateExecutionPreconditions(false);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::AXIS_NOT_HOMED);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, VelocityTracePathPolicyRejectsAbsoluteConfiguredPath) {
+    const auto source_dir =
+        std::filesystem::temp_directory_path() / "siligen-runtime-execution-velocity-trace-absolute";
+    std::filesystem::create_directories(source_dir);
+    const auto source_path = (source_dir / "sample.dxf").string();
+    const auto configured_path = (source_dir / "absolute.csv").string();
+
+    const auto result =
+        Siligen::Application::UseCases::Dispensing::VelocityTracePathPolicy::ResolveOutputPath(
+            source_path,
+            configured_path);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_PATH_INVALID);
+    EXPECT_NE(result.GetError().GetMessage().find("absolute velocity trace path"), std::string::npos);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, VelocityTracePathPolicyRejectsEscapingParentDirectory) {
+    const auto source_dir =
+        std::filesystem::temp_directory_path() / "siligen-runtime-execution-velocity-trace-escape";
+    std::filesystem::create_directories(source_dir);
+    const auto source_path = (source_dir / "sample.dxf").string();
+
+    const auto result =
+        Siligen::Application::UseCases::Dispensing::VelocityTracePathPolicy::ResolveOutputPath(
+            source_path,
+            "..\\escape");
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::FILE_PATH_INVALID);
+    EXPECT_NE(result.GetError().GetMessage().find("escapes controlled base directory"), std::string::npos);
+}
+
+TEST(DispensingExecutionUseCaseInternalTest, VelocityTracePathPolicyResolvesInsideRuntimeOwnedDirectory) {
+    const auto source_dir =
+        std::filesystem::temp_directory_path() / "siligen-runtime-execution-velocity-trace-owned";
+    std::filesystem::create_directories(source_dir);
+    const auto source_path = (source_dir / "sample.dxf").string();
+
+    const auto result =
+        Siligen::Application::UseCases::Dispensing::VelocityTracePathPolicy::ResolveOutputPath(
+            source_path,
+            "");
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+
+    const auto resolved_path = std::filesystem::path(result.Value());
+    EXPECT_EQ(resolved_path.filename().string(), "sample_velocity_trace.csv");
+    EXPECT_EQ(resolved_path.parent_path().filename().string(), "velocity-traces");
+    EXPECT_EQ(resolved_path.parent_path().parent_path().filename().string(), "_runtime-execution");
+    EXPECT_EQ(resolved_path.parent_path().parent_path().parent_path(), source_dir);
 }

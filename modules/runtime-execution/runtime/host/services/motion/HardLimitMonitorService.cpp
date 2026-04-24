@@ -125,6 +125,8 @@ void HardLimitMonitorService::MonitoringLoop() noexcept {
                 if (stop_result.IsError()) {
                     SILIGEN_LOG_ERROR("Stop axis failed: " + stop_result.GetError().GetMessage());
                 }
+            } else if (!triggered && last_triggered_[i]) {
+                SILIGEN_LOG_INFO("Hard limit cleared on axis " + std::to_string(axis_display));
             }
             last_triggered_[i] = triggered;
         }

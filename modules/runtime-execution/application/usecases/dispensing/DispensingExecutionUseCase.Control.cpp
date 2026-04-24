@@ -1,12 +1,13 @@
 #define MODULE_NAME "DispensingExecutionUseCase"
 
 #include "DispensingExecutionUseCase.Internal.h"
+#include "ExecutionTransitionKernel.h"
+#include "ExecutionTransitionWaiter.h"
 
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <chrono>
-#include <thread>
 
 namespace Siligen::Application::UseCases::Dispensing {
 
@@ -20,11 +21,6 @@ constexpr auto kPauseTransitionPoll = std::chrono::milliseconds(50);
 constexpr int kStopSettleTimeoutMs = 2000;
 constexpr int kStopSettlePollMs = 20;
 
-bool IsSupportedTransitionRequest(ExecutionTransitionState state) {
-    return state == ExecutionTransitionState::STOPPING ||
-           state == ExecutionTransitionState::CANCELING;
-}
-
 ExecutionTransitionSnapshot BuildTransitionSnapshot(
     const RuntimeJobStatusResponse& status,
     bool accepted,
@@ -35,25 +31,6 @@ ExecutionTransitionSnapshot BuildTransitionSnapshot(
     snapshot.transition_state = status.transition_state;
     snapshot.message = message.empty() ? status.error_message : std::move(message);
     return snapshot;
-}
-
-const char* TaskStateCode(TaskState state) {
-    switch (state) {
-        case TaskState::PENDING:
-            return "PENDING";
-        case TaskState::RUNNING:
-            return "RUNNING";
-        case TaskState::PAUSED:
-            return "PAUSED";
-        case TaskState::COMPLETED:
-            return "COMPLETED";
-        case TaskState::FAILED:
-            return "FAILED";
-        case TaskState::CANCELLED:
-            return "CANCELLED";
-        default:
-            return "UNKNOWN";
-    }
 }
 
 }  // namespace
@@ -121,17 +98,9 @@ Result<void> DispensingExecutionUseCase::Impl::PauseJob(const JobID& job_id) {
     if (state == JobState::PAUSED) {
         return Result<void>::Success();
     }
-    if (state == JobState::WAITING_CONTINUE) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is waiting for continue", "DispensingExecutionUseCase"));
-    }
-    if (state == JobState::STOPPING) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
-    }
-    if (IsTerminalJobState(state)) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
+    auto validation = ExecutionTransitionKernel::ValidatePauseJob(state, "DispensingExecutionUseCase");
+    if (validation.IsError()) {
+        return Result<void>::Failure(validation.GetError());
     }
 
     context->pause_requested.store(true);
@@ -162,17 +131,14 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeJob(const JobID& job_id) {
     }
 
     const auto state = context->state.load();
-    if (state == JobState::WAITING_CONTINUE) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is waiting for continue", "DispensingExecutionUseCase"));
+    if (state == JobState::RUNNING && !context->pause_requested.load()) {
+        return Result<void>::Success();
     }
-    if (state == JobState::STOPPING) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
-    }
-    if (IsTerminalJobState(state)) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
+    if (state != JobState::RUNNING) {
+        auto validation = ExecutionTransitionKernel::ValidateResumeJob(state, "DispensingExecutionUseCase");
+        if (validation.IsError()) {
+            return Result<void>::Failure(validation.GetError());
+        }
     }
 
     if (!context->execution_request) {
@@ -212,18 +178,10 @@ Result<void> DispensingExecutionUseCase::Impl::ContinueJob(const JobID& job_id) 
         context = it->second;
     }
 
-    const auto state = context->state.load();
-    if (state == JobState::STOPPING) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is stopping", "DispensingExecutionUseCase"));
-    }
-    if (IsTerminalJobState(state)) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job already finished", "DispensingExecutionUseCase"));
-    }
-    if (state != JobState::WAITING_CONTINUE) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "job is not waiting for continue", "DispensingExecutionUseCase"));
+    auto validation =
+        ExecutionTransitionKernel::ValidateContinueJob(context->state.load(), "DispensingExecutionUseCase");
+    if (validation.IsError()) {
+        return Result<void>::Failure(validation.GetError());
     }
     if (!context->execution_request) {
         return Result<void>::Failure(
@@ -242,7 +200,7 @@ Result<void> DispensingExecutionUseCase::Impl::ContinueJob(const JobID& job_id) 
 Result<ExecutionTransitionSnapshot> DispensingExecutionUseCase::Impl::RequestJobTransition(
     const JobID& job_id,
     ExecutionTransitionState requested_transition_state) {
-    if (!IsSupportedTransitionRequest(requested_transition_state)) {
+    if (!ExecutionTransitionKernel::IsSupportedTransitionRequest(requested_transition_state)) {
         return Result<ExecutionTransitionSnapshot>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "unsupported job transition request", "DispensingExecutionUseCase"));
     }
@@ -366,49 +324,22 @@ Result<void> DispensingExecutionUseCase::Impl::PauseTask(const TaskID& task_id) 
     if (state == TaskState::PAUSED) {
         return Result<void>::Success();
     }
-    if (state != TaskState::RUNNING) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Task is not running", "DispensingExecutionUseCase"));
+    auto validation = ExecutionTransitionKernel::ValidatePauseTask(state, "DispensingExecutionUseCase");
+    if (validation.IsError()) {
+        return Result<void>::Failure(validation.GetError());
     }
 
     context->pause_requested.store(true);
-    const auto deadline = std::chrono::steady_clock::now() + kPauseTransitionTimeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (ResolveVisibleState(context) == TaskState::PAUSED && context->pause_applied.load()) {
-            return Result<void>::Success();
-        }
-        const auto observed_state = ResolveVisibleState(context);
-        if (observed_state == TaskState::FAILED ||
-            observed_state == TaskState::CANCELLED ||
-            observed_state == TaskState::COMPLETED) {
-            if (observed_state == TaskState::FAILED) {
-                auto failure_message = ReadTaskErrorMessage(context);
-                if (failure_message.empty()) {
-                    failure_message = "task_failed";
-                }
-                return Result<void>::Failure(
-                    Error(
-                        ErrorCode::HARDWARE_ERROR,
-                        "failure_stage=pause_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
-                            ";message=" + failure_message,
-                        "DispensingExecutionUseCase"));
-            }
-
-            return Result<void>::Failure(
-                Error(
-                    ErrorCode::INVALID_STATE,
-                    "failure_stage=pause_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
-                        ";message=pause_interrupted_by_terminal_state",
-                    "DispensingExecutionUseCase"));
-        }
-        std::this_thread::sleep_for(kPauseTransitionPoll);
-    }
-
-    return Result<void>::Failure(
-        Error(
-            ErrorCode::MOTION_TIMEOUT,
-            "failure_stage=pause_confirm;failure_code=MOTION_TIMEOUT;message=pause_transition_timed_out",
-            "DispensingExecutionUseCase"));
+    return ExecutionTransitionWaiter::WaitForTaskTransition(
+        "pause",
+        kPauseTransitionTimeout,
+        kPauseTransitionPoll,
+        [context](TaskState observed_state) {
+            return observed_state == TaskState::PAUSED && context->pause_applied.load();
+        },
+        [context, this]() { return ResolveVisibleState(context); },
+        [this](TaskState observed_state) { return IsTerminalState(observed_state); },
+        [context, this]() { return ReadTaskErrorMessage(context); });
 }
 
 Result<void> DispensingExecutionUseCase::Impl::ResumeTask(const TaskID& task_id) {
@@ -431,49 +362,22 @@ Result<void> DispensingExecutionUseCase::Impl::ResumeTask(const TaskID& task_id)
     if (state == TaskState::RUNNING && !context->pause_applied.load()) {
         return Result<void>::Success();
     }
-    if (state != TaskState::PAUSED) {
-        return Result<void>::Failure(
-            Error(ErrorCode::INVALID_STATE, "Task is not paused", "DispensingExecutionUseCase"));
+    auto validation = ExecutionTransitionKernel::ValidateResumeTask(state, "DispensingExecutionUseCase");
+    if (validation.IsError()) {
+        return Result<void>::Failure(validation.GetError());
     }
 
     context->pause_requested.store(false);
-    const auto deadline = std::chrono::steady_clock::now() + kPauseTransitionTimeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (ResolveVisibleState(context) == TaskState::RUNNING && !context->pause_applied.load()) {
-            return Result<void>::Success();
-        }
-        const auto observed_state = ResolveVisibleState(context);
-        if (observed_state == TaskState::FAILED ||
-            observed_state == TaskState::CANCELLED ||
-            observed_state == TaskState::COMPLETED) {
-            if (observed_state == TaskState::FAILED) {
-                auto failure_message = ReadTaskErrorMessage(context);
-                if (failure_message.empty()) {
-                    failure_message = "task_failed";
-                }
-                return Result<void>::Failure(
-                    Error(
-                        ErrorCode::HARDWARE_ERROR,
-                        "failure_stage=resume_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
-                            ";message=" + failure_message,
-                        "DispensingExecutionUseCase"));
-            }
-
-            return Result<void>::Failure(
-                Error(
-                    ErrorCode::INVALID_STATE,
-                    "failure_stage=resume_confirm;failure_code=" + std::string(TaskStateCode(observed_state)) +
-                        ";message=resume_interrupted_by_terminal_state",
-                    "DispensingExecutionUseCase"));
-        }
-        std::this_thread::sleep_for(kPauseTransitionPoll);
-    }
-
-    return Result<void>::Failure(
-        Error(
-            ErrorCode::MOTION_TIMEOUT,
-            "failure_stage=resume_confirm;failure_code=MOTION_TIMEOUT;message=resume_transition_timed_out",
-            "DispensingExecutionUseCase"));
+    return ExecutionTransitionWaiter::WaitForTaskTransition(
+        "resume",
+        kPauseTransitionTimeout,
+        kPauseTransitionPoll,
+        [context](TaskState observed_state) {
+            return observed_state == TaskState::RUNNING && !context->pause_applied.load();
+        },
+        [context, this]() { return ResolveVisibleState(context); },
+        [this](TaskState observed_state) { return IsTerminalState(observed_state); },
+        [context, this]() { return ReadTaskErrorMessage(context); });
 }
 
 }  // namespace Siligen::Application::UseCases::Dispensing
