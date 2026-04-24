@@ -193,14 +193,32 @@ def collect_named_snapshot(
     coord_sys: int,
     job_id: str = "",
 ) -> dict[str, Any]:
-    status_raw = client.send_request("status", None, timeout_seconds=5.0)
-    coord_raw = client.send_request("motion.coord.status", {"coord_sys": coord_sys}, timeout_seconds=5.0)
-
-    job_raw: dict[str, Any] = {}
     if job_id:
-        job_raw = client.send_request("dxf.job.status", {"job_id": job_id}, timeout_seconds=5.0)
+        observation_raw = client.send_request(
+            "dxf.job.observation",
+            {"job_id": job_id, "coord_sys": coord_sys},
+            timeout_seconds=5.0,
+        )
+        if "error" in observation_raw:
+            raise RuntimeError("dxf.job.observation failed: " + truncate_json(observation_raw))
 
-    sampled_at = dryrun.utc_now()
+        observation_result = dryrun.status_result(observation_raw)
+        machine_result = observation_result.get("machine_status")
+        coord_result = observation_result.get("coord_status")
+        job_result = observation_result.get("job_status")
+        if not isinstance(machine_result, dict) or not isinstance(coord_result, dict) or not isinstance(job_result, dict):
+            raise RuntimeError("dxf.job.observation returned partial observation payload")
+
+        sampled_at = str(observation_result.get("sampled_at", "")).strip() or dryrun.utc_now()
+        status_raw = {"result": machine_result}
+        coord_raw = {"result": coord_result}
+        job_raw = {"result": job_result}
+    else:
+        status_raw = client.send_request("status", None, timeout_seconds=5.0)
+        coord_raw = client.send_request("motion.coord.status", {"coord_sys": coord_sys}, timeout_seconds=5.0)
+        job_raw = {}
+        sampled_at = dryrun.utc_now()
+
     snapshot: dict[str, Any] = {
         "name": name,
         "sampled_at": sampled_at,
@@ -208,6 +226,8 @@ def collect_named_snapshot(
         "coord_raw": coord_raw,
         "job_status_raw": job_raw,
     }
+    if job_id:
+        snapshot["job_observation_raw"] = observation_raw
 
     if "error" not in status_raw:
         snapshot["machine_status"] = dryrun.normalize_machine_status_sample(
@@ -755,7 +775,7 @@ def main() -> int:
         poll_index = 0
         stop_trigger_deadline = time.time() + args.stop_trigger_timeout_seconds
         while time.time() < stop_trigger_deadline:
-            observation = dryrun.collect_poll_observation(
+            observation = dryrun.collect_job_observation(
                 client,
                 job_id=job_id,
                 poll_index=poll_index,
@@ -832,7 +852,7 @@ def main() -> int:
         terminal_observation: dict[str, Any] | None = None
         stop_terminal_deadline = time.time() + args.stop_terminal_timeout_seconds
         while time.time() < stop_terminal_deadline:
-            observation = dryrun.collect_poll_observation(
+            observation = dryrun.collect_job_observation(
                 client,
                 job_id=job_id,
                 poll_index=poll_index,

@@ -363,6 +363,8 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->execution_launch.profile_compare_schedule.reset();
             reusable->execution_launch.expected_trace.reset();
             reusable->execution_assembly = ExecutionAssemblyResponse{};
+            reusable->retained_preview_motion_trajectory_points.clear();
+            reusable->retained_preview_process_path = {};
             if (reusable->preview_state == PlanPreviewState::STALE) {
                 reusable->preview_state =
                     (!reusable->confirmed_at.empty() &&
@@ -411,7 +413,8 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
             Error(ErrorCode::INVALID_PARAMETER, "plan_id is required", "DispensingWorkflowUseCase"));
     }
 
-    auto binding_resolution = ResolvePreviewBindingRequirement(request.plan_id, false, nullptr, true);
+    auto binding_resolution =
+        ResolvePreviewBindingRequirement(request.plan_id, false, nullptr, true, true);
     if (binding_resolution.IsError()) {
         return Result<PreviewSnapshotResponse>::Failure(binding_resolution.GetError());
     }
@@ -437,10 +440,13 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
         return Result<PreviewSnapshotResponse>::Failure(
             Error(ErrorCode::INVALID_STATE, detail, "DispensingWorkflowUseCase"));
     };
+    const bool has_motion_trajectory_snapshot =
+        !snapshot_record.execution_assembly.motion_trajectory_points.empty() ||
+        !snapshot_record.retained_preview_motion_trajectory_points.empty();
     const bool has_export_process_path =
-        !snapshot_record.execution_assembly.export_request.process_path.segments.empty();
-    if (snapshot_record.execution_assembly.motion_trajectory_points.empty() &&
-        !has_export_process_path) {
+        !snapshot_record.execution_assembly.export_request.process_path.segments.empty() ||
+        !snapshot_record.retained_preview_process_path.segments.empty();
+    if (!has_motion_trajectory_snapshot && !has_export_process_path) {
         return fail_snapshot_stage("motion trajectory snapshot unavailable for preview");
     }
 
@@ -464,7 +470,8 @@ Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreview(const C
             Error(ErrorCode::INVALID_PARAMETER, "snapshot_hash is required", "DispensingWorkflowUseCase"));
     }
 
-    auto binding_resolution = ResolvePreviewBindingRequirement(request.plan_id, true, &request.snapshot_hash, true);
+    auto binding_resolution =
+        ResolvePreviewBindingRequirement(request.plan_id, true, &request.snapshot_hash, true, false);
     if (binding_resolution.IsError()) {
         return Result<ConfirmPreviewResponse>::Failure(binding_resolution.GetError());
     }
@@ -695,8 +702,12 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.trajectory_points = &plan_record.execution_trajectory_points;
     if (!plan_record.execution_assembly.motion_trajectory_points.empty()) {
         input.motion_trajectory_points = &plan_record.execution_assembly.motion_trajectory_points;
+    } else if (!plan_record.retained_preview_motion_trajectory_points.empty()) {
+        input.motion_trajectory_points = &plan_record.retained_preview_motion_trajectory_points;
     } else if (!plan_record.execution_assembly.export_request.process_path.segments.empty()) {
         input.process_path = &plan_record.execution_assembly.export_request.process_path;
+    } else if (!plan_record.retained_preview_process_path.segments.empty()) {
+        input.process_path = &plan_record.retained_preview_process_path;
     }
     input.glue_points = &plan_record.glue_points;
     input.authority_trigger_layout = &plan_record.authority_trigger_layout;
@@ -1007,6 +1018,8 @@ Result<DispensingWorkflowUseCase::ExecutionAssemblyResolveResult> DispensingWork
     it->second.execution_launch.execution_package = assembly.execution_package;
     it->second.execution_assembly = assembly;
     it->second.execution_trajectory_points = assembly.execution_trajectory_points;
+    it->second.retained_preview_motion_trajectory_points = assembly.motion_trajectory_points;
+    it->second.retained_preview_process_path = assembly.export_request.process_path;
     it->second.response.point_count = static_cast<std::uint32_t>(assembly.execution_trajectory_points.size());
     it->second.authority_trigger_layout = assembly.authority_trigger_layout;
     it->second.preview_authority_shared_with_execution = assembly.preview_authority_shared_with_execution;
@@ -1038,8 +1051,29 @@ bool DispensingWorkflowUseCase::RequiresExecutionBinding(const PlanRecord& plan_
            plan_record.execution_binding_ready;
 }
 
-bool DispensingWorkflowUseCase::ShouldResolveExecutionBinding(const PlanRecord& plan_record) const {
+bool DispensingWorkflowUseCase::HasRetainedPreviewSnapshotTruth(const PlanRecord& plan_record) const {
+    return !plan_record.retained_preview_motion_trajectory_points.empty() ||
+           !plan_record.retained_preview_process_path.segments.empty();
+}
+
+bool DispensingWorkflowUseCase::CanServePreviewReadbackWithoutExecutionBinding(const PlanRecord& plan_record) const {
+    return HasRetainedPreviewSnapshotTruth(plan_record) &&
+           !plan_record.execution_launch.execution_package &&
+           plan_record.execution_assembly.motion_trajectory_points.empty() &&
+           plan_record.execution_assembly.export_request.process_path.segments.empty();
+}
+
+bool DispensingWorkflowUseCase::ShouldResolveExecutionBinding(
+    const PlanRecord& plan_record,
+    bool allow_retained_preview_readback) const {
     const bool require_execution_binding = RequiresExecutionBinding(plan_record);
+    if (!require_execution_binding) {
+        return false;
+    }
+    if (allow_retained_preview_readback &&
+        CanServePreviewReadbackWithoutExecutionBinding(plan_record)) {
+        return false;
+    }
     return require_execution_binding &&
            (!plan_record.execution_launch.execution_package ||
             !plan_record.preview_authority_shared_with_execution ||
@@ -1052,7 +1086,8 @@ Result<DispensingWorkflowUseCase::PreviewBindingResolution> DispensingWorkflowUs
     const PlanID& plan_id,
     bool require_snapshot_ready,
     const std::string* snapshot_hash,
-    bool mark_failed) const {
+    bool mark_failed,
+    bool allow_retained_preview_readback) const {
     PreviewBindingResolution resolution;
     bool should_resolve_execution = false;
     {
@@ -1080,8 +1115,13 @@ Result<DispensingWorkflowUseCase::PreviewBindingResolution> DispensingWorkflowUs
             return Result<PreviewBindingResolution>::Failure(preview_gate_error.value());
         }
 
-        resolution.require_execution_binding = RequiresExecutionBinding(it->second);
-        should_resolve_execution = ShouldResolveExecutionBinding(it->second);
+        const bool can_serve_retained_preview_readback =
+            allow_retained_preview_readback &&
+            CanServePreviewReadbackWithoutExecutionBinding(it->second);
+        resolution.require_execution_binding =
+            RequiresExecutionBinding(it->second) && !can_serve_retained_preview_readback;
+        should_resolve_execution =
+            ShouldResolveExecutionBinding(it->second, allow_retained_preview_readback);
     }
 
     if (should_resolve_execution) {

@@ -479,6 +479,17 @@
       },
       "additionalProperties": false
     },
+    "dxfJobObservationSnapshot": {
+      "type": "object",
+      "required": ["sampled_at", "machine_status", "job_status", "coord_status"],
+      "properties": {
+        "sampled_at": { "type": "string", "format": "date-time" },
+        "machine_status": { "$ref": "#/definitions/machineStatus" },
+        "job_status": { "$ref": "#/definitions/dxfJobStatus" },
+        "coord_status": { "$ref": "#/definitions/motionCoordStatus" }
+      },
+      "additionalProperties": false
+    },
     "dxfJobTraceabilityExpectedItem": {
       "type": "object",
       "required": ["cycle_index", "trigger_sequence_id", "authority_trigger_index", "span_index", "component_index", "span_order_index", "source_segment_index", "execution_interpolation_index", "authority_distance_mm", "execution_profile_position_mm", "execution_position_mm", "execution_trigger_position_mm", "compare_source_axis", "compare_position_pulse", "pulse_width_us", "authority_trigger_ref", "authority_span_ref", "trigger_mode"],

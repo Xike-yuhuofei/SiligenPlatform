@@ -150,6 +150,7 @@ private:
     std::string HandleDxfPlanPrepare(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobStart(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobStatus(const std::string& id, const nlohmann::json& params);
+    std::string HandleDxfJobObservation(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobTraceability(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobPause(const std::string& id, const nlohmann::json& params);
     std::string HandleDxfJobResume(const std::string& id, const nlohmann::json& params);

@@ -63,74 +63,82 @@ class FakeTcpClient:
         return self._responses[method]
 
 
-def test_collect_poll_observation_captures_status_job_and_coord() -> None:
+def test_collect_job_observation_captures_machine_job_and_coord() -> None:
     client = FakeTcpClient(
         {
-            "status": {
+            "dxf.job.observation": {
                 "result": {
-                    "connected": True,
-                    "supervision": {
-                        "current_state": "Idle",
-                        "requested_state": "Idle",
-                        "state_reason": "ready",
-                        "state_change_in_process": False,
+                    "sampled_at": "2026-04-24T05:00:00Z",
+                    "machine_status": {
+                        "connected": True,
+                        "supervision": {
+                            "current_state": "Idle",
+                            "requested_state": "Idle",
+                            "state_reason": "ready",
+                            "state_change_in_process": False,
+                        },
+                        "job_execution": {
+                            "job_id": "job-1",
+                            "state": "running",
+                        },
+                        "io": {
+                            "estop": False,
+                            "door": False,
+                            "door_known": True,
+                            "limit_x_pos": False,
+                            "limit_x_neg": False,
+                            "limit_y_pos": False,
+                            "limit_y_neg": False,
+                        },
+                        "effective_interlocks": {
+                            "home_boundary_x_active": False,
+                            "home_boundary_y_active": False,
+                        },
+                        "position": {"x": 1.25, "y": -0.5},
+                        "axes": {
+                            "X": {"position": 1.25, "velocity": 0.0, "homed": True, "enabled": True},
+                            "Y": {"position": -0.5, "velocity": 0.0, "homed": True, "enabled": True},
+                        },
                     },
-                    "io": {
-                        "estop": False,
-                        "door": False,
-                        "door_known": True,
-                        "limit_x_pos": False,
-                        "limit_x_neg": False,
-                        "limit_y_pos": False,
-                        "limit_y_neg": False,
+                    "job_status": {
+                        "job_id": "job-1",
+                        "state": "running",
+                        "current_segment": 2,
+                        "total_segments": 5,
+                        "cycle_progress_percent": 40,
+                        "overall_progress_percent": 40,
                     },
-                    "effective_interlocks": {
-                        "home_boundary_x_active": False,
-                        "home_boundary_y_active": False,
-                    },
-                    "axes": {
-                        "X": {"position": 1.25, "velocity": 0.0, "homed": True, "enabled": True},
-                        "Y": {"position": -0.5, "velocity": 0.0, "homed": True, "enabled": True},
-                    },
-                }
-            },
-            "dxf.job.status": {
-                "result": {
-                    "job_id": "job-1",
-                    "state": "running",
-                    "current_segment": 2,
-                    "total_segments": 5,
-                    "cycle_progress_percent": 40,
-                    "overall_progress_percent": 40,
-                }
-            },
-            "motion.coord.status": {
-                "result": {
-                    "coord_sys": 1,
-                    "state": 3,
-                    "is_moving": False,
-                    "remaining_segments": 0,
-                    "current_velocity": 0.0,
-                    "raw_status_word": 0,
-                    "raw_segment": 0,
-                    "mc_status_ret": 0,
-                    "buffer_space": 64,
-                    "lookahead_space": 64,
-                    "position": {"x": 1.25, "y": -0.5},
-                    "axes": {
-                        "X": {"position": 1.25, "velocity": 0.0, "state": 5, "homed": True, "enabled": True},
-                        "Y": {"position": -0.5, "velocity": 0.0, "state": 5, "homed": True, "enabled": True},
+                    "coord_status": {
+                        "coord_sys": 1,
+                        "state": 3,
+                        "is_moving": False,
+                        "remaining_segments": 0,
+                        "current_velocity": 0.0,
+                        "raw_status_word": 0,
+                        "raw_segment": 0,
+                        "mc_status_ret": 0,
+                        "buffer_space": 64,
+                        "lookahead_space": 64,
+                        "position": {"x": 1.25, "y": -0.5},
+                        "axes": {
+                            "X": {"position": 1.25, "velocity": 0.0, "state": 5, "homed": True, "enabled": True},
+                            "Y": {"position": -0.5, "velocity": 0.0, "state": 5, "homed": True, "enabled": True},
+                        },
                     },
                 }
             },
         }
     )
 
-    observation = dryrun.collect_poll_observation(client, job_id="job-1", poll_index=7)
+    observation = dryrun.collect_job_observation(client, job_id="job-1", poll_index=7)
 
-    assert [call[0] for call in client.calls] == ["status", "dxf.job.status", "motion.coord.status"]
-    assert client.calls[1][1] == {"job_id": "job-1"}
-    assert client.calls[2][1] == {"coord_sys": dryrun.DEFAULT_COORD_SYS}
+    assert client.calls == [
+        (
+            "dxf.job.observation",
+            {"job_id": "job-1", "coord_sys": dryrun.DEFAULT_COORD_SYS},
+            5.0,
+        )
+    ]
 
     machine_status = observation["machine_status"]
     job_status = observation["job_status"]
@@ -139,9 +147,10 @@ def test_collect_poll_observation_captures_status_job_and_coord() -> None:
     assert machine_status["poll_index"] == 7
     assert job_status["poll_index"] == 7
     assert coord_status["poll_index"] == 7
-    assert machine_status["sampled_at"] == job_status["sampled_at"] == coord_status["sampled_at"]
+    assert machine_status["sampled_at"] == job_status["sampled_at"] == coord_status["sampled_at"] == "2026-04-24T05:00:00Z"
     assert machine_status["supervision"]["current_state"] == "Idle"
     assert machine_status["supervision"]["state_reason"] == "ready"
+    assert machine_status["job_execution"]["job_id"] == "job-1"
     assert "machine_state" not in machine_status
     assert machine_status["io"]["door_known"] is True
     assert machine_status["axes"]["X"]["position"] == 1.25

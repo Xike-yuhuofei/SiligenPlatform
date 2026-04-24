@@ -4266,7 +4266,20 @@ TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutio
     EXPECT_FALSE(use_case.plans_.at(plan_id).execution_binding_ready);
     EXPECT_EQ(use_case.plans_.at(plan_id).execution_trajectory_points.size(), retained_preview_points);
     EXPECT_EQ(use_case.plans_.at(plan_id).glue_points.size(), retained_glue_points);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).retained_preview_motion_trajectory_points.empty());
     EXPECT_TRUE(use_case.execution_assembly_cache_.find(plan_fingerprint) == use_case.execution_assembly_cache_.end());
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = plan_id;
+    snapshot_request.max_polyline_points = 128;
+    const auto readback_result = use_case.GetPreviewSnapshot(snapshot_request);
+    ASSERT_TRUE(readback_result.IsSuccess()) << readback_result.GetError().ToString();
+    EXPECT_EQ(readback_result.Value().plan_id, plan_id);
+    EXPECT_EQ(readback_result.Value().snapshot_hash, plan_fingerprint);
+    EXPECT_GT(readback_result.Value().motion_preview_point_count, 0U);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_launch.execution_package);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_assembly.execution_package);
+    EXPECT_TRUE(use_case.plans_.at(plan_id).execution_assembly.motion_trajectory_points.empty());
 
     const auto second_probe = use_case.EnsureExecutionAssemblyReadyForTesting(plan_id);
     ASSERT_TRUE(second_probe.IsSuccess()) << second_probe.GetError().ToString();

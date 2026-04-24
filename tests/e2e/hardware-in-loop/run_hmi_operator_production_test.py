@@ -17,7 +17,7 @@ HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
 
-from dxf_hil_observation import DEFAULT_COORD_SYS, normalize_coord_status_sample, normalize_job_status_sample, normalize_machine_status_sample  # noqa: E402
+from dxf_hil_observation import DEFAULT_COORD_SYS, collect_job_observation  # noqa: E402
 from run_real_dxf_machine_dryrun import parse_int, status_result  # noqa: E402
 from run_real_dxf_production_validation import (  # noqa: E402
     add_step,
@@ -43,6 +43,7 @@ DEFAULT_UI_TIMEOUT_MS = 900000
 DEFAULT_MAX_POLYLINE_POINTS = 4000
 DEFAULT_MAX_GLUE_POINTS = 5000
 DEFAULT_MIN_AXIS_COVERAGE_RATIO = 0.80
+REPORT_SCHEMA_VERSION = 1
 UI_QTEST = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "tools" / "ui_qtest.py"
 HMI_SOURCE_ROOT = ROOT / "apps" / "hmi-app" / "src"
 HMI_APPLICATION_ROOT = ROOT / "modules" / "hmi-application" / "application"
@@ -59,6 +60,8 @@ REQUIRED_SCREENSHOT_STAGES = (
     "production-completed",
     "next-job-ready",
 )
+TERMINAL_JOB_STATES = {"completed", "failed", "cancelled"}
+TERMINAL_OPERATOR_STAGES = {"production-completed", "next-job-ready"}
 
 
 def utc_now() -> str:
@@ -276,6 +279,100 @@ def refresh_operator_exclusive_windows(
     return next_offset, updated
 
 
+def refresh_production_started_job_id(
+    *,
+    stdout_path: Path,
+    read_offset: int,
+    current_job_id: str,
+) -> tuple[int, str]:
+    if not stdout_path.exists():
+        return read_offset, current_job_id
+
+    with stdout_path.open("r", encoding="utf-8") as stream:
+        stream.seek(read_offset)
+        chunk = stream.read()
+        next_offset = stream.tell()
+
+    if not chunk:
+        return next_offset, current_job_id
+
+    resolved_job_id = current_job_id
+    for raw_line in chunk.splitlines():
+        event = _parse_key_value_line(prefix="OPERATOR_CONTEXT ", line=raw_line.strip())
+        if not event or str(event.get("stage", "")).strip() != "production-started":
+            continue
+
+        candidate = str(event.get("job_id", "")).strip()
+        if not candidate or candidate.lower() == "null":
+            raise RuntimeError("OPERATOR_CONTEXT stage=production-started missing job_id")
+        if resolved_job_id and resolved_job_id != candidate:
+            raise RuntimeError(
+                "OPERATOR_CONTEXT stage=production-started changed job_id from "
+                f"{resolved_job_id} to {candidate}"
+            )
+        resolved_job_id = candidate
+
+    return next_offset, resolved_job_id
+
+
+def refresh_operator_job_tracking(
+    *,
+    stdout_path: Path,
+    read_offset: int,
+    current_job_id: str,
+    production_job_id: str,
+) -> tuple[int, str, str]:
+    if not stdout_path.exists():
+        return read_offset, current_job_id, production_job_id
+
+    with stdout_path.open("r", encoding="utf-8") as stream:
+        stream.seek(read_offset)
+        chunk = stream.read()
+        next_offset = stream.tell()
+
+    if not chunk:
+        return next_offset, current_job_id, production_job_id
+
+    resolved_current_job_id = current_job_id
+    resolved_production_job_id = production_job_id
+    for raw_line in chunk.splitlines():
+        event = _parse_key_value_line(prefix="OPERATOR_CONTEXT ", line=raw_line.strip())
+        if not event:
+            continue
+
+        stage = str(event.get("stage", "")).strip()
+        candidate = str(event.get("job_id", "")).strip()
+        normalized_candidate = "" if not candidate or candidate.lower() == "null" else candidate
+
+        if stage == "production-started":
+            if not normalized_candidate:
+                raise RuntimeError("OPERATOR_CONTEXT stage=production-started missing job_id")
+            if resolved_current_job_id and resolved_current_job_id != normalized_candidate:
+                raise RuntimeError(
+                    "OPERATOR_CONTEXT stage=production-started changed active job_id from "
+                    f"{resolved_current_job_id} to {normalized_candidate}"
+                )
+            if resolved_production_job_id and resolved_production_job_id != normalized_candidate:
+                raise RuntimeError(
+                    "OPERATOR_CONTEXT stage=production-started changed production job_id from "
+                    f"{resolved_production_job_id} to {normalized_candidate}"
+                )
+            resolved_current_job_id = normalized_candidate
+            resolved_production_job_id = normalized_candidate
+            continue
+
+        if stage in TERMINAL_OPERATOR_STAGES:
+            if normalized_candidate:
+                raise RuntimeError(f"OPERATOR_CONTEXT stage={stage} expected null job_id after terminal completion")
+            resolved_current_job_id = ""
+
+    return next_offset, resolved_current_job_id, resolved_production_job_id
+
+
+def is_terminal_job_state(state: Any) -> bool:
+    return str(state or "").strip().lower() in TERMINAL_JOB_STATES
+
+
 def _contains_stage_sequence(stages: list[str], required_stages: tuple[str, ...]) -> bool:
     cursor = 0
     for stage in stages:
@@ -373,6 +470,7 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
         for event in (production_started, production_running, production_completed, next_job_ready)
         if event
     )
+    production_started_job_id = str(production_started.get("job_id") or "null")
     plan_fingerprint = _latest_field(events, "plan_fingerprint")
     preview_gate_state = _latest_field(events, "preview_gate_state")
     preview_gate_error = _latest_field(events, "preview_gate_error")
@@ -385,6 +483,7 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
         and glue_point_count > 0
         and snapshot_hash not in {"", "null"}
         and confirmed_snapshot_hash not in {"", "null"}
+        and production_started_job_id not in {"", "null"}
         and preview_confirmed
         and not missing_screenshot_stages
     )
@@ -427,12 +526,7 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
         "snapshot_ready": str(preview_refreshed.get("snapshot_ready") or preview_ready.get("snapshot_ready") or "false")
         == "true",
         "preview_confirmed": preview_confirmed,
-        "job_id": str(
-            production_started.get("job_id")
-            or production_running.get("job_id")
-            or production_completed.get("job_id")
-            or "null"
-        ),
+        "job_id": production_started_job_id,
         "target_count": int(
             parse_int(
                 production_started.get("target_count")
@@ -477,56 +571,15 @@ def collect_observer_sample(
     job_id: str,
     timeout_seconds: float = 2.0,
 ) -> dict[str, Any]:
-    sampled_at = utc_now()
-    machine_response = client.send_request("status", None, timeout_seconds=timeout_seconds)
-    if "error" in machine_response:
-        raise RuntimeError("status failed during operator polling: " + json.dumps(machine_response, ensure_ascii=True))
-
-    machine_sample = normalize_machine_status_sample(
-        machine_response,
-        sampled_at=sampled_at,
+    if not str(job_id or "").strip():
+        raise ValueError("collect_observer_sample requires non-empty job_id")
+    return collect_job_observation(
+        client,
+        job_id=job_id,
         poll_index=poll_index,
+        coord_sys=DEFAULT_COORD_SYS,
+        timeout_seconds=timeout_seconds,
     )
-    machine_job_id = str((machine_sample.get("job_execution") or {}).get("job_id", "")).strip()
-
-    coord_sample: dict[str, Any] = {}
-    if bool(machine_sample.get("connected", False)):
-        coord_response = client.send_request(
-            "motion.coord.status",
-            {"coord_sys": DEFAULT_COORD_SYS},
-            timeout_seconds=timeout_seconds,
-        )
-        if "error" in coord_response:
-            raise RuntimeError("motion.coord.status failed during operator polling: " + json.dumps(coord_response, ensure_ascii=True))
-        coord_sample = normalize_coord_status_sample(
-            coord_response,
-            sampled_at=sampled_at,
-            poll_index=poll_index,
-            coord_sys=DEFAULT_COORD_SYS,
-        )
-
-    effective_job_id = job_id or machine_job_id
-    job_sample: dict[str, Any] = {}
-    if effective_job_id:
-        job_response = client.send_request(
-            "dxf.job.status",
-            {"job_id": effective_job_id},
-            timeout_seconds=timeout_seconds,
-        )
-        if "error" in job_response:
-            raise RuntimeError("dxf.job.status failed during operator polling: " + json.dumps(job_response, ensure_ascii=True))
-        job_sample = normalize_job_status_sample(
-            job_response,
-            sampled_at=sampled_at,
-            poll_index=poll_index,
-        )
-
-    return {
-        "machine_status": machine_sample,
-        "coord_status": coord_sample,
-        "job_status": job_sample,
-        "detected_job_id": effective_job_id or machine_job_id,
-    }
 
 
 def read_preview_snapshot(
@@ -567,6 +620,155 @@ def build_operator_issue(
         "current_evidence": current_evidence,
         "owner_layer": owner_layer,
     }
+
+
+def build_observer_poll_failure(
+    *,
+    phase: str,
+    poll_index: int,
+    job_id: str,
+    exc: Exception,
+) -> dict[str, Any]:
+    failure: dict[str, Any] = {
+        "phase": phase,
+        "poll_index": poll_index,
+        "job_id": str(job_id or "").strip(),
+        "message": str(exc).strip(),
+    }
+    method = str(getattr(exc, "method", "") or "").strip()
+    request_id = str(getattr(exc, "request_id", "") or "").strip()
+    elapsed_ms = getattr(exc, "elapsed_ms", None)
+    if method:
+        failure["method"] = method
+    if request_id:
+        failure["request_id"] = request_id
+    if isinstance(elapsed_ms, (int, float)):
+        failure["elapsed_ms"] = float(elapsed_ms)
+    return failure
+
+
+def append_observer_poll_error(
+    observer_poll_errors: list[str],
+    *,
+    message: str,
+) -> None:
+    normalized_message = str(message).strip()
+    if normalized_message and (not observer_poll_errors or observer_poll_errors[-1] != normalized_message):
+        observer_poll_errors.append(normalized_message)
+
+
+def record_observer_poll_failure(
+    observer_poll_failures: list[dict[str, Any]],
+    observer_poll_errors: list[str],
+    *,
+    phase: str,
+    poll_index: int,
+    job_id: str,
+    exc: Exception,
+) -> dict[str, Any]:
+    failure = build_observer_poll_failure(
+        phase=phase,
+        poll_index=poll_index,
+        job_id=job_id,
+        exc=exc,
+    )
+    observer_poll_failures.append(failure)
+    append_observer_poll_error(observer_poll_errors, message=str(failure["message"]))
+    return failure
+
+
+def collect_terminal_job_readback(
+    client: TcpJsonClient,
+    *,
+    poll_index: int,
+    job_id: str,
+    final_job_status: dict[str, Any],
+    timeout_seconds: float = 2.0,
+) -> dict[str, Any] | None:
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_job_id:
+        return None
+    if is_terminal_job_state(final_job_status.get("state")):
+        return None
+    return collect_observer_sample(
+        client,
+        poll_index=poll_index,
+        job_id=normalized_job_id,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def finalize_terminal_job_readback(
+    client: TcpJsonClient,
+    *,
+    steps: list[dict[str, str]],
+    machine_status_history: list[dict[str, Any]],
+    coord_status_history: list[dict[str, Any]],
+    job_status_history: list[dict[str, Any]],
+    observer_poll_failures: list[dict[str, Any]],
+    observer_poll_errors: list[str],
+    poll_index: int,
+    job_id: str,
+    final_job_status: dict[str, Any],
+    timeout_seconds: float = 2.0,
+) -> tuple[int, dict[str, Any], bool]:
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_job_id:
+        return poll_index, final_job_status, False
+
+    try:
+        terminal_readback = collect_terminal_job_readback(
+            client,
+            poll_index=poll_index,
+            job_id=normalized_job_id,
+            final_job_status=final_job_status,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception as exc:  # noqa: BLE001
+        failure = record_observer_poll_failure(
+            observer_poll_failures,
+            observer_poll_errors,
+            phase="terminal-readback",
+            poll_index=poll_index,
+            job_id=normalized_job_id,
+            exc=exc,
+        )
+        add_step(
+            steps,
+            "job-terminal-readback",
+            "failed",
+            f"job_id={normalized_job_id} {failure['message']}",
+        )
+        return poll_index, final_job_status, False
+
+    if terminal_readback is not None:
+        machine_status_history.append(terminal_readback["machine_status"])
+        if terminal_readback["coord_status"]:
+            coord_status_history.append(terminal_readback["coord_status"])
+        updated_final_job_status = final_job_status
+        if terminal_readback["job_status"]:
+            job_status_history.append(terminal_readback["job_status"])
+            updated_final_job_status = terminal_readback["job_status"]
+        add_step(
+            steps,
+            "job-terminal-readback",
+            "passed",
+            f"job_id={normalized_job_id} state={updated_final_job_status.get('state', '')}",
+        )
+        return poll_index + 1, updated_final_job_status, is_terminal_job_state(updated_final_job_status.get("state"))
+
+    final_state = str(final_job_status.get("state", "") or "").strip().lower()
+    if final_state:
+        add_step(steps, "job-terminal-readback", "passed", f"skipped final_state={final_state}")
+        return poll_index, final_job_status, is_terminal_job_state(final_state)
+
+    add_step(
+        steps,
+        "job-terminal-readback",
+        "failed",
+        f"job_id={normalized_job_id} missing final job state after hmi exit",
+    )
+    return poll_index, final_job_status, False
 
 
 def evaluate_operator_execution(
@@ -866,6 +1068,7 @@ def evaluate_observation_integrity(
     *,
     combined_output: str,
     observer_poll_errors: list[str],
+    observer_poll_failures: list[dict[str, Any]],
     job_status_history: list[dict[str, Any]],
     machine_status_history: list[dict[str, Any]],
     coord_status_history: list[dict[str, Any]],
@@ -902,7 +1105,7 @@ def evaluate_observation_integrity(
 
     if recoverable_stage_failures and recovered_online_ready:
         warnings.append("supervisor reported recoverable stage_failed before online_ready recovery")
-    if observer_poll_errors:
+    if observer_poll_failures:
         warnings.append("observer polling reported transient errors")
     if not coord_status_history:
         warnings.append("coord status history is empty")
@@ -929,7 +1132,7 @@ def evaluate_observation_integrity(
         "coord_status_sample_count": len(coord_status_history),
         "recoverable_stage_failure_count": len(recoverable_stage_failures),
         "recovered_online_ready": recovered_online_ready,
-        "observer_poll_error_count": len(observer_poll_errors),
+        "observer_poll_error_count": len(observer_poll_failures),
     }
 
 
@@ -952,6 +1155,9 @@ def build_report(
     *,
     args: argparse.Namespace,
     effective_port: int,
+    started_at: str,
+    finished_at: str,
+    duration_seconds: float,
     overall_status: str,
     steps: list[dict[str, str]],
     operator_execution: dict[str, Any],
@@ -962,6 +1168,7 @@ def build_report(
     snapshot_result: dict[str, Any],
     log_summary: dict[str, Any],
     observer_poll_errors: list[str],
+    observer_poll_failures: list[dict[str, Any]],
     error_message: str,
     hmi_command: list[str],
 ) -> dict[str, Any]:
@@ -974,7 +1181,10 @@ def build_report(
         control_script_gaps.append("未观察到 next-job-ready 阶段")
 
     return {
-        "generated_at": utc_now(),
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "duration_seconds": duration_seconds,
         "overall_status": overall_status,
         "test_goal": [
             f"通过 HMI 主链路执行 {args.dxf_file.name} 的真实生产。",
@@ -1005,6 +1215,7 @@ def build_report(
         "snapshot_result": snapshot_result,
         "log_summary": log_summary,
         "observer_poll_errors": observer_poll_errors,
+        "observer_poll_failures": observer_poll_failures,
         "error": error_message,
     }
 
@@ -1048,6 +1259,9 @@ def build_report_markdown(report: dict[str, Any]) -> str:
             f"- DXF / 生产对象：`{scope.get('dxf_file', '')}`",
             f"- HMI 入口：`{scope.get('hmi_entry', '')}`",
             "- 是否允许绕过 HMI：不允许",
+            f"- 测试开始：`{report.get('started_at', '')}`",
+            f"- 测试结束：`{report.get('finished_at', '')}`",
+            f"- 总耗时（秒）：`{report.get('duration_seconds', 0.0)}`",
             "",
             "### 3. 操作主线",
             "1. 启动 runtime gateway 与 HMI qtest 正式入口。",
@@ -1149,6 +1363,8 @@ def build_report_markdown(report: dict[str, Any]) -> str:
 
 def main() -> int:
     args = parse_args()
+    started_at = utc_now()
+    started_monotonic = time.perf_counter()
     effective_port = resolve_listen_port(args.host, args.port)
     report_dir = args.report_root / time.strftime("%Y%m%d-%H%M%S")
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -1173,6 +1389,7 @@ def main() -> int:
     coord_status_history: list[dict[str, Any]] = []
     job_status_history: list[dict[str, Any]] = []
     observer_poll_errors: list[str] = []
+    observer_poll_failures: list[dict[str, Any]] = []
     overall_status = "failed"
     error_message = ""
     gateway_process: subprocess.Popen[str] | None = None
@@ -1180,6 +1397,7 @@ def main() -> int:
     observer_client = TcpJsonClient(args.host, effective_port)
     observer_connected = False
     current_job_id = ""
+    production_job_id = ""
     final_job_status: dict[str, Any] = {}
     job_traceability: dict[str, Any] = {}
     snapshot_result: dict[str, Any] = {}
@@ -1197,6 +1415,7 @@ def main() -> int:
     hmi_stdout_stream = hmi_stdout_log_path.open("w", encoding="utf-8")
     hmi_stderr_stream = hmi_stderr_log_path.open("w", encoding="utf-8")
     hmi_stdout_read_offset = 0
+    operator_context_read_offset = 0
     observer_exclusive_windows: set[str] = set()
 
     try:
@@ -1275,13 +1494,19 @@ def main() -> int:
         while True:
             if time.time() >= deadline:
                 raise TimeoutError(f"HMI operator production timed out after {args.ui_timeout_ms}ms")
+            operator_context_read_offset, current_job_id, production_job_id = refresh_operator_job_tracking(
+                stdout_path=hmi_stdout_log_path,
+                read_offset=operator_context_read_offset,
+                current_job_id=current_job_id,
+                production_job_id=production_job_id,
+            )
             hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
                 stdout_path=hmi_stdout_log_path,
                 read_offset=hmi_stdout_read_offset,
                 active_windows=observer_exclusive_windows,
             )
             if observer_connected:
-                if not observer_exclusive_windows:
+                if current_job_id and not observer_exclusive_windows:
                     try:
                         sample = collect_observer_sample(
                             observer_client,
@@ -1294,9 +1519,8 @@ def main() -> int:
                         if sample["job_status"]:
                             job_status_history.append(sample["job_status"])
                             final_job_status = sample["job_status"]
-                        detected_job_id = str(sample.get("detected_job_id", "") or "").strip()
-                        if detected_job_id:
-                            current_job_id = detected_job_id
+                            if is_terminal_job_state(final_job_status.get("state")):
+                                current_job_id = ""
                         poll_index += 1
                     except Exception as exc:  # noqa: BLE001
                         hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
@@ -1305,9 +1529,14 @@ def main() -> int:
                             active_windows=observer_exclusive_windows,
                         )
                         if not observer_exclusive_windows:
-                            message = str(exc).strip()
-                            if not observer_poll_errors or observer_poll_errors[-1] != message:
-                                observer_poll_errors.append(message)
+                            record_observer_poll_failure(
+                                observer_poll_failures,
+                                observer_poll_errors,
+                                phase="polling",
+                                poll_index=poll_index,
+                                job_id=current_job_id,
+                                exc=exc,
+                            )
             if hmi_process.poll() is not None:
                 break
             time.sleep(args.status_poll_interval_seconds)
@@ -1327,33 +1556,64 @@ def main() -> int:
         )
 
         if observer_connected:
+            operator_context_read_offset, current_job_id, production_job_id = refresh_operator_job_tracking(
+                stdout_path=hmi_stdout_log_path,
+                read_offset=operator_context_read_offset,
+                current_job_id=current_job_id,
+                production_job_id=production_job_id,
+            )
             hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
                 stdout_path=hmi_stdout_log_path,
                 read_offset=hmi_stdout_read_offset,
                 active_windows=observer_exclusive_windows,
             )
-            try:
-                sample = collect_observer_sample(
-                    observer_client,
-                    poll_index=poll_index,
-                    job_id=current_job_id,
-                )
-                machine_status_history.append(sample["machine_status"])
-                if sample["coord_status"]:
-                    coord_status_history.append(sample["coord_status"])
-                if sample["job_status"]:
-                    job_status_history.append(sample["job_status"])
-                    final_job_status = sample["job_status"]
-            except Exception as exc:  # noqa: BLE001
-                hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
-                    stdout_path=hmi_stdout_log_path,
-                    read_offset=hmi_stdout_read_offset,
-                    active_windows=observer_exclusive_windows,
-                )
-                if not observer_exclusive_windows:
-                    message = str(exc).strip()
-                    if not observer_poll_errors or observer_poll_errors[-1] != message:
-                        observer_poll_errors.append(message)
+            if current_job_id:
+                try:
+                    sample = collect_observer_sample(
+                        observer_client,
+                        poll_index=poll_index,
+                        job_id=current_job_id,
+                    )
+                    machine_status_history.append(sample["machine_status"])
+                    if sample["coord_status"]:
+                        coord_status_history.append(sample["coord_status"])
+                    if sample["job_status"]:
+                        job_status_history.append(sample["job_status"])
+                        final_job_status = sample["job_status"]
+                        if is_terminal_job_state(final_job_status.get("state")):
+                            current_job_id = ""
+                    poll_index += 1
+                except Exception as exc:  # noqa: BLE001
+                    hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
+                        stdout_path=hmi_stdout_log_path,
+                        read_offset=hmi_stdout_read_offset,
+                        active_windows=observer_exclusive_windows,
+                    )
+                    if not observer_exclusive_windows:
+                        record_observer_poll_failure(
+                            observer_poll_failures,
+                            observer_poll_errors,
+                            phase="final-polling",
+                            poll_index=poll_index,
+                            job_id=current_job_id,
+                            exc=exc,
+                        )
+
+            terminal_readback_job_id = str(production_job_id or "").strip()
+            poll_index, final_job_status, clear_current_job = finalize_terminal_job_readback(
+                observer_client,
+                steps=steps,
+                machine_status_history=machine_status_history,
+                coord_status_history=coord_status_history,
+                job_status_history=job_status_history,
+                observer_poll_failures=observer_poll_failures,
+                observer_poll_errors=observer_poll_errors,
+                poll_index=poll_index,
+                job_id=terminal_readback_job_id,
+                final_job_status=final_job_status,
+            )
+            if clear_current_job:
+                current_job_id = ""
 
         combined_output = (hmi_stdout or "") + ("\n" if hmi_stderr else "") + (hmi_stderr or "")
         operator_summary = summarize_operator_output(combined_output)
@@ -1459,7 +1719,7 @@ def main() -> int:
         if not hmi_stderr:
             hmi_stderr = read_text_if_exists(hmi_stderr_log_path)
 
-        traceability_job_id = str(current_job_id or final_job_status.get("job_id", "") or "").strip()
+        traceability_job_id = str(production_job_id or current_job_id or "").strip()
         traceability = build_traceability_query_failure(
             job_id=traceability_job_id,
             reason="dxf.job.traceability was not queried",
@@ -1549,6 +1809,7 @@ def main() -> int:
         observation_integrity = evaluate_observation_integrity(
             combined_output=combined_output,
             observer_poll_errors=observer_poll_errors,
+            observer_poll_failures=observer_poll_failures,
             job_status_history=job_status_history,
             machine_status_history=machine_status_history,
             coord_status_history=coord_status_history,
@@ -1560,6 +1821,8 @@ def main() -> int:
             traceability=traceability,
             observation_integrity=observation_integrity,
         )
+        finished_at = utc_now()
+        duration_seconds = round(max(0.0, time.perf_counter() - started_monotonic), 3)
 
         artifacts.update(
             {
@@ -1586,6 +1849,9 @@ def main() -> int:
         report = build_report(
             args=args,
             effective_port=effective_port,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_seconds=duration_seconds,
             overall_status=overall_status,
             steps=steps,
             operator_execution=operator_execution,
@@ -1596,6 +1862,7 @@ def main() -> int:
             snapshot_result=snapshot_result,
             log_summary=log_summary,
             observer_poll_errors=observer_poll_errors,
+            observer_poll_failures=observer_poll_failures,
             error_message=error_message,
             hmi_command=hmi_command,
         )

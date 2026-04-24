@@ -347,6 +347,33 @@ def test_dxf_job_traceability_contract_is_wired():
     }
 
 
+def test_dxf_job_observation_contract_is_wired():
+    operations = load_operations()
+    dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
+    protocol_source = (ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "client" / "protocol.py").read_text(encoding="utf-8")
+    states = load_json(CONTRACTS / "models" / "states.json")
+
+    assert "dxf.job.observation" in operations
+    query_op = operations["dxf.job.observation"]
+    assert query_op["resultRef"].endswith("#/definitions/dxfJobObservationSnapshot")
+    assert query_op["paramsSchema"]["required"] == ["job_id"]
+    assert "coord_sys" in query_op["paramsSchema"]["properties"]
+    assert {2930, 2931, 2932, 2933}.issubset(set(query_op["errorCodes"]))
+    assert 'RegisterCommand("dxf.job.observation"' in dispatcher_source
+    assert 'std::string TcpCommandDispatcher::HandleDxfJobObservation' in dispatcher_source
+    assert 'BuildMachineStatusJson' in dispatcher_source
+    assert 'BuildDxfJobStatusJson' in dispatcher_source
+    assert 'def dxf_get_job_observation' in protocol_source
+    assert 'send_request(\n            "dxf.job.observation",' in protocol_source
+    observation_state = states["definitions"]["dxfJobObservationSnapshot"]
+    assert {"sampled_at", "machine_status", "job_status", "coord_status"}.issubset(
+        set(observation_state["required"])
+    )
+    assert observation_state["properties"]["machine_status"]["$ref"].endswith("#/definitions/machineStatus")
+    assert observation_state["properties"]["job_status"]["$ref"].endswith("#/definitions/dxfJobStatus")
+    assert observation_state["properties"]["coord_status"]["$ref"].endswith("#/definitions/motionCoordStatus")
+
+
 def test_legacy_execute_and_task_surface_are_removed():
     dispatcher_source = TCP_DISPATCHER.read_text(encoding="utf-8")
     dispatcher_header = TCP_DISPATCHER_HEADER.read_text(encoding="utf-8")
@@ -458,14 +485,15 @@ def test_status_dispatcher_only_serializes_authority_status_fields():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
     status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
     assert "runtimeStatusExportPort_->ReadSnapshot()" in source
-    assert "BuildRawIoJson(status_snapshot)" in source
-    assert "BuildEffectiveInterlocksJson(status_snapshot)" in source
-    assert "BuildSupervisionJson(status_snapshot)" in source
-    assert "BuildRuntimeIdentityJson(status_snapshot)" in source
-    assert "BuildJobExecutionJson(status_snapshot)" in source
+    assert "BuildMachineStatusJson(const RuntimeStatusExportSnapshot& snapshot)" in source
+    assert "BuildRawIoJson(snapshot)" in source
+    assert "BuildEffectiveInterlocksJson(snapshot)" in source
+    assert "BuildSupervisionJson(snapshot)" in source
+    assert "BuildRuntimeIdentityJson(snapshot)" in source
+    assert "BuildJobExecutionJson(snapshot)" in source
     assert "BuildCompatMachineState(" not in source
-    assert '{"machine_state", status_snapshot.machine_state}' in source
-    assert '{"machine_state_reason", status_snapshot.machine_state_reason}' in source
+    assert '{"machine_state", snapshot.machine_state}' in source
+    assert '{"machine_state_reason", snapshot.machine_state_reason}' in source
     assert "snapshot.machine_state = supervision.supervision.current_state;" in status_source
     assert "snapshot.machine_state_reason = supervision.supervision.state_reason;" in status_source
     assert "RuntimeIdentityExportSnapshot BuildRuntimeIdentitySnapshot()" in status_source
@@ -475,10 +503,10 @@ def test_status_dispatcher_only_serializes_authority_status_fields():
     assert "snapshot.dispenser.completedCount = dispenser.completedCount;" in status_source
     assert "snapshot.dispenser.totalCount = dispenser.totalCount;" in status_source
     assert "snapshot.dispenser.progress = dispenser.progress;" in status_source
-    assert '{"supervision", supervisionJson}' in source
-    assert '{"runtime_identity", runtimeIdentityJson}' in source
-    assert '{"effective_interlocks", effectiveInterlocksJson}' in source
-    assert '{"job_execution", jobExecutionJson}' in source
+    assert '{"supervision", supervision_json}' in source
+    assert '{"runtime_identity", runtime_identity_json}' in source
+    assert '{"effective_interlocks", effective_interlocks_json}' in source
+    assert '{"job_execution", job_execution_json}' in source
     assert '{"execution_budget_s", snapshot.job_execution.execution_budget_s}' in source
     assert '{"active_job_id"' not in source
     assert '{"active_job_state"' not in source
@@ -600,21 +628,21 @@ def test_homed_semantics_follow_homing_state_only():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
 
     status_match = re.search(
-        r"std::string TcpCommandDispatcher::HandleStatus.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        r"nlohmann::json BuildMachineStatusJson\(const RuntimeStatusExportSnapshot& snapshot\).*?return \{",
         source,
         re.S,
     )
-    assert status_match, "cannot locate HandleStatus body"
+    assert status_match, "cannot locate BuildMachineStatusJson body"
     status_body = status_match.group(0)
-    assert "BuildAxesJson(status_snapshot)" in status_body
+    assert "BuildAxesJson(snapshot)" in status_body
     assert "MotionState::HOMED" not in status_body
 
     coord_match = re.search(
-        r"std::string TcpCommandDispatcher::HandleMotionCoordStatus.*?return GatewayJsonProtocol::MakeSuccessResponse",
+        r"bool TryBuildMotionCoordStatusJson\(.*?return true;",
         source,
         re.S,
     )
-    assert coord_match, "cannot locate HandleMotionCoordStatus body"
+    assert coord_match, "cannot locate TryBuildMotionCoordStatusJson body"
     coord_body = coord_match.group(0)
     assert '{"homed", x_status_result.Value().homing_state == "homed"}' in coord_body
     assert '{"homed", y_status_result.Value().homing_state == "homed"}' in coord_body
@@ -771,6 +799,7 @@ def main():
         test_dxf_preview_contract_docs_freeze_shared_authority_semantics,
         test_dxf_plan_prepare_contract_exposes_requested_execution_strategy,
         test_dxf_job_continue_contract_freezes_wait_for_continue_semantics,
+        test_dxf_job_observation_contract_is_wired,
         test_dxf_job_traceability_contract_is_wired,
         test_legacy_execute_and_task_surface_are_removed,
         test_status_reads_backend_interlock_signals,

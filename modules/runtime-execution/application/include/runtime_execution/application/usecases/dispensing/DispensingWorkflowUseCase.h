@@ -10,6 +10,7 @@
 #include "runtime_execution/contracts/motion/IHomingPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
+#include "process_path/contracts/ProcessPath.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Error.h"
 #include "shared/types/Point.h"
@@ -288,6 +289,8 @@ class DispensingWorkflowUseCase {
         PlanExecutionLaunch execution_launch;
         ExecutionAssemblyResponse execution_assembly;
         std::vector<TrajectoryPoint> execution_trajectory_points;
+        std::vector<TrajectoryPoint> retained_preview_motion_trajectory_points;
+        Siligen::ProcessPath::Contracts::ProcessPath retained_preview_process_path;
         std::vector<Siligen::Shared::Types::Point2D> glue_points;
         Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
         bool preview_authority_ready = false;
@@ -423,12 +426,15 @@ class DispensingWorkflowUseCase {
         const PreparedAuthorityPreview& authority_preview,
         const PlanExecutionLaunch& execution_launch) const;
     bool RequiresExecutionBinding(const PlanRecord& plan_record) const;
-    bool ShouldResolveExecutionBinding(const PlanRecord& plan_record) const;
+    bool HasRetainedPreviewSnapshotTruth(const PlanRecord& plan_record) const;
+    bool CanServePreviewReadbackWithoutExecutionBinding(const PlanRecord& plan_record) const;
+    bool ShouldResolveExecutionBinding(const PlanRecord& plan_record, bool allow_retained_preview_readback) const;
     Siligen::Shared::Types::Result<PreviewBindingResolution> ResolvePreviewBindingRequirement(
         const PlanID& plan_id,
         bool require_snapshot_ready,
         const std::string* snapshot_hash,
-        bool mark_failed) const;
+        bool mark_failed,
+        bool allow_retained_preview_readback) const;
     Siligen::Shared::Types::Result<PlanRecord> PromotePlanToSnapshotReady(
         const PlanID& plan_id,
         bool require_execution_binding);

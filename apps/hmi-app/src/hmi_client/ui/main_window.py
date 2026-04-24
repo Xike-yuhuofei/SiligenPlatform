@@ -3134,6 +3134,8 @@ class MainWindow(QMainWindow):
             "completed_count": f"{completed_count}/{target_count}",
             "global_progress_percent": global_progress_percent,
             "current_operation": str(current_operation or ""),
+            "preview_resync_pending": bool(getattr(preview_state, "preview_state_resync_pending", False)),
+            "preview_refresh_inflight": bool(getattr(preview_state, "preview_refresh_inflight", False)),
         }
 
     def _update_info_label(self):

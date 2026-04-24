@@ -31,6 +31,10 @@ def status_result(payload: dict[str, Any]) -> dict[str, Any]:
     return result if isinstance(result, dict) else {}
 
 
+def result_envelope(result: Any) -> dict[str, Any]:
+    return {"result": result if isinstance(result, dict) else {}}
+
+
 def parse_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
@@ -274,10 +278,63 @@ def normalize_coord_status_sample(
     }
 
 
-def collect_poll_observation(
+def collect_job_observation(
     client: TcpJsonClient,
     *,
-    job_id: str = "",
+    job_id: str,
+    poll_index: int,
+    coord_sys: int = DEFAULT_COORD_SYS,
+    timeout_seconds: float = 5.0,
+) -> dict[str, dict[str, Any]]:
+    if not str(job_id or "").strip():
+        raise ValueError("collect_job_observation requires non-empty job_id")
+
+    observation_response = client.send_request(
+        "dxf.job.observation",
+        {"job_id": job_id, "coord_sys": coord_sys},
+        timeout_seconds=timeout_seconds,
+    )
+    if "error" in observation_response:
+        raise RuntimeError("dxf.job.observation failed: " + truncate_json(observation_response))
+
+    observation_result = status_result(observation_response)
+    machine_result = observation_result.get("machine_status")
+    job_result = observation_result.get("job_status")
+    coord_result = observation_result.get("coord_status")
+    if not isinstance(machine_result, dict) or not isinstance(job_result, dict) or not isinstance(coord_result, dict):
+        raise RuntimeError("dxf.job.observation returned partial observation payload")
+
+    sampled_at = str(observation_result.get("sampled_at", "")).strip() or utc_now()
+    observed_job_id = str(job_result.get("job_id", "")).strip()
+    if observed_job_id != str(job_id).strip():
+        raise RuntimeError(
+            "dxf.job.observation returned mismatched job_id: "
+            f"expected={job_id} actual={observed_job_id or 'null'}"
+        )
+
+    return {
+        "machine_status": normalize_machine_status_sample(
+            result_envelope(machine_result),
+            sampled_at=sampled_at,
+            poll_index=poll_index,
+        ),
+        "job_status": normalize_job_status_sample(
+            result_envelope(job_result),
+            sampled_at=sampled_at,
+            poll_index=poll_index,
+        ),
+        "coord_status": normalize_coord_status_sample(
+            result_envelope(coord_result),
+            sampled_at=sampled_at,
+            poll_index=poll_index,
+            coord_sys=coord_sys,
+        ),
+    }
+
+
+def collect_machine_snapshot(
+    client: TcpJsonClient,
+    *,
     poll_index: int,
     coord_sys: int = DEFAULT_COORD_SYS,
     timeout_seconds: float = 5.0,
@@ -287,21 +344,6 @@ def collect_poll_observation(
     machine_response = client.send_request("status", None, timeout_seconds=timeout_seconds)
     if "error" in machine_response:
         raise RuntimeError("status failed during HIL polling: " + truncate_json(machine_response))
-
-    job_status: dict[str, Any] = {}
-    if job_id:
-        job_response = client.send_request(
-            "dxf.job.status",
-            {"job_id": job_id},
-            timeout_seconds=timeout_seconds,
-        )
-        if "error" in job_response:
-            raise RuntimeError("dxf.job.status failed: " + truncate_json(job_response))
-        job_status = normalize_job_status_sample(
-            job_response,
-            sampled_at=sampled_at,
-            poll_index=poll_index,
-        )
 
     coord_response = client.send_request(
         "motion.coord.status",
@@ -317,7 +359,6 @@ def collect_poll_observation(
             sampled_at=sampled_at,
             poll_index=poll_index,
         ),
-        "job_status": job_status,
         "coord_status": normalize_coord_status_sample(
             coord_response,
             sampled_at=sampled_at,
