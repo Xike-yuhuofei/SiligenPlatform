@@ -608,6 +608,8 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._requested_launch_mode = "online"
         self.window._session_snapshot = snapshot
         self.window._launch_result = launch_result_from_snapshot("online", snapshot)
+        self.window._last_status_ts = time.monotonic()
+        self.window._runtime_requalify_success_streak = 0
         self.window._refresh_launch_status_ui()
         self.window._apply_mode_capabilities()
         return snapshot
@@ -992,7 +994,7 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertTrue(worker.delete_later_called)
         self.assertEqual(self.window.statusBar().currentMessage(), "回零: Axes ready at zero")
 
-    def test_on_home_completion_requalifies_recoverable_runtime_failure(self) -> None:
+    def test_on_home_completion_contributes_to_runtime_requalification_streak(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
         fake_protocol = FakeProtocol(status)
         failed_snapshot = SessionSnapshot(
@@ -1001,7 +1003,7 @@ class MainWindowTabsTest(unittest.TestCase):
             backend_state="ready",
             tcp_state="ready",
             hardware_state="failed",
-            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
             failure_stage="hardware_ready",
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",
@@ -1021,12 +1023,18 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._on_home_auto_completed(True, "Axes ready at zero", request_token=1)
 
         self.assertEqual(fake_protocol.status_calls, 1)
+        self.assertFalse(self.window._is_online_ready())
+        self.assertEqual(self.window._runtime_requalify_success_streak, 1)
+
+        self.window._update_status()
+
         self.assertTrue(self.window._is_online_ready())
         self.assertIsNotNone(self.window._launch_result)
         assert self.window._launch_result is not None
         self.assertTrue(self.window._launch_result.online_ready)
         self.assertIsNone(self.window._launch_result.failure_code)
-        self.assertEqual(self.window.statusBar().currentMessage(), "回零: Axes ready at zero")
+        self.assertEqual(self.window.statusBar().currentMessage(), "运行态已恢复，系统已就绪。")
+        self.assertEqual(self.window._runtime_requalify_success_streak, 0)
         self.assertTrue(
             any(
                 getattr(event, "event_type", "") == "stage_succeeded"
@@ -1034,6 +1042,95 @@ class MainWindowTabsTest(unittest.TestCase):
                 for event in self.window._supervisor_stage_events
             )
         )
+
+    def test_update_status_keeps_online_ready_during_single_hardware_drop_within_grace(self) -> None:
+        status = self._make_status(connected=False)
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self._set_online_ready_session()
+        self.window._runtime_status_fault = False
+        self.window._last_status_ts = time.monotonic()
+
+        self.window._update_status()
+
+        self.assertEqual(fake_protocol.status_calls, 1)
+        self.assertTrue(self.window._runtime_status_fault)
+        self.assertTrue(self.window._is_online_ready())
+        snapshot = self.window._current_session_snapshot()
+        self.assertIsNotNone(snapshot)
+        assert snapshot is not None
+        self.assertIsNone(snapshot.failure_code)
+
+    def test_update_status_skips_runtime_poll_fault_while_home_worker_running(self) -> None:
+        status = self._make_status(connected=False)
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self._set_online_ready_session()
+        home_worker = _FakeHomeAutoWorker(
+            host=self.window._client.host,
+            port=self.window._client.port,
+            axes=None,
+            force_rehome=False,
+        )
+        home_worker.start()
+        self.window._home_auto_worker = home_worker
+
+        self.window._update_status()
+
+        self.assertEqual(fake_protocol.status_calls, 0)
+        self.assertFalse(self.window._runtime_status_fault)
+        self.assertTrue(self.window._is_online_ready())
+
+    def test_update_status_degrades_after_hardware_drop_exceeds_grace(self) -> None:
+        status = self._make_status(connected=False)
+        fake_protocol = FakeProtocol(status)
+        self.window._protocol = fake_protocol
+        self._set_online_ready_session()
+        self.window._last_status_ts = time.monotonic() - self.window._supervisor_policy.runtime_degrade_grace_s - 0.1
+
+        self.window._update_status()
+
+        snapshot = self.window._current_session_snapshot()
+        self.assertIsNotNone(snapshot)
+        assert snapshot is not None
+        self.assertEqual(snapshot.session_state, "failed")
+        self.assertEqual(snapshot.failure_code, "SUP_RUNTIME_HARDWARE_STATE_FAILED")
+        self.assertEqual(snapshot.failure_stage, "hardware_ready")
+
+    def test_update_status_requalifies_runtime_hardware_failure_after_required_success_streak(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        fake_protocol = FakeProtocol(status)
+        failed_snapshot = SessionSnapshot(
+            mode="online",
+            session_state="failed",
+            backend_state="ready",
+            tcp_state="ready",
+            hardware_state="failed",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
+            failure_stage="hardware_ready",
+            recoverable=True,
+            last_error_message="运行中硬件状态不可用，在线能力已收敛。",
+            updated_at="2026-04-01T07:58:49Z",
+            runtime_contract_verified=True,
+            runtime_identity=RuntimeIdentity(
+                executable_path="C:\\runtime\\siligen_runtime_gateway.exe",
+                working_directory="C:\\runtime",
+            ),
+        )
+        self.window._requested_launch_mode = "online"
+        self.window._protocol = fake_protocol
+        self.window._session_snapshot = failed_snapshot
+        self.window._launch_result = launch_result_from_snapshot("online", failed_snapshot)
+
+        self.window._update_status()
+
+        self.assertFalse(self.window._is_online_ready())
+        self.assertEqual(self.window._runtime_requalify_success_streak, 1)
+
+        self.window._update_status()
+
+        self.assertTrue(self.window._is_online_ready())
+        self.assertEqual(self.window._runtime_requalify_success_streak, 0)
 
     def test_on_home_rejects_duplicate_request_while_worker_is_running(self) -> None:
         status = self._make_status(x_homed=False, y_homed=True)
@@ -1482,7 +1579,7 @@ class MainWindowTabsTest(unittest.TestCase):
             backend_state="ready",
             tcp_state="ready",
             hardware_state="failed",
-            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
             failure_stage="hardware_ready",
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",

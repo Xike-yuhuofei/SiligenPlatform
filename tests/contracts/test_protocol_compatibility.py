@@ -225,6 +225,11 @@ def test_dxf_preview_and_job_contract():
     assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"}.issubset(
         set(dxf_job_traceability["required"])
     )
+    assert set(dxf_job_traceability["properties"]["verdict"]["enum"]) == {
+        "passed",
+        "failed",
+        "insufficient_evidence",
+    }
 
     artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")

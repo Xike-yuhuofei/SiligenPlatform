@@ -29,6 +29,7 @@ constexpr const char* kPbCommandOverrideEnv = "SILIGEN_DXF_PB_COMMAND";
 constexpr const char* kPbScriptEnv = "SILIGEN_DXF_PB_SCRIPT";
 constexpr const char* kEngineeringDataPythonEnv = "SILIGEN_ENGINEERING_DATA_PYTHON";
 constexpr const char* kLegacyPbPythonEnv = "SILIGEN_DXF_PB_PYTHON";
+constexpr const char* kCanonicalEngineeringDataPythonRelativePath = "build/engineering-data-venv/Scripts/python.exe";
 constexpr const char* kForbiddenMetaChars = "&|;<>`";
 constexpr std::array<const char*, 1> kDefaultPbScriptRelativePaths = {
     "scripts/engineering-data/dxf_to_pb.py",
@@ -123,6 +124,25 @@ std::filesystem::path ResolveDefaultPbScriptPath(const std::filesystem::path& dx
         return fs::path(kDefaultPbScriptRelativePaths.front());
     }
     return current_path / fs::path(kDefaultPbScriptRelativePaths.front());
+}
+
+std::filesystem::path ResolveCanonicalEngineeringDataPythonPath(const std::filesystem::path& dxf_path) {
+    namespace fs = std::filesystem;
+
+    std::error_code ec;
+    std::vector<fs::path> anchors;
+    anchors.push_back(dxf_path.parent_path());
+    anchors.push_back(fs::current_path(ec));
+    ec.clear();
+
+    for (const auto& anchor : anchors) {
+        auto resolved = FindAncestorContainingRelativePath(anchor, fs::path(kCanonicalEngineeringDataPythonRelativePath));
+        if (!resolved.empty()) {
+            return resolved;
+        }
+    }
+
+    return {};
 }
 
 std::string DescribeDefaultPbScriptLocations() {
@@ -344,7 +364,7 @@ Result<std::vector<std::string>> BuildOverrideCommandArgs(const std::string& com
     return Result<std::vector<std::string>>::Success(args);
 }
 
-std::string ResolvePythonExecutable() {
+std::string ResolvePythonExecutable(const std::filesystem::path& dxf_path) {
     const char* python_env = std::getenv(kEngineeringDataPythonEnv);
     if (!(python_env && *python_env)) {
         python_env = std::getenv(kLegacyPbPythonEnv);
@@ -353,7 +373,16 @@ std::string ResolvePythonExecutable() {
         }
     }
 
-    return (python_env && *python_env) ? python_env : "python";
+    if (python_env && *python_env) {
+        return python_env;
+    }
+
+    const auto canonical_python = ResolveCanonicalEngineeringDataPythonPath(dxf_path);
+    if (!canonical_python.empty()) {
+        return canonical_python.string();
+    }
+
+    return "python";
 }
 
 Siligen::Domain::Configuration::Ports::DxfImportConfig ResolvePreprocessConfig(
@@ -392,7 +421,7 @@ Result<std::vector<std::string>> PbCommandResolver::Resolve(const std::filesyste
 
     return BuildPbCommandArgs(dxf_path,
                               pb_path,
-                              ResolvePythonExecutable(),
+                              ResolvePythonExecutable(dxf_path),
                               external_root_result.Value(),
                               ResolvePreprocessConfig(config_port_));
 }

@@ -323,6 +323,8 @@ class SupervisorSessionTest(unittest.TestCase):
             backend_ready_timeout_s=7.5,
             tcp_connect_timeout_s=4.5,
             hardware_probe_timeout_s=21.0,
+            runtime_degrade_grace_s=6.0,
+            runtime_requalify_success_count=3,
         )
         session = SupervisorSession(
             backend=backend,
@@ -401,7 +403,7 @@ class SupervisorSessionTest(unittest.TestCase):
         )
         self.assertIsNotNone(degraded)
         assert degraded is not None
-        self.assertEqual(degraded.failure_code, "SUP_HARDWARE_CONNECT_FAILED")
+        self.assertEqual(degraded.failure_code, "SUP_RUNTIME_HARDWARE_STATE_FAILED")
         self.assertEqual(degraded.failure_stage, "hardware_ready")
         self.assertEqual(degraded.session_state, "failed")
 

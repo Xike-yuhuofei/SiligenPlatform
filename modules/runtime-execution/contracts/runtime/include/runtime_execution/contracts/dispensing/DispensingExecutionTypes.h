@@ -200,7 +200,7 @@ struct DispensingExecutionReport {
     float32 total_distance = 0.0f;
     std::vector<ProfileCompareActualTraceItem> actual_trace;
     std::vector<ProfileCompareTraceabilityMismatch> traceability_mismatches;
-    std::string traceability_verdict = "failed";
+    std::string traceability_verdict = "insufficient_evidence";
     std::string traceability_verdict_reason;
     bool strict_one_to_one_proven = false;
 };

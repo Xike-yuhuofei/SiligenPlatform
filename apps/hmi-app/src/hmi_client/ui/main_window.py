@@ -411,6 +411,7 @@ class MainWindow(QMainWindow):
         self._last_preview_resync_attempt_ts = 0.0
         self._preview_dom_ready = False
         self._runtime_status_fault = False
+        self._runtime_requalify_success_streak = 0
         self._last_status_error_notice_ts = 0.0
         self._last_status = None
         self._last_status_ts = 0.0
@@ -1675,7 +1676,12 @@ class MainWindow(QMainWindow):
     def _is_session_operation_running(self) -> bool:
         startup_running = self._startup_worker is not None and self._startup_worker.isRunning()
         recovery_running = self._recovery_worker is not None and self._recovery_worker.isRunning()
-        return startup_running or recovery_running
+        home_running = self._is_home_worker_running()
+        production_action_running = self._is_production_action_worker_running()
+        return startup_running or recovery_running or home_running or production_action_running
+
+    def _is_runtime_status_poll_suspended(self) -> bool:
+        return self._is_home_worker_running()
 
     def _update_recovery_controls_state(self) -> None:
         if not all(
@@ -1826,6 +1832,13 @@ class MainWindow(QMainWindow):
     def _apply_launch_result(self, result: LaunchResult) -> None:
         self._launch_result = result
         self._session_snapshot = result.session_snapshot
+        if result.online_ready:
+            self._runtime_status_fault = False
+            self._runtime_requalify_success_streak = 0
+            self._last_status_error_notice_ts = 0.0
+            self._last_status_ts = time.monotonic()
+        else:
+            self._runtime_requalify_success_streak = 0
         self._refresh_launch_status_ui()
         self._apply_mode_capabilities()
         self._update_home_controls_state()
@@ -1856,6 +1869,8 @@ class MainWindow(QMainWindow):
     def _apply_runtime_degradation_result(self, runtime_result) -> None:
         if runtime_result is None:
             return
+        self._runtime_status_fault = True
+        self._runtime_requalify_success_streak = 0
         self._on_supervisor_stage_event(runtime_result.stage_event)
         self._session_snapshot = runtime_result.degraded_snapshot
         self._launch_result = runtime_result.launch_result
@@ -1867,6 +1882,8 @@ class MainWindow(QMainWindow):
     def _apply_runtime_requalification_result(self, runtime_result) -> None:
         if runtime_result is None:
             return
+        self._runtime_status_fault = False
+        self._runtime_requalify_success_streak = 0
         self._on_supervisor_stage_event(runtime_result.stage_event)
         self._session_snapshot = runtime_result.recovered_snapshot
         self._launch_result = runtime_result.launch_result
@@ -1874,6 +1891,81 @@ class MainWindow(QMainWindow):
         self._apply_mode_capabilities()
         self._update_home_controls_state()
         self.statusBar().showMessage(runtime_result.status_message)
+
+    def _is_runtime_hardware_requalification_candidate(self) -> bool:
+        snapshot = self._current_session_snapshot()
+        return bool(
+            snapshot is not None
+            and snapshot.mode == "online"
+            and snapshot.session_state == "failed"
+            and snapshot.recoverable
+            and snapshot.failure_code == "SUP_RUNTIME_HARDWARE_STATE_FAILED"
+            and snapshot.failure_stage in ("hardware_ready", "online_ready")
+            and snapshot.backend_state == "ready"
+            and snapshot.tcp_state == "ready"
+            and snapshot.runtime_contract_verified
+            and snapshot.runtime_identity is not None
+        )
+
+    def _should_poll_runtime_status(self) -> bool:
+        return self._is_online_ready() or self._is_runtime_hardware_requalification_candidate()
+
+    def _runtime_degrade_grace_elapsed(self, *, now: float) -> bool:
+        if self._last_status_ts <= 0:
+            return True
+        return (now - self._last_status_ts) >= self._supervisor_policy.runtime_degrade_grace_s
+
+    def _record_runtime_healthy_status_sample(
+        self,
+        status,
+        *,
+        now: float,
+        success_message: str | None = None,
+    ) -> None:
+        self._last_status = status
+        self._last_status_ts = now
+        self._runtime_status_fault = False
+        self._last_status_error_notice_ts = 0.0
+
+        if not self._is_runtime_hardware_requalification_candidate():
+            self._runtime_requalify_success_streak = 0
+            return
+
+        self._runtime_requalify_success_streak += 1
+        if self._runtime_requalify_success_streak < self._supervisor_policy.runtime_requalify_success_count:
+            return
+
+        self._runtime_requalify_success_streak = 0
+        requalification = self._detect_runtime_requalification(
+            tcp_connected=True,
+            hardware_ready=True,
+            success_message=success_message,
+        )
+        if requalification is not None:
+            self._apply_runtime_requalification_result(requalification)
+
+    def _handle_runtime_status_fault(
+        self,
+        *,
+        now: float,
+        tcp_connected: bool | None = None,
+        hardware_ready: bool | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        self._preview_session.mark_resync_pending()
+        self._sync_preview_session_fields()
+        self._runtime_status_fault = True
+        self._runtime_requalify_success_streak = 0
+        if not self._runtime_degrade_grace_elapsed(now=now):
+            return
+
+        degradation = self._detect_runtime_degradation(
+            tcp_connected=tcp_connected,
+            hardware_ready=hardware_ready,
+            error_message=error_message,
+        )
+        if degradation is not None:
+            self._apply_runtime_degradation_result(degradation)
 
     def _detect_runtime_degradation(
         self,
@@ -2549,15 +2641,11 @@ class MainWindow(QMainWindow):
         if ok:
             status = self._protocol.get_status()
             if status.connected:
-                self._last_status = status
-                self._last_status_ts = time.monotonic()
-                self._runtime_status_fault = False
-                requalification = self._detect_runtime_requalification(
-                    tcp_connected=True,
-                    hardware_ready=True,
+                self._record_runtime_healthy_status_sample(
+                    status,
+                    now=time.monotonic(),
+                    success_message="运行态已恢复，系统已就绪。",
                 )
-                if requalification is not None:
-                    self._apply_runtime_requalification_result(requalification)
         if not ok and message:
             QMessageBox.warning(self, "回零失败", message)
         self.statusBar().showMessage(f"回零: {message}" if message else ("回零完成" if ok else "回零失败"))
@@ -4195,25 +4283,28 @@ class MainWindow(QMainWindow):
 
         self._update_maintenance_display()
 
-        if not self._is_online_ready():
+        if not self._should_poll_runtime_status():
+            return
+        if self._is_runtime_status_poll_suspended():
             return
         try:
+            now = time.monotonic()
             status = self._protocol.get_status()
             if not status.connected:
-                self._preview_session.mark_resync_pending()
-                self._sync_preview_session_fields()
-                degradation = self._detect_runtime_degradation(
+                if self._is_runtime_status_poll_suspended():
+                    return
+                self._handle_runtime_status_fault(
+                    now=now,
                     tcp_connected=True,
                     hardware_ready=False,
                     error_message="运行中硬件状态不可用，在线能力已收敛。",
                 )
-                if degradation is not None:
-                    self._apply_runtime_degradation_result(degradation)
                 return
-            self._last_status = status
-            self._last_status_ts = time.monotonic()
-            self._runtime_status_fault = False
-            self._last_status_error_notice_ts = 0.0
+            self._record_runtime_healthy_status_sample(
+                status,
+                now=now,
+                success_message="运行态已恢复，系统已就绪。",
+            )
             self._state_label.setText(status.runtime_state)
             self._update_home_controls_state()
 
@@ -4402,20 +4493,16 @@ class MainWindow(QMainWindow):
                 self._last_alarms_snapshot = alarms_snapshot
         except Exception as exc:
             _UI_LOGGER.exception("status_update_failed: %s", exc)
-            self._preview_session.mark_resync_pending()
-            self._sync_preview_session_fields()
-            degradation = self._detect_runtime_degradation(
+            now = time.monotonic()
+            if self._is_runtime_status_poll_suspended():
+                return
+            self._handle_runtime_status_fault(
+                now=now,
                 tcp_connected=False,
                 error_message=f"运行中 TCP 连接异常: {exc}",
             )
-            if degradation is not None:
-                self._apply_runtime_degradation_result(degradation)
-            self._runtime_status_fault = True
-            self._last_status = None
-            self._last_status_ts = 0.0
             self._operation_status.setText("状态异常")
             self._state_label.setText("Status Error")
-            now = time.monotonic()
             if now - self._last_status_error_notice_ts >= 1.5:
                 self.statusBar().showMessage(f"运行状态更新异常: {exc}")
                 self._last_status_error_notice_ts = now

@@ -1029,9 +1029,13 @@ class MockState:
                         "expected_trace": [],
                         "actual_trace": [],
                         "mismatches": [],
-                        "verdict": "passed" if state == "completed" else "failed",
-                        "verdict_reason": "" if state == "completed" else f"job terminal state is {state}",
-                        "strict_one_to_one_proven": state == "completed",
+                        "verdict": "insufficient_evidence" if state == "completed" else "failed",
+                        "verdict_reason": (
+                            "mock server does not provide strict traceability evidence"
+                            if state == "completed"
+                            else f"job terminal state is {state}"
+                        ),
+                        "strict_one_to_one_proven": False,
                     }
                 }
             if method == "dxf.job.pause":

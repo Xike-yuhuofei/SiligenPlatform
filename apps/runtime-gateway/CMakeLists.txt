@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
+set(RUNTIME_GATEWAY_DEVICE_VENDOR_DIR
+    "${SILIGEN_WORKSPACE_ROOT}/modules/runtime-execution/adapters/device/vendor/multicard")
+if(DEFINED SILIGEN_MULTICARD_VENDOR_DIR AND EXISTS "${SILIGEN_MULTICARD_VENDOR_DIR}")
+    set(RUNTIME_GATEWAY_DEVICE_VENDOR_DIR "${SILIGEN_MULTICARD_VENDOR_DIR}")
+endif()
+
 if(NOT TARGET siligen_process_planning_contracts_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/process-planning/contracts"
@@ -42,4 +48,13 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
         ${CMAKE_SOURCE_DIR}/modules/job-ingest/contracts/include
     )
     target_link_libraries(siligen_runtime_gateway PRIVATE siligen_app_runtime_gateway)
+
+    if(EXISTS "${RUNTIME_GATEWAY_DEVICE_VENDOR_DIR}/MultiCard.dll")
+        add_custom_command(TARGET siligen_runtime_gateway POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${RUNTIME_GATEWAY_DEVICE_VENDOR_DIR}/MultiCard.dll"
+                "$<TARGET_FILE_DIR:siligen_runtime_gateway>"
+            COMMENT "拷贝 MultiCard.dll 到 runtime-gateway 输出目录"
+        )
+    endif()
 endif()

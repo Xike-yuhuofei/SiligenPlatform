@@ -203,7 +203,7 @@ class LaunchStateOwnerTest(unittest.TestCase):
             session_state="failed",
             tcp_state="ready",
             hardware_state="failed",
-            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
             failure_stage="hardware_ready",
             recoverable=True,
             last_error_message="hardware lost",
@@ -233,7 +233,7 @@ class LaunchStateOwnerTest(unittest.TestCase):
             launch_result,
             ready_snapshot,
             [_stage_event()],
-            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
             failure_stage="hardware_ready",
             message="运行中硬件掉线",
             hardware_state="failed",
@@ -242,7 +242,7 @@ class LaunchStateOwnerTest(unittest.TestCase):
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(result.degraded_snapshot.session_state, "failed")
-        self.assertEqual(result.degraded_snapshot.failure_code, "SUP_HARDWARE_CONNECT_FAILED")
+        self.assertEqual(result.degraded_snapshot.failure_code, "SUP_RUNTIME_HARDWARE_STATE_FAILED")
         self.assertEqual(result.degraded_snapshot.failure_stage, "hardware_ready")
         self.assertEqual(result.launch_result.session_state, "failed")
         self.assertEqual(result.stage_event.event_type, "stage_failed")
@@ -270,7 +270,7 @@ class LaunchStateOwnerTest(unittest.TestCase):
         failed_snapshot = _snapshot(
             session_state="failed",
             hardware_state="failed",
-            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
             failure_stage="hardware_ready",
             recoverable=True,
             last_error_message="运行中硬件状态不可用，在线能力已收敛。",
@@ -296,6 +296,29 @@ class LaunchStateOwnerTest(unittest.TestCase):
         self.assertTrue(result.launch_result.online_ready)
         self.assertEqual(result.stage_event.event_type, "stage_succeeded")
         self.assertEqual(result.stage_event.stage, "online_ready")
+
+    def test_detect_runtime_requalification_result_rejects_startup_hardware_failure_code(self) -> None:
+        failed_snapshot = _snapshot(
+            session_state="failed",
+            hardware_state="failed",
+            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_stage="hardware_ready",
+            recoverable=True,
+            last_error_message="startup hardware probing failed",
+            runtime_contract_verified=True,
+            runtime_identity=RUNTIME_IDENTITY,
+        )
+        launch_result = launch_result_from_snapshot("online", failed_snapshot)
+
+        result = detect_runtime_requalification_result(
+            launch_result,
+            failed_snapshot,
+            [_stage_event(stage="hardware_ready")],
+            tcp_connected=True,
+            hardware_ready=True,
+        )
+
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

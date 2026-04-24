@@ -1126,7 +1126,7 @@ TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityFailsClosedForCan
 }
 
 TEST(DispensingExecutionUseCaseInternalTest,
-     StartJobAggregatesMultiCycleTraceAndProducesActualTraceCountMismatch) {
+     StartJobAggregatesMultiCycleTraceAndReturnsInsufficientEvidenceWhenActualTraceCountIsIncomplete) {
     auto process_port = std::make_shared<TracingStubDispensingProcessPort>();
     const auto request = BuildProfileCompareExecutionRequest();
 
@@ -1170,7 +1170,7 @@ TEST(DispensingExecutionUseCaseInternalTest,
     EXPECT_EQ(response.terminal_state, "completed");
     EXPECT_EQ(response.expected_trace.size(), 4U);
     EXPECT_EQ(response.actual_trace.size(), 1U);
-    EXPECT_EQ(response.verdict, "failed");
+    EXPECT_EQ(response.verdict, "insufficient_evidence");
     EXPECT_FALSE(response.strict_one_to_one_proven);
     EXPECT_NE(
         response.verdict_reason.find("actual trace count does not match expected trace count at terminal state"),

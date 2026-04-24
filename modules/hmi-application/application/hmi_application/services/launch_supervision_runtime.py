@@ -66,7 +66,7 @@ def detect_runtime_degradation(
     if hardware_ready is False:
         return build_runtime_failure_snapshot(
             snapshot,
-            failure_code="SUP_HARDWARE_CONNECT_FAILED",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
             failure_stage="hardware_ready",
             message=error_message or "Runtime hardware state unavailable.",
             hardware_state="failed",

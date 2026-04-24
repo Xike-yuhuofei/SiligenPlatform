@@ -139,7 +139,7 @@ struct RuntimeJobTraceabilityResponse {
     std::vector<Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem> expected_trace;
     std::vector<Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem> actual_trace;
     std::vector<Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch> mismatches;
-    std::string verdict = "failed";
+    std::string verdict = "insufficient_evidence";
     std::string verdict_reason;
     bool strict_one_to_one_proven = false;
 };

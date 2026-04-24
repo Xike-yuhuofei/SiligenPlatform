@@ -19,6 +19,7 @@ from .launch_supervision_session import SupervisorSession
 from .services.launch_result_projection import launch_result_from_snapshot
 
 LedState = Literal["off", "green", "red"]
+RUNTIME_REQUALIFIABLE_FAILURE_CODES = {"SUP_RUNTIME_HARDWARE_STATE_FAILED"}
 
 
 @dataclass(frozen=True)
@@ -293,7 +294,7 @@ def detect_runtime_requalification_result(
         return None
     if session_snapshot.session_state != "failed" or not session_snapshot.recoverable:
         return None
-    if session_snapshot.failure_code != "SUP_HARDWARE_CONNECT_FAILED":
+    if session_snapshot.failure_code not in RUNTIME_REQUALIFIABLE_FAILURE_CODES:
         return None
     if session_snapshot.failure_stage not in ("hardware_probing", "hardware_ready", "online_ready"):
         return None

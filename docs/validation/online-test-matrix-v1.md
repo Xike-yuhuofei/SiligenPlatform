@@ -1,6 +1,6 @@
 # 联机测试矩阵 v1
 
-更新时间：`2026-04-21`
+更新时间：`2026-04-24`
 
 ## 1. 目标与非目标
 
@@ -86,7 +86,7 @@
 | `P1-03` | L4 | DXF 基线集批量在线预览 | `tests/e2e/hardware-in-loop/run_real_dxf_preview_suite.py` | `existing`：聚合 `rect_diag` / `bra` / `arc_circle_quadrants`，产出 suite summary 与 evidence bundle，不替代 controlled publish |
 | `P1-04` | L5 | HMI runtime actions 批量在线回归 | `apps/hmi-app/scripts/run_online_runtime_action_matrix.py` + `online-smoke.ps1` / `ui_qtest.py` | `existing`：正式在线预览 authority 仅允许 `operator_preview`；`snapshot_render` 仅供 HIL 截图链 render-only 使用，不进入 matrix |
 | `P1-05` | L6 | 30 分钟以上 soak | `tests/performance/run_online_soak_profiles.py --profile-id soak-30m-matrix` | `existing`：已纳入 full-online blocker 集合；`>30m` 扩展 profile 需要显式 `--allow-long-profiles` |
-| `P1-06` | L5 | HMI operator production 专项 | `tests/e2e/hardware-in-loop/run_hmi_operator_production_test.py` | `existing`：通过 `operator_production` 正式入口走 HMI browse/preview/start/completed/next-job-ready；报告必须分离 `operator_execution` 与 `traceability_correspondence` |
+| `P1-06` | L5 | HMI operator production 专项 | `tests/e2e/hardware-in-loop/run_hmi_operator_production_test.py` | `existing`：通过 `operator_production` 正式入口走 HMI browse/preview/start/completed/next-job-ready；formal pass 必须同时满足 `operator_execution=passed`、`traceability_correspondence=passed`、`observation_integrity=passed`，且不替代 `P1-04` |
 
 ### 4.3 P2：发布前与容量边界
 
@@ -160,11 +160,16 @@
 - `hmi-stdout.log`
 - `hmi-stderr.log`
 - `hmi-screenshots/`
+- `job-traceability.json`
 
 其中 `hmi-production-operator-test.json` 必须满足：
 
 - `operator_execution.status` 与 `traceability_correspondence.status` 分开表达，不允许用单一 passed/failed 混写。
-- 若 `coord-status-history.json` 为空，则 `traceability_correspondence.status` 只能是 `insufficient_evidence`，不得写成 `passed`。
+- `traceability_correspondence` 必须直接投影 `dxf.job.traceability`，不得由 runner 用 summary-level alignment 自行推断 strict verdict。
+- `observation_alignment` 只能表达 summary-level alignment，不得覆盖或修正 `traceability_correspondence`。
+- `observation_integrity` 必须单独表达 observer/supervisor/工件完整性，不得与 strict truth 混写。
+- 若 `traceability_correspondence.status != passed`，整次 formal operator production run 不得按严格一一对应收尾。
+- 若 `observation_integrity.status != passed`，整次 formal operator production run 不得记为 `overall_status=passed`；`warning` 也不得放行。
 - `control_script_capability` 必须说明该入口是否真的覆盖 `production-started` 与 `next-job-ready`。
 
 ### 5.5 controlled gate 类

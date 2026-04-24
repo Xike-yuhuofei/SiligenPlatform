@@ -19,7 +19,16 @@ if str(HIL_DIR) not in sys.path:
 
 from dxf_hil_observation import DEFAULT_COORD_SYS, normalize_coord_status_sample, normalize_job_status_sample, normalize_machine_status_sample  # noqa: E402
 from run_real_dxf_machine_dryrun import parse_int, status_result  # noqa: E402
-from run_real_dxf_production_validation import add_step, extract_gateway_log_summary, read_current_run_gateway_log, write_json  # noqa: E402
+from run_real_dxf_production_validation import (  # noqa: E402
+    add_step,
+    build_checklist,
+    compute_axis_coverage,
+    extract_gateway_log_summary,
+    read_current_run_gateway_log,
+    summarize_machine_bbox,
+    summarize_points_bbox,
+    write_json,
+)
 from runtime_gateway_harness import TcpJsonClient, VENDOR_DIR, resolve_default_exe, wait_gateway_ready  # noqa: E402
 
 
@@ -27,7 +36,7 @@ DEFAULT_GATEWAY_EXE = resolve_default_exe("siligen_runtime_gateway.exe")
 DEFAULT_CONFIG_PATH = ROOT / "config" / "machine" / "machine_config.ini"
 DEFAULT_DEMO1_DXF = ROOT / "samples" / "dxf" / "Demo-1.dxf"
 DEFAULT_REPORT_ROOT = ROOT / "tests" / "reports" / "online-validation" / "hmi-production-operator-test"
-DEFAULT_STATUS_POLL_INTERVAL_SECONDS = 0.10
+DEFAULT_STATUS_POLL_INTERVAL_SECONDS = 0.20
 DEFAULT_GATEWAY_READY_TIMEOUT = 8.0
 DEFAULT_CONNECT_TIMEOUT = 15.0
 DEFAULT_UI_TIMEOUT_MS = 900000
@@ -231,6 +240,40 @@ def _parse_key_value_line(*, prefix: str, line: str) -> dict[str, str]:
         if separator:
             fields[key] = value
     return fields
+
+
+def refresh_operator_exclusive_windows(
+    *,
+    stdout_path: Path,
+    read_offset: int,
+    active_windows: set[str],
+) -> tuple[int, set[str]]:
+    if not stdout_path.exists():
+        return read_offset, set(active_windows)
+
+    with stdout_path.open("r", encoding="utf-8") as stream:
+        stream.seek(read_offset)
+        chunk = stream.read()
+        next_offset = stream.tell()
+
+    if not chunk:
+        return next_offset, set(active_windows)
+
+    updated = set(active_windows)
+    for raw_line in chunk.splitlines():
+        event = _parse_key_value_line(prefix="OPERATOR_EXCLUSIVE_WINDOW ", line=raw_line.strip())
+        if not event:
+            continue
+        kind = str(event.get("kind", "") or "").strip()
+        state = str(event.get("state", "") or "").strip().lower()
+        if not kind:
+            continue
+        if state in {"started", "entered", "running"}:
+            updated.add(kind)
+        elif state in {"completed", "failed", "ended", "cleared"}:
+            updated.discard(kind)
+
+    return next_offset, updated
 
 
 def _contains_stage_sequence(stages: list[str], required_stages: tuple[str, ...]) -> bool:
@@ -672,7 +715,7 @@ def evaluate_operator_execution(
         "hmi_output_excerpt": "\n".join(
             line
             for line in combined_output.splitlines()
-            if line.strip().startswith(("FAIL:", "OPERATOR_CONTEXT ", "HMI_SCREENSHOT "))
+            if line.strip().startswith(("FAIL:", "OPERATOR_CONTEXT ", "HMI_SCREENSHOT ", "OPERATOR_EXCLUSIVE_WINDOW "))
         )[:4000],
     }
 
@@ -683,8 +726,11 @@ def evaluate_traceability_correspondence(
     job_traceability: dict[str, Any],
 ) -> dict[str, Any]:
     verdict = str(job_traceability.get("verdict", "failed") or "failed").strip().lower()
-    if verdict not in ("passed", "failed"):
-        verdict = "failed"
+    if verdict not in {"passed", "failed", "insufficient_evidence"}:
+        return build_traceability_query_failure(
+            job_id=job_id,
+            reason=f"runtime dxf.job.traceability returned unsupported verdict={verdict or 'null'}",
+        )
     strict_one_to_one_proven = bool(job_traceability.get("strict_one_to_one_proven", False))
     verdict_reason = str(job_traceability.get("verdict_reason", "") or "").strip()
     expected_trace = job_traceability.get("expected_trace", [])
@@ -692,10 +738,29 @@ def evaluate_traceability_correspondence(
     mismatches = job_traceability.get("mismatches", [])
     terminal_state = str(job_traceability.get("terminal_state", "") or "").strip().lower()
 
+    if verdict == "passed" and not strict_one_to_one_proven:
+        return build_traceability_query_failure(
+            job_id=job_id,
+            reason="runtime dxf.job.traceability violated contract: passed requires strict_one_to_one_proven=true",
+        )
+    if verdict in {"failed", "insufficient_evidence"} and strict_one_to_one_proven:
+        return build_traceability_query_failure(
+            job_id=job_id,
+            reason=(
+                "runtime dxf.job.traceability violated contract: "
+                "strict_one_to_one_proven=true is only allowed when verdict=passed"
+            ),
+        )
+
     reason = verdict_reason
     if not reason:
         if verdict == "passed":
             reason = "runtime dxf.job.traceability returned passed and strict_one_to_one_proven=true"
+        elif verdict == "insufficient_evidence":
+            if terminal_state:
+                reason = f"runtime dxf.job.traceability returned insufficient_evidence in terminal_state={terminal_state}"
+            else:
+                reason = "runtime dxf.job.traceability returned insufficient_evidence"
         elif mismatches:
             reason = "runtime dxf.job.traceability returned failed with mismatches"
         elif terminal_state:
@@ -716,6 +781,173 @@ def evaluate_traceability_correspondence(
     }
 
 
+def build_traceability_query_failure(*, job_id: str, reason: str) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "reason": reason,
+        "strict_one_to_one_proven": False,
+        "job_id": job_id,
+        "terminal_state": "unknown",
+        "expected_trace_count": 0,
+        "actual_trace_count": 0,
+        "mismatch_count": 0,
+        "traceability_payload": {},
+    }
+
+
+def evaluate_observation_alignment(
+    *,
+    snapshot_result: dict[str, Any],
+    final_job_status: dict[str, Any],
+    log_summary: dict[str, Any],
+    machine_status_history: list[dict[str, Any]],
+    coord_status_history: list[dict[str, Any]],
+    min_axis_coverage_ratio: float,
+) -> dict[str, Any]:
+    glue_points = snapshot_result.get("glue_points", [])
+    if not isinstance(glue_points, list) or not glue_points:
+        return {
+            "status": "insufficient_evidence",
+            "reason": "preview snapshot glue_points unavailable; cannot compute summary-level alignment",
+            "summary_checks": {},
+            "coord_status_sample_count": len(coord_status_history),
+            "expected_bbox": {},
+            "observed_bbox": {},
+            "axis_coverage": {},
+        }
+    if not machine_status_history:
+        return {
+            "status": "insufficient_evidence",
+            "reason": "machine status history unavailable; cannot compute summary-level alignment",
+            "summary_checks": {},
+            "coord_status_sample_count": len(coord_status_history),
+            "expected_bbox": summarize_points_bbox(glue_points),
+            "observed_bbox": {},
+            "axis_coverage": {},
+        }
+
+    expected_bbox = summarize_points_bbox(glue_points)
+    observed_bbox = summarize_machine_bbox(machine_status_history)
+    axis_coverage = compute_axis_coverage(expected_bbox, observed_bbox)
+    summary_checks = build_checklist(
+        validation_mode="production_execution",
+        plan_result={},
+        snapshot_result=snapshot_result,
+        job_start_response={},
+        blocked_motion_observation={},
+        final_job_status=final_job_status,
+        log_summary=log_summary,
+        axis_coverage=axis_coverage,
+        observed_bbox=observed_bbox,
+        min_axis_coverage_ratio=min_axis_coverage_ratio,
+    )
+    failed_checks = [
+        name for name, payload in summary_checks.items() if not bool(payload.get("passed", False))
+    ]
+    if failed_checks:
+        status = "failed"
+        reason = "summary-level alignment checks failed: " + ", ".join(failed_checks)
+    else:
+        status = "passed"
+        reason = "summary-level alignment checks passed"
+
+    return {
+        "status": status,
+        "reason": reason,
+        "summary_checks": summary_checks,
+        "coord_status_sample_count": len(coord_status_history),
+        "expected_bbox": expected_bbox,
+        "observed_bbox": observed_bbox,
+        "axis_coverage": axis_coverage,
+    }
+
+
+def evaluate_observation_integrity(
+    *,
+    combined_output: str,
+    observer_poll_errors: list[str],
+    job_status_history: list[dict[str, Any]],
+    machine_status_history: list[dict[str, Any]],
+    coord_status_history: list[dict[str, Any]],
+    snapshot_result: dict[str, Any],
+    job_traceability: dict[str, Any],
+) -> dict[str, Any]:
+    issues: list[str] = []
+    warnings: list[str] = []
+    supervisor_lines = [
+        line.strip()
+        for line in combined_output.splitlines()
+        if line.strip().startswith("SUPERVISOR_EVENT ")
+    ]
+    recoverable_stage_failures = [
+        line for line in supervisor_lines if "type=stage_failed" in line and "recoverable=true" in line
+    ]
+    unrecovered_stage_failures = [
+        line for line in supervisor_lines if "type=stage_failed" in line and "recoverable=true" not in line
+    ]
+    recovered_online_ready = any(
+        "type=stage_succeeded" in line and "stage=online_ready" in line for line in supervisor_lines
+    )
+
+    if not job_traceability:
+        issues.append("job traceability payload missing")
+    if not job_status_history:
+        issues.append("job status history missing")
+    if not machine_status_history:
+        issues.append("machine status history missing")
+    if unrecovered_stage_failures:
+        issues.append("supervisor reported unrecoverable stage_failed event")
+    if recoverable_stage_failures and not recovered_online_ready:
+        issues.append("supervisor reported recoverable stage_failed without online_ready recovery")
+
+    if recoverable_stage_failures and recovered_online_ready:
+        warnings.append("supervisor reported recoverable stage_failed before online_ready recovery")
+    if observer_poll_errors:
+        warnings.append("observer polling reported transient errors")
+    if not coord_status_history:
+        warnings.append("coord status history is empty")
+    if not snapshot_result:
+        warnings.append("preview snapshot readback unavailable")
+
+    if issues:
+        status = "failed"
+        reason = "; ".join(issues)
+    elif warnings:
+        status = "warning"
+        reason = "; ".join(warnings)
+    else:
+        status = "passed"
+        reason = "observation artifacts and supervisor timeline are complete"
+
+    return {
+        "status": status,
+        "reason": reason,
+        "issues": issues,
+        "warnings": warnings,
+        "job_status_sample_count": len(job_status_history),
+        "machine_status_sample_count": len(machine_status_history),
+        "coord_status_sample_count": len(coord_status_history),
+        "recoverable_stage_failure_count": len(recoverable_stage_failures),
+        "recovered_online_ready": recovered_online_ready,
+        "observer_poll_error_count": len(observer_poll_errors),
+    }
+
+
+def determine_overall_status(
+    *,
+    operator_execution: dict[str, Any],
+    traceability: dict[str, Any],
+    observation_integrity: dict[str, Any],
+) -> str:
+    if operator_execution.get("status") != "passed":
+        return "failed"
+    if traceability.get("status") != "passed":
+        return "failed"
+    if observation_integrity.get("status") != "passed":
+        return "failed"
+    return "passed"
+
+
 def build_report(
     *,
     args: argparse.Namespace,
@@ -724,6 +956,8 @@ def build_report(
     steps: list[dict[str, str]],
     operator_execution: dict[str, Any],
     traceability: dict[str, Any],
+    observation_alignment: dict[str, Any],
+    observation_integrity: dict[str, Any],
     artifacts: dict[str, Any],
     snapshot_result: dict[str, Any],
     log_summary: dict[str, Any],
@@ -757,6 +991,8 @@ def build_report(
         },
         "operator_execution": operator_execution,
         "traceability_correspondence": traceability,
+        "observation_alignment": observation_alignment,
+        "observation_integrity": observation_integrity,
         "control_script_capability": {
             "entry_script": str(UI_QTEST),
             "covers_production_start": control_script_allowed,
@@ -790,6 +1026,8 @@ def build_report_markdown(report: dict[str, Any]) -> str:
     scope = report.get("scope", {})
     operator_execution = report.get("operator_execution", {})
     traceability = report.get("traceability_correspondence", {})
+    observation_alignment = report.get("observation_alignment", {})
+    observation_integrity = report.get("observation_integrity", {})
     control_script_capability = report.get("control_script_capability", {})
     artifacts = report.get("artifacts", {})
     issues = operator_execution.get("issues", [])
@@ -842,7 +1080,10 @@ def build_report_markdown(report: dict[str, Any]) -> str:
             "### 5. 追溯一致性结论",
             f"- 生产执行结论：`{operator_execution.get('status', 'failed')}`",
             f"- 严格一一对应结论：`{traceability.get('status', 'failed')}`",
+            f"- strict truth 来源：`dxf.job.traceability`",
             f"- 证据边界：{traceability.get('reason', '')}",
+            f"- summary-level alignment：`{observation_alignment.get('status', 'insufficient_evidence')}`",
+            f"- observation integrity：`{observation_integrity.get('status', 'failed')}`",
             "",
             "### 6. 控制脚本能力结论",
             f"- 入口脚本：`{control_script_capability.get('entry_script', '')}`",
@@ -884,14 +1125,22 @@ def build_report_markdown(report: dict[str, Any]) -> str:
         lines.append("- HMI operator 正式入口仍有阻塞，不能把本轮结论升级为“人工操作可稳定完成生产”。")
     if traceability.get("status") == "failed":
         lines.append("- runtime strict traceability 已明确失败，不能把生产成功升级为严格一一对应。")
+    if traceability.get("status") == "insufficient_evidence":
+        lines.append("- runtime strict traceability 仍未证明，当前 run 不能按严格一一对应收尾。")
+    if observation_integrity.get("status") == "failed":
+        lines.append(f"- observation integrity 已失败：`{observation_integrity.get('reason', '')}`")
+    elif observation_integrity.get("status") == "warning":
+        lines.append(f"- observation integrity 有告警：`{observation_integrity.get('reason', '')}`")
     if report.get("observer_poll_errors"):
         lines.append(f"- observer polling 存在波动：`{json.dumps(report['observer_poll_errors'][:3], ensure_ascii=False)}`")
 
     lines.extend(["", "### 9. 建议下一步"])
     if operator_execution.get("status") != "passed":
         lines.append("- 先修操作阻塞问题，再重跑本 runner 复核完整阶段序列。")
-    elif traceability.get("status") == "failed":
+    elif traceability.get("status") != "passed":
         lines.append("- 先修 runtime/gateway strict traceability 失败项，再重跑 operator runner。")
+    elif observation_integrity.get("status") != "passed":
+        lines.append("- 先修 observation integrity 告警或失败项，再重跑 operator runner。")
     else:
         lines.append("- 同步把该入口接入文档矩阵，明确它与 P1-04 runtime action matrix 的边界。")
 
@@ -935,6 +1184,7 @@ def main() -> int:
     job_traceability: dict[str, Any] = {}
     snapshot_result: dict[str, Any] = {}
     snapshot_readback_error = ""
+    combined_output = ""
     hmi_stdout = ""
     hmi_stderr = ""
     hmi_exit_code = 1
@@ -946,6 +1196,8 @@ def main() -> int:
     gateway_stderr_stream = gateway_stderr_path.open("w", encoding="utf-8")
     hmi_stdout_stream = hmi_stdout_log_path.open("w", encoding="utf-8")
     hmi_stderr_stream = hmi_stderr_log_path.open("w", encoding="utf-8")
+    hmi_stdout_read_offset = 0
+    observer_exclusive_windows: set[str] = set()
 
     try:
         if not args.gateway_exe.exists():
@@ -1023,27 +1275,39 @@ def main() -> int:
         while True:
             if time.time() >= deadline:
                 raise TimeoutError(f"HMI operator production timed out after {args.ui_timeout_ms}ms")
+            hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
+                stdout_path=hmi_stdout_log_path,
+                read_offset=hmi_stdout_read_offset,
+                active_windows=observer_exclusive_windows,
+            )
             if observer_connected:
-                try:
-                    sample = collect_observer_sample(
-                        observer_client,
-                        poll_index=poll_index,
-                        job_id=current_job_id,
-                    )
-                    machine_status_history.append(sample["machine_status"])
-                    if sample["coord_status"]:
-                        coord_status_history.append(sample["coord_status"])
-                    if sample["job_status"]:
-                        job_status_history.append(sample["job_status"])
-                        final_job_status = sample["job_status"]
-                    detected_job_id = str(sample.get("detected_job_id", "") or "").strip()
-                    if detected_job_id:
-                        current_job_id = detected_job_id
-                    poll_index += 1
-                except Exception as exc:  # noqa: BLE001
-                    message = str(exc).strip()
-                    if not observer_poll_errors or observer_poll_errors[-1] != message:
-                        observer_poll_errors.append(message)
+                if not observer_exclusive_windows:
+                    try:
+                        sample = collect_observer_sample(
+                            observer_client,
+                            poll_index=poll_index,
+                            job_id=current_job_id,
+                        )
+                        machine_status_history.append(sample["machine_status"])
+                        if sample["coord_status"]:
+                            coord_status_history.append(sample["coord_status"])
+                        if sample["job_status"]:
+                            job_status_history.append(sample["job_status"])
+                            final_job_status = sample["job_status"]
+                        detected_job_id = str(sample.get("detected_job_id", "") or "").strip()
+                        if detected_job_id:
+                            current_job_id = detected_job_id
+                        poll_index += 1
+                    except Exception as exc:  # noqa: BLE001
+                        hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
+                            stdout_path=hmi_stdout_log_path,
+                            read_offset=hmi_stdout_read_offset,
+                            active_windows=observer_exclusive_windows,
+                        )
+                        if not observer_exclusive_windows:
+                            message = str(exc).strip()
+                            if not observer_poll_errors or observer_poll_errors[-1] != message:
+                                observer_poll_errors.append(message)
             if hmi_process.poll() is not None:
                 break
             time.sleep(args.status_poll_interval_seconds)
@@ -1063,6 +1327,11 @@ def main() -> int:
         )
 
         if observer_connected:
+            hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
+                stdout_path=hmi_stdout_log_path,
+                read_offset=hmi_stdout_read_offset,
+                active_windows=observer_exclusive_windows,
+            )
             try:
                 sample = collect_observer_sample(
                     observer_client,
@@ -1076,9 +1345,15 @@ def main() -> int:
                     job_status_history.append(sample["job_status"])
                     final_job_status = sample["job_status"]
             except Exception as exc:  # noqa: BLE001
-                message = str(exc).strip()
-                if not observer_poll_errors or observer_poll_errors[-1] != message:
-                    observer_poll_errors.append(message)
+                hmi_stdout_read_offset, observer_exclusive_windows = refresh_operator_exclusive_windows(
+                    stdout_path=hmi_stdout_log_path,
+                    read_offset=hmi_stdout_read_offset,
+                    active_windows=observer_exclusive_windows,
+                )
+                if not observer_exclusive_windows:
+                    message = str(exc).strip()
+                    if not observer_poll_errors or observer_poll_errors[-1] != message:
+                        observer_poll_errors.append(message)
 
         combined_output = (hmi_stdout or "") + ("\n" if hmi_stderr else "") + (hmi_stderr or "")
         operator_summary = summarize_operator_output(combined_output)
@@ -1184,8 +1459,59 @@ def main() -> int:
         if not hmi_stderr:
             hmi_stderr = read_text_if_exists(hmi_stderr_log_path)
 
+        traceability_job_id = str(current_job_id or final_job_status.get("job_id", "") or "").strip()
+        traceability = build_traceability_query_failure(
+            job_id=traceability_job_id,
+            reason="dxf.job.traceability was not queried",
+        )
+        if traceability_job_id and observer_connected:
+            try:
+                traceability_response = observer_client.send_request(
+                    "dxf.job.traceability",
+                    {"job_id": traceability_job_id},
+                    timeout_seconds=15.0,
+                )
+            except Exception as exc:  # noqa: BLE001
+                reason = "dxf.job.traceability raised: " + str(exc).strip()
+                job_traceability = {
+                    "job_id": traceability_job_id,
+                    "query_error": {"message": reason},
+                }
+                add_step(steps, "job-traceability", "failed", reason)
+                traceability = build_traceability_query_failure(job_id=traceability_job_id, reason=reason)
+            else:
+                if "error" in traceability_response:
+                    reason = "dxf.job.traceability failed: " + json.dumps(traceability_response, ensure_ascii=True)
+                    job_traceability = {
+                        "job_id": traceability_job_id,
+                        "query_error": traceability_response.get("error", {}),
+                    }
+                    add_step(steps, "job-traceability", "failed", reason)
+                    traceability = build_traceability_query_failure(job_id=traceability_job_id, reason=reason)
+                else:
+                    job_traceability = status_result(traceability_response)
+                    add_step(steps, "job-traceability", "passed", f"job_id={traceability_job_id}")
+                    traceability = evaluate_traceability_correspondence(
+                        job_id=traceability_job_id,
+                        job_traceability=job_traceability,
+                    )
+        else:
+            reason = (
+                "job_id missing after production completion; cannot read dxf.job.traceability"
+                if not traceability_job_id
+                else "observer session closed before dxf.job.traceability could be queried"
+            )
+            add_step(steps, "job-traceability", "failed", reason)
+            job_traceability = {
+                "job_id": traceability_job_id,
+                "query_error": {"message": reason},
+            }
+            traceability = build_traceability_query_failure(job_id=traceability_job_id, reason=reason)
+        write_json(job_traceability_json_path, job_traceability)
+
         if observer_connected:
             observer_client.close()
+            observer_connected = False
 
         if gateway_process is not None:
             if gateway_process.poll() is None:
@@ -1212,31 +1538,28 @@ def main() -> int:
         write_json(coord_status_json_path, coord_status_history)
 
         log_summary = extract_gateway_log_summary(gateway_log_text)
-        traceability_job_id = str(current_job_id or final_job_status.get("job_id", "") or "").strip()
-        if traceability_job_id:
-            traceability_response = observer_client.send_request(
-                "dxf.job.traceability",
-                {"job_id": traceability_job_id},
-                timeout_seconds=15.0,
-            )
-            if "error" in traceability_response:
-                raise RuntimeError(
-                    "dxf.job.traceability failed: " + json.dumps(traceability_response, ensure_ascii=True)
-                )
-            job_traceability = status_result(traceability_response)
-            add_step(steps, "job-traceability", "passed", f"job_id={traceability_job_id}")
-        else:
-            raise RuntimeError("job_id missing after production completion; cannot read dxf.job.traceability")
-        write_json(job_traceability_json_path, job_traceability)
-        traceability = evaluate_traceability_correspondence(
-            job_id=traceability_job_id,
+        observation_alignment = evaluate_observation_alignment(
+            snapshot_result=snapshot_result,
+            final_job_status=final_job_status,
+            log_summary=log_summary,
+            machine_status_history=machine_status_history,
+            coord_status_history=coord_status_history,
+            min_axis_coverage_ratio=args.min_axis_coverage_ratio,
+        )
+        observation_integrity = evaluate_observation_integrity(
+            combined_output=combined_output,
+            observer_poll_errors=observer_poll_errors,
+            job_status_history=job_status_history,
+            machine_status_history=machine_status_history,
+            coord_status_history=coord_status_history,
+            snapshot_result=snapshot_result,
             job_traceability=job_traceability,
         )
-
-        if operator_execution.get("status") != "passed" or traceability.get("status") == "failed":
-            overall_status = "failed"
-        else:
-            overall_status = "passed"
+        overall_status = determine_overall_status(
+            operator_execution=operator_execution,
+            traceability=traceability,
+            observation_integrity=observation_integrity,
+        )
 
         artifacts.update(
             {
@@ -1267,6 +1590,8 @@ def main() -> int:
             steps=steps,
             operator_execution=operator_execution,
             traceability=traceability,
+            observation_alignment=observation_alignment,
+            observation_integrity=observation_integrity,
             artifacts=artifacts,
             snapshot_result=snapshot_result,
             log_summary=log_summary,
