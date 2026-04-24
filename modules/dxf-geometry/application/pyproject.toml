@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engineering-data"
+version = "0.1.0"
+description = "Siligen canonical engineering data preprocessing package"
+requires-python = ">=3.11"
+dependencies = [
+  "ezdxf>=1.4.3",
+  "geomdl>=5.4.0",
+  "protobuf>=6,<7",
+  "ruckig>=0.15.3",
+]
+
+[project.scripts]
+engineering-data-dxf-to-pb = "engineering_data.cli.dxf_to_pb:main"
+engineering-data-export-simulation-input = "engineering_data.cli.export_simulation_input:main"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]

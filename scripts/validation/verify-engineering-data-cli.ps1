@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$canonicalEngineeringDataPython = Join-Path $workspaceRoot "build\\engineering-data-venv\\Scripts\\python.exe"
 if ([System.IO.Path]::IsPathRooted($ReportDir)) {
     $resolvedReportDir = [System.IO.Path]::GetFullPath($ReportDir)
 } else {
@@ -17,8 +18,23 @@ New-Item -ItemType Directory -Force -Path $resolvedReportDir | Out-Null
 if ([string]::IsNullOrWhiteSpace($PythonExe)) {
     if (-not [string]::IsNullOrWhiteSpace($env:SILIGEN_ENGINEERING_DATA_PYTHON)) {
         $PythonExe = $env:SILIGEN_ENGINEERING_DATA_PYTHON
+    } elseif (Test-Path $canonicalEngineeringDataPython) {
+        $PythonExe = $canonicalEngineeringDataPython
     } else {
         $PythonExe = "python"
+    }
+}
+
+$resolvedPythonExe = $PythonExe
+if (-not [string]::IsNullOrWhiteSpace($resolvedPythonExe) -and (Test-Path $resolvedPythonExe)) {
+    $pythonScriptsDir = Split-Path -Parent $resolvedPythonExe
+    if (-not [string]::IsNullOrWhiteSpace($pythonScriptsDir) -and (Test-Path $pythonScriptsDir)) {
+        $existingPath = $env:PATH
+        $env:PATH = if ([string]::IsNullOrWhiteSpace($existingPath)) {
+            $pythonScriptsDir
+        } else {
+            $pythonScriptsDir + [System.IO.Path]::PathSeparator + $existingPath
+        }
     }
 }
 
@@ -41,8 +57,14 @@ function Invoke-ProcessCapture {
         [string[]]$Arguments
     )
 
-    $lines = & $FilePath @Arguments 2>&1
-    $exitCode = $LASTEXITCODE
+    $previousNativePreference = $global:PSNativeCommandUseErrorActionPreference
+    $global:PSNativeCommandUseErrorActionPreference = $false
+    try {
+        $lines = & $FilePath @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $global:PSNativeCommandUseErrorActionPreference = $previousNativePreference
+    }
     $text = ($lines | Out-String).Trim()
     if ([string]::IsNullOrWhiteSpace($text)) {
         $text = "<empty>"
@@ -73,11 +95,17 @@ function Invoke-ConsoleScriptCheck {
         [string]$ScriptName
     )
 
-    $result = Invoke-ProcessCapture -Label ("console-script " + $ScriptName) -FilePath "where.exe" -Arguments @($ScriptName)
-    $result["kind"] = "console_script"
-    $result["script_name"] = $ScriptName
-    $result["passed"] = ($result.exit_code -eq 0)
-    return $result
+    $command = Get-Command $ScriptName -ErrorAction SilentlyContinue
+    $passed = $null -ne $command
+    return [ordered]@{
+        label = "console-script $ScriptName"
+        command = "Get-Command $ScriptName"
+        exit_code = $(if ($passed) { 0 } else { 1 })
+        output = $(if ($passed) { $command.Source } else { "not found" })
+        kind = "console_script"
+        script_name = $ScriptName
+        passed = $passed
+    }
 }
 
 $checks = @()
