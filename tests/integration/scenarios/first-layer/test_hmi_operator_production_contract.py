@@ -34,6 +34,22 @@ class StubTcpJsonClient:
         return dict(self._response)
 
 
+class RaisingTcpJsonClient:
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+        self.calls: list[tuple[str, object | None, float | None]] = []
+
+    def send_request(
+        self,
+        method: str,
+        params: object | None = None,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, object]:
+        self.calls.append((method, params, timeout_seconds))
+        raise self._exc
+
+
 def test_default_max_glue_points_is_5000() -> None:
     assert operator_runner.DEFAULT_MAX_GLUE_POINTS == 5000
 
@@ -401,6 +417,63 @@ def test_collect_terminal_job_readback_skips_when_final_state_already_terminal()
 
     assert sample is None
     assert client.calls == []
+
+
+def test_finalize_terminal_job_readback_records_structured_failure_without_raising() -> None:
+    exc = TimeoutError("tcp response timeout method=dxf.job.observation")
+    setattr(exc, "method", "dxf.job.observation")
+    setattr(exc, "request_id", "17")
+    setattr(exc, "elapsed_ms", 2034.5)
+    client = RaisingTcpJsonClient(exc)
+    steps: list[dict[str, str]] = []
+    machine_status_history: list[dict[str, object]] = []
+    coord_status_history: list[dict[str, object]] = []
+    job_status_history: list[dict[str, object]] = []
+    observer_poll_failures: list[dict[str, object]] = []
+    observer_poll_errors: list[str] = []
+
+    poll_index, final_job_status, clear_current_job = operator_runner.finalize_terminal_job_readback(
+        client,
+        steps=steps,
+        machine_status_history=machine_status_history,
+        coord_status_history=coord_status_history,
+        job_status_history=job_status_history,
+        observer_poll_failures=observer_poll_failures,
+        observer_poll_errors=observer_poll_errors,
+        poll_index=17,
+        job_id="job-1",
+        final_job_status={"state": "running"},
+    )
+
+    assert client.calls == [
+        (
+            "dxf.job.observation",
+            {"job_id": "job-1", "coord_sys": operator_runner.DEFAULT_COORD_SYS},
+            2.0,
+        )
+    ]
+    assert poll_index == 17
+    assert final_job_status == {"state": "running"}
+    assert clear_current_job is False
+    assert machine_status_history == []
+    assert coord_status_history == []
+    assert job_status_history == []
+    assert observer_poll_errors == ["tcp response timeout method=dxf.job.observation"]
+    assert observer_poll_failures == [
+        {
+            "phase": "terminal-readback",
+            "poll_index": 17,
+            "job_id": "job-1",
+            "message": "tcp response timeout method=dxf.job.observation",
+            "method": "dxf.job.observation",
+            "request_id": "17",
+            "elapsed_ms": 2034.5,
+        }
+    ]
+    assert steps[-1]["step"] == "job-terminal-readback"
+    assert steps[-1]["status"] == "failed"
+    assert "job_id=job-1" in steps[-1]["detail"]
+    assert "tcp response timeout method=dxf.job.observation" in steps[-1]["detail"]
 
 
 def test_summarize_operator_output_requires_formal_stage_sequence_and_staged_screenshots() -> None:

@@ -647,6 +647,36 @@ def build_observer_poll_failure(
     return failure
 
 
+def append_observer_poll_error(
+    observer_poll_errors: list[str],
+    *,
+    message: str,
+) -> None:
+    normalized_message = str(message).strip()
+    if normalized_message and (not observer_poll_errors or observer_poll_errors[-1] != normalized_message):
+        observer_poll_errors.append(normalized_message)
+
+
+def record_observer_poll_failure(
+    observer_poll_failures: list[dict[str, Any]],
+    observer_poll_errors: list[str],
+    *,
+    phase: str,
+    poll_index: int,
+    job_id: str,
+    exc: Exception,
+) -> dict[str, Any]:
+    failure = build_observer_poll_failure(
+        phase=phase,
+        poll_index=poll_index,
+        job_id=job_id,
+        exc=exc,
+    )
+    observer_poll_failures.append(failure)
+    append_observer_poll_error(observer_poll_errors, message=str(failure["message"]))
+    return failure
+
+
 def collect_terminal_job_readback(
     client: TcpJsonClient,
     *,
@@ -666,6 +696,79 @@ def collect_terminal_job_readback(
         job_id=normalized_job_id,
         timeout_seconds=timeout_seconds,
     )
+
+
+def finalize_terminal_job_readback(
+    client: TcpJsonClient,
+    *,
+    steps: list[dict[str, str]],
+    machine_status_history: list[dict[str, Any]],
+    coord_status_history: list[dict[str, Any]],
+    job_status_history: list[dict[str, Any]],
+    observer_poll_failures: list[dict[str, Any]],
+    observer_poll_errors: list[str],
+    poll_index: int,
+    job_id: str,
+    final_job_status: dict[str, Any],
+    timeout_seconds: float = 2.0,
+) -> tuple[int, dict[str, Any], bool]:
+    normalized_job_id = str(job_id or "").strip()
+    if not normalized_job_id:
+        return poll_index, final_job_status, False
+
+    try:
+        terminal_readback = collect_terminal_job_readback(
+            client,
+            poll_index=poll_index,
+            job_id=normalized_job_id,
+            final_job_status=final_job_status,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception as exc:  # noqa: BLE001
+        failure = record_observer_poll_failure(
+            observer_poll_failures,
+            observer_poll_errors,
+            phase="terminal-readback",
+            poll_index=poll_index,
+            job_id=normalized_job_id,
+            exc=exc,
+        )
+        add_step(
+            steps,
+            "job-terminal-readback",
+            "failed",
+            f"job_id={normalized_job_id} {failure['message']}",
+        )
+        return poll_index, final_job_status, False
+
+    if terminal_readback is not None:
+        machine_status_history.append(terminal_readback["machine_status"])
+        if terminal_readback["coord_status"]:
+            coord_status_history.append(terminal_readback["coord_status"])
+        updated_final_job_status = final_job_status
+        if terminal_readback["job_status"]:
+            job_status_history.append(terminal_readback["job_status"])
+            updated_final_job_status = terminal_readback["job_status"]
+        add_step(
+            steps,
+            "job-terminal-readback",
+            "passed",
+            f"job_id={normalized_job_id} state={updated_final_job_status.get('state', '')}",
+        )
+        return poll_index + 1, updated_final_job_status, is_terminal_job_state(updated_final_job_status.get("state"))
+
+    final_state = str(final_job_status.get("state", "") or "").strip().lower()
+    if final_state:
+        add_step(steps, "job-terminal-readback", "passed", f"skipped final_state={final_state}")
+        return poll_index, final_job_status, is_terminal_job_state(final_state)
+
+    add_step(
+        steps,
+        "job-terminal-readback",
+        "failed",
+        f"job_id={normalized_job_id} missing final job state after hmi exit",
+    )
+    return poll_index, final_job_status, False
 
 
 def evaluate_operator_execution(
@@ -1426,16 +1529,14 @@ def main() -> int:
                             active_windows=observer_exclusive_windows,
                         )
                         if not observer_exclusive_windows:
-                            failure = build_observer_poll_failure(
+                            record_observer_poll_failure(
+                                observer_poll_failures,
+                                observer_poll_errors,
                                 phase="polling",
                                 poll_index=poll_index,
                                 job_id=current_job_id,
                                 exc=exc,
                             )
-                            observer_poll_failures.append(failure)
-                            message = str(failure["message"]).strip()
-                            if not observer_poll_errors or observer_poll_errors[-1] != message:
-                                observer_poll_errors.append(message)
             if hmi_process.poll() is not None:
                 break
             time.sleep(args.status_poll_interval_seconds)
@@ -1489,51 +1590,30 @@ def main() -> int:
                         active_windows=observer_exclusive_windows,
                     )
                     if not observer_exclusive_windows:
-                        failure = build_observer_poll_failure(
+                        record_observer_poll_failure(
+                            observer_poll_failures,
+                            observer_poll_errors,
                             phase="final-polling",
                             poll_index=poll_index,
                             job_id=current_job_id,
                             exc=exc,
                         )
-                        observer_poll_failures.append(failure)
-                        message = str(failure["message"]).strip()
-                        if not observer_poll_errors or observer_poll_errors[-1] != message:
-                            observer_poll_errors.append(message)
 
             terminal_readback_job_id = str(production_job_id or "").strip()
-            terminal_readback = collect_terminal_job_readback(
+            poll_index, final_job_status, clear_current_job = finalize_terminal_job_readback(
                 observer_client,
+                steps=steps,
+                machine_status_history=machine_status_history,
+                coord_status_history=coord_status_history,
+                job_status_history=job_status_history,
+                observer_poll_failures=observer_poll_failures,
+                observer_poll_errors=observer_poll_errors,
                 poll_index=poll_index,
                 job_id=terminal_readback_job_id,
                 final_job_status=final_job_status,
             )
-            if terminal_readback is not None:
-                machine_status_history.append(terminal_readback["machine_status"])
-                if terminal_readback["coord_status"]:
-                    coord_status_history.append(terminal_readback["coord_status"])
-                if terminal_readback["job_status"]:
-                    job_status_history.append(terminal_readback["job_status"])
-                    final_job_status = terminal_readback["job_status"]
-                    if is_terminal_job_state(final_job_status.get("state")):
-                        current_job_id = ""
-                add_step(
-                    steps,
-                    "job-terminal-readback",
-                    "passed",
-                    f"job_id={terminal_readback_job_id} state={final_job_status.get('state', '')}",
-                )
-                poll_index += 1
-            elif terminal_readback_job_id:
-                final_state = str(final_job_status.get("state", "") or "").strip().lower()
-                if final_state:
-                    add_step(steps, "job-terminal-readback", "passed", f"skipped final_state={final_state}")
-                else:
-                    add_step(
-                        steps,
-                        "job-terminal-readback",
-                        "failed",
-                        f"job_id={terminal_readback_job_id} missing final job state after hmi exit",
-                    )
+            if clear_current_job:
+                current_job_id = ""
 
         combined_output = (hmi_stdout or "") + ("\n" if hmi_stderr else "") + (hmi_stderr or "")
         operator_summary = summarize_operator_output(combined_output)
