@@ -149,6 +149,15 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     )
     target_link_libraries(siligen_runtime_service PRIVATE siligen_app_runtime_service)
+
+    if(EXISTS "${RUNTIME_PROCESS_BOOTSTRAP_DEVICE_VENDOR_DIR}/MultiCard.dll")
+        add_custom_command(TARGET siligen_runtime_service POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${RUNTIME_PROCESS_BOOTSTRAP_DEVICE_VENDOR_DIR}/MultiCard.dll"
+                "$<TARGET_FILE_DIR:siligen_runtime_service>"
+            COMMENT "拷贝 MultiCard.dll 到 runtime-service 输出目录"
+        )
+    endif()
 endif()
 
 if(

@@ -99,7 +99,7 @@ struct JobExecutionContext {
     std::vector<Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem> expected_trace;
     std::vector<Domain::Dispensing::ValueObjects::ProfileCompareActualTraceItem> actual_trace;
     std::vector<Domain::Dispensing::ValueObjects::ProfileCompareTraceabilityMismatch> mismatches;
-    std::string traceability_verdict = "failed";
+    std::string traceability_verdict = "insufficient_evidence";
     std::string traceability_verdict_reason;
     bool strict_one_to_one_proven = false;
     std::chrono::steady_clock::time_point start_time{};

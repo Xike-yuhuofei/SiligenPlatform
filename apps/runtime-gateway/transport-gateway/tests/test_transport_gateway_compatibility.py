@@ -136,6 +136,19 @@ def test_canonical_targets_are_exported_without_legacy_aliases():
     assert workspace_layout.get("SILIGEN_APPS_ROOT") == "apps"
 
 
+def test_runtime_apps_copy_multicard_runtime_asset_to_app_output_dir():
+    target_app_cmake = TARGET_APP_CMAKE.read_text(encoding="utf-8")
+    runtime_service_cmake = RUNTIME_SERVICE_CMAKE.read_text(encoding="utf-8")
+
+    assert 'copy_if_different' in target_app_cmake
+    assert 'MultiCard.dll' in target_app_cmake
+    assert '$<TARGET_FILE_DIR:siligen_runtime_gateway>' in target_app_cmake
+
+    assert 'copy_if_different' in runtime_service_cmake
+    assert 'MultiCard.dll' in runtime_service_cmake
+    assert '$<TARGET_FILE_DIR:siligen_runtime_service>' in runtime_service_cmake
+
+
 def test_dxf_preview_gate_contract_is_wired():
     source = TCP_DISPATCHER.read_text(encoding="utf-8")
     assert 'RegisterCommand("dxf.load"' not in source
@@ -327,6 +340,11 @@ def test_dxf_job_traceability_contract_is_wired():
     assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"}.issubset(
         set(dxf_job_traceability["required"])
     )
+    assert set(dxf_job_traceability["properties"]["verdict"]["enum"]) == {
+        "passed",
+        "failed",
+        "insufficient_evidence",
+    }
 
 
 def test_legacy_execute_and_task_surface_are_removed():

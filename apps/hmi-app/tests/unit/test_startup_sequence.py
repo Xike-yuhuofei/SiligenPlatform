@@ -125,11 +125,15 @@ class StartupSequenceContractTest(unittest.TestCase):
             "SILIGEN_SUP_BACKEND_READY_TIMEOUT_S": os.getenv("SILIGEN_SUP_BACKEND_READY_TIMEOUT_S"),
             "SILIGEN_SUP_TCP_CONNECT_TIMEOUT_S": os.getenv("SILIGEN_SUP_TCP_CONNECT_TIMEOUT_S"),
             "SILIGEN_SUP_HARDWARE_PROBE_TIMEOUT_S": os.getenv("SILIGEN_SUP_HARDWARE_PROBE_TIMEOUT_S"),
+            "SILIGEN_SUP_RUNTIME_DEGRADE_GRACE_S": os.getenv("SILIGEN_SUP_RUNTIME_DEGRADE_GRACE_S"),
+            "SILIGEN_SUP_RUNTIME_REQUALIFY_SUCCESS_COUNT": os.getenv("SILIGEN_SUP_RUNTIME_REQUALIFY_SUCCESS_COUNT"),
         }
         try:
             os.environ["SILIGEN_SUP_BACKEND_READY_TIMEOUT_S"] = "8.5"
             os.environ["SILIGEN_SUP_TCP_CONNECT_TIMEOUT_S"] = "4.2"
             os.environ["SILIGEN_SUP_HARDWARE_PROBE_TIMEOUT_S"] = "19.3"
+            os.environ["SILIGEN_SUP_RUNTIME_DEGRADE_GRACE_S"] = "6.5"
+            os.environ["SILIGEN_SUP_RUNTIME_REQUALIFY_SUCCESS_COUNT"] = "3"
             policy = load_supervisor_policy_from_env()
         finally:
             for key, value in previous.items():
@@ -138,7 +142,7 @@ class StartupSequenceContractTest(unittest.TestCase):
                 else:
                     os.environ[key] = value
 
-        self.assertEqual(policy, SupervisorPolicy(8.5, 4.2, 19.3))
+        self.assertEqual(policy, SupervisorPolicy(8.5, 4.2, 19.3, 6.5, 3))
 
     def test_launch_result_with_snapshot_forces_field_consistency(self) -> None:
         snapshot = self._failed_snapshot(recoverable=True, stage="tcp_ready")

@@ -12,6 +12,8 @@ EventCallback = Callable[[SessionStageEvent], None]
 DEFAULT_BACKEND_READY_TIMEOUT_S = 5.0
 DEFAULT_TCP_CONNECT_TIMEOUT_S = 3.0
 DEFAULT_HARDWARE_PROBE_TIMEOUT_S = 15.0
+DEFAULT_RUNTIME_DEGRADE_GRACE_S = 3.0
+DEFAULT_RUNTIME_REQUALIFY_SUCCESS_COUNT = 2
 
 BACKEND_STARTING_STAGE: FailureStage = "backend_starting"
 BACKEND_READY_STAGE: FailureStage = "backend_ready"
@@ -38,6 +40,8 @@ class SupervisorPolicy:
     backend_ready_timeout_s: float = DEFAULT_BACKEND_READY_TIMEOUT_S
     tcp_connect_timeout_s: float = DEFAULT_TCP_CONNECT_TIMEOUT_S
     hardware_probe_timeout_s: float = DEFAULT_HARDWARE_PROBE_TIMEOUT_S
+    runtime_degrade_grace_s: float = DEFAULT_RUNTIME_DEGRADE_GRACE_S
+    runtime_requalify_success_count: int = DEFAULT_RUNTIME_REQUALIFY_SUCCESS_COUNT
 
     def __post_init__(self) -> None:
         if self.backend_ready_timeout_s <= 0:
@@ -46,6 +50,10 @@ class SupervisorPolicy:
             raise ValueError("tcp_connect_timeout_s must be > 0")
         if self.hardware_probe_timeout_s <= 0:
             raise ValueError("hardware_probe_timeout_s must be > 0")
+        if self.runtime_degrade_grace_s <= 0:
+            raise ValueError("runtime_degrade_grace_s must be > 0")
+        if self.runtime_requalify_success_count <= 0:
+            raise ValueError("runtime_requalify_success_count must be > 0")
 
 
 def normalize_launch_mode(value: str | None) -> LaunchMode:

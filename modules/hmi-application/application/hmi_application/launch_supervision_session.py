@@ -20,6 +20,8 @@ from .contracts.launch_supervision_contract import (
 from .domain.launch_supervision_types import (
     DEFAULT_BACKEND_READY_TIMEOUT_S,
     DEFAULT_HARDWARE_PROBE_TIMEOUT_S,
+    DEFAULT_RUNTIME_DEGRADE_GRACE_S,
+    DEFAULT_RUNTIME_REQUALIFY_SUCCESS_COUNT,
     DEFAULT_TCP_CONNECT_TIMEOUT_S,
     EventCallback,
     ProgressCallback,
@@ -39,6 +41,8 @@ class SupervisorSession:
     BACKEND_READY_TIMEOUT = DEFAULT_BACKEND_READY_TIMEOUT_S
     TCP_CONNECT_TIMEOUT = DEFAULT_TCP_CONNECT_TIMEOUT_S
     HARDWARE_PROBE_TIMEOUT = DEFAULT_HARDWARE_PROBE_TIMEOUT_S
+    RUNTIME_DEGRADE_GRACE = DEFAULT_RUNTIME_DEGRADE_GRACE_S
+    RUNTIME_REQUALIFY_SUCCESS_COUNT = DEFAULT_RUNTIME_REQUALIFY_SUCCESS_COUNT
 
     def __init__(
         self,
@@ -59,6 +63,8 @@ class SupervisorSession:
                 backend_ready_timeout_s=self.BACKEND_READY_TIMEOUT,
                 tcp_connect_timeout_s=self.TCP_CONNECT_TIMEOUT,
                 hardware_probe_timeout_s=self.HARDWARE_PROBE_TIMEOUT,
+                runtime_degrade_grace_s=self.RUNTIME_DEGRADE_GRACE,
+                runtime_requalify_success_count=self.RUNTIME_REQUALIFY_SUCCESS_COUNT,
             ),
         )
 

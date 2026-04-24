@@ -19,6 +19,24 @@ RUNTIME_IDENTITY = RuntimeIdentity(
 
 
 class LaunchSupervisionContractTest(unittest.TestCase):
+    def test_failed_snapshot_accepts_runtime_hardware_failure_code(self) -> None:
+        snapshot = SessionSnapshot(
+            mode="online",
+            session_state="failed",
+            backend_state="ready",
+            tcp_state="ready",
+            hardware_state="failed",
+            failure_code="SUP_RUNTIME_HARDWARE_STATE_FAILED",
+            failure_stage="hardware_ready",
+            recoverable=True,
+            last_error_message="runtime hardware state unavailable",
+            updated_at=snapshot_timestamp(),
+            runtime_contract_verified=True,
+            runtime_identity=RUNTIME_IDENTITY,
+        )
+
+        self.assertEqual(snapshot.failure_code, "SUP_RUNTIME_HARDWARE_STATE_FAILED")
+
     def test_failed_snapshot_requires_failure_fields(self) -> None:
         with self.assertRaises(ValueError):
             SessionSnapshot(

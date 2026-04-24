@@ -714,8 +714,9 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
                 context->expected_trace.push_back(std::move(expanded_item));
             }
         }
-        context->traceability_verdict = "passed";
-        context->strict_one_to_one_proven = true;
+        context->traceability_verdict = "insufficient_evidence";
+        context->traceability_verdict_reason = "strict traceability evidence is pending runtime terminal proof";
+        context->strict_one_to_one_proven = false;
     }
 
     {
@@ -1336,13 +1337,28 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                         context->mismatches.push_back(std::move(cycle_mismatch));
                     }
 
-                    if (task_context->result.traceability_verdict != "passed") {
+                    if (task_context->result.traceability_verdict == "failed") {
                         context->traceability_verdict = "failed";
                         context->strict_one_to_one_proven = false;
                         if (context->traceability_verdict_reason.empty()) {
                             context->traceability_verdict_reason =
                                 task_context->result.traceability_verdict_reason.empty()
                                     ? ("traceability failed at cycle " + std::to_string(cycle_index))
+                                    : ("cycle " + std::to_string(cycle_index) + ": " +
+                                       task_context->result.traceability_verdict_reason);
+                        }
+                    } else if (task_context->result.traceability_verdict == "insufficient_evidence") {
+                        if (context->traceability_verdict != "failed") {
+                            context->traceability_verdict = "insufficient_evidence";
+                        }
+                        context->strict_one_to_one_proven = false;
+                        if (context->traceability_verdict_reason.empty() ||
+                            context->traceability_verdict_reason ==
+                                "strict traceability evidence is pending runtime terminal proof") {
+                            context->traceability_verdict_reason =
+                                task_context->result.traceability_verdict_reason.empty()
+                                    ? ("strict traceability evidence remained incomplete at cycle " +
+                                       std::to_string(cycle_index))
                                     : ("cycle " + std::to_string(cycle_index) + ": " +
                                        task_context->result.traceability_verdict_reason);
                         }
@@ -1418,21 +1434,31 @@ void DispensingExecutionUseCase::Impl::RunJob(const std::shared_ptr<JobExecution
                 mismatch.message =
                     "actual trace count does not match expected trace count at terminal state";
                 context->mismatches.push_back(std::move(mismatch));
-                context->traceability_verdict = "failed";
-                if (context->traceability_verdict_reason.empty()) {
+                if (context->traceability_verdict != "failed") {
+                    context->traceability_verdict = "insufficient_evidence";
+                }
+                if (context->traceability_verdict_reason.empty() ||
+                    context->traceability_verdict_reason ==
+                        "strict traceability evidence is pending runtime terminal proof") {
                     context->traceability_verdict_reason =
                         "actual trace count does not match expected trace count at terminal state";
                 }
                 context->strict_one_to_one_proven = false;
             } else if (context->mismatches.empty() &&
-                       context->traceability_verdict == "passed" &&
-                       context->strict_one_to_one_proven) {
+                       context->traceability_verdict != "failed") {
+                context->traceability_verdict = "passed";
                 context->traceability_verdict_reason.clear();
-            } else {
-                context->traceability_verdict = "failed";
+                context->strict_one_to_one_proven = true;
+            } else if (context->traceability_verdict == "failed") {
                 if (context->traceability_verdict_reason.empty()) {
                     context->traceability_verdict_reason = "traceability mismatches detected";
                 }
+                context->strict_one_to_one_proven = false;
+            } else {
+                if (context->traceability_verdict_reason.empty()) {
+                    context->traceability_verdict_reason = "strict traceability evidence remains incomplete";
+                }
+                context->traceability_verdict = "insufficient_evidence";
                 context->strict_one_to_one_proven = false;
             }
         }

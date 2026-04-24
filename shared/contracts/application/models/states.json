@@ -568,7 +568,7 @@
           "type": "array",
           "items": { "$ref": "#/definitions/dxfJobTraceabilityMismatch" }
         },
-        "verdict": { "type": "string", "enum": ["passed", "failed"] },
+        "verdict": { "type": "string", "enum": ["passed", "failed", "insufficient_evidence"] },
         "verdict_reason": { "type": "string" },
         "strict_one_to_one_proven": { "type": "boolean" }
       },

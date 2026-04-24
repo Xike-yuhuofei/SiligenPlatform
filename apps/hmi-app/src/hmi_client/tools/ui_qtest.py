@@ -634,6 +634,14 @@ class GuiContractRunner:
             flush=True,
         )
 
+    def _emit_operator_exclusive_window(self, *, kind: str, state: str) -> None:
+        print(
+            "OPERATOR_EXCLUSIVE_WINDOW "
+            f"kind={kind} "
+            f"state={state}",
+            flush=True,
+        )
+
     def _record_operator_stage_failure(self, stage: str, description: str) -> None:
         self._emit_operator_context(stage)
         self._capture_screenshot(description, stage_name=stage)
@@ -795,8 +803,11 @@ class GuiContractRunner:
         ):
             return
 
+        self._emit_operator_exclusive_window(kind="home_auto", state="started")
+        home_completed = False
+        velocity_settled = False
         self._click_button("btn-production-home-all")
-        self._wait_for(
+        home_completed = self._wait_for(
             "runtime home completion",
             lambda: bool(self._axis_status("X"))
             and bool(self._axis_status("Y"))
@@ -804,14 +815,21 @@ class GuiContractRunner:
             and bool(self._axis_status("Y").homed),
             timeout_ms=80000,
         )
-        self._wait_for(
-            "runtime home settles velocity",
-            lambda: bool(self._axis_status("X"))
-            and bool(self._axis_status("Y"))
-            and abs(self._axis_status("X").velocity) <= 1e-3
-            and abs(self._axis_status("Y").velocity) <= 1e-3,
-            timeout_ms=10000,
+        if home_completed:
+            velocity_settled = self._wait_for(
+                "runtime home settles velocity",
+                lambda: bool(self._axis_status("X"))
+                and bool(self._axis_status("Y"))
+                and abs(self._axis_status("X").velocity) <= 1e-3
+                and abs(self._axis_status("Y").velocity) <= 1e-3,
+                timeout_ms=10000,
+            )
+        self._emit_operator_exclusive_window(
+            kind="home_auto",
+            state="completed" if home_completed and velocity_settled else "failed",
         )
+        if not (home_completed and velocity_settled):
+            return
 
     def _assert_snapshot_render_action(self) -> None:
         sample_dxf = self._canonical_preview_sample()

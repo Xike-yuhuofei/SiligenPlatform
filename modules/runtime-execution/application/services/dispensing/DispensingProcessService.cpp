@@ -428,9 +428,9 @@ struct MaterializedProfileCompareSpan {
 struct ProfileCompareActualTraceCollector {
     std::vector<ValueObjects::ProfileCompareActualTraceItem> actual_trace;
     std::vector<ValueObjects::ProfileCompareTraceabilityMismatch> mismatches;
-    std::string verdict = "passed";
-    std::string verdict_reason;
-    bool strict_one_to_one_proven = true;
+    std::string verdict = "insufficient_evidence";
+    std::string verdict_reason = "strict traceability evidence is pending runtime observation";
+    bool strict_one_to_one_proven = false;
     std::size_t next_expected_index = 0U;
 
     Result<void> ObserveStatus(
@@ -517,7 +517,8 @@ struct ProfileCompareActualTraceCollector {
     }
 
     void FinalizeTerminal(uint32 cycle_index, const ValueObjects::ProfileCompareExpectedTrace& expected_trace) {
-        if (actual_trace.size() == expected_trace.items.size() && mismatches.empty() && verdict == "passed") {
+        if (actual_trace.size() == expected_trace.items.size() && mismatches.empty() && verdict != "failed") {
+            verdict = "passed";
             strict_one_to_one_proven = true;
             verdict_reason.clear();
             return;
@@ -529,14 +530,28 @@ struct ProfileCompareActualTraceCollector {
             mismatch.code = "terminal_trigger_count_mismatch";
             mismatch.message = "profile_compare terminal actual trace count does not match expected trace count";
             mismatches.push_back(std::move(mismatch));
-            if (verdict_reason.empty()) {
+            verdict = "insufficient_evidence";
+            if (verdict_reason.empty() ||
+                verdict_reason == "strict traceability evidence is pending runtime observation") {
                 verdict_reason = "profile_compare terminal actual trace count does not match expected trace count";
             }
-        } else if (verdict_reason.empty()) {
-            verdict_reason = "profile_compare traceability mismatches detected";
+            strict_one_to_one_proven = false;
+            return;
         }
 
-        verdict = "failed";
+        if (verdict == "failed" || !mismatches.empty()) {
+            verdict = "failed";
+            if (verdict_reason.empty()) {
+                verdict_reason = "profile_compare traceability mismatches detected";
+            }
+            strict_one_to_one_proven = false;
+            return;
+        }
+
+        verdict = "insufficient_evidence";
+        if (verdict_reason.empty()) {
+            verdict_reason = "profile_compare strict traceability evidence remains incomplete";
+        }
         strict_one_to_one_proven = false;
     }
 };

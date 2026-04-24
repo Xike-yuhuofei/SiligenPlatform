@@ -112,6 +112,38 @@ def test_write_gateway_launch_spec_persists_report_artifact(tmp_path: Path) -> N
     assert persisted == payload
 
 
+def test_runner_queries_traceability_before_shutting_down_gateway() -> None:
+    source = MODULE_PATH.read_text(encoding="utf-8")
+
+    traceability_query_index = source.index("observer_client.send_request(")
+    gateway_shutdown_index = source.index("if gateway_process is not None:")
+
+    assert traceability_query_index < gateway_shutdown_index
+
+
+def test_refresh_operator_exclusive_windows_tracks_home_auto_markers(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "hmi-stdout.log"
+    stdout_path.write_text(
+        "\n".join(
+            [
+                "OPERATOR_EXCLUSIVE_WINDOW kind=home_auto state=started",
+                "OPERATOR_EXCLUSIVE_WINDOW kind=home_auto state=completed",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    offset, active = operator_runner.refresh_operator_exclusive_windows(
+        stdout_path=stdout_path,
+        read_offset=0,
+        active_windows=set(),
+    )
+
+    assert offset > 0
+    assert active == set()
+
+
 def test_summarize_operator_output_requires_formal_stage_sequence_and_staged_screenshots() -> None:
     output = "\n".join(
         [
@@ -209,6 +241,127 @@ def test_traceability_conclusion_reads_runtime_job_traceability_verdict() -> Non
     assert traceability["mismatch_count"] == 0
 
 
+def test_traceability_conclusion_fail_closes_on_invalid_passed_without_strict_proof() -> None:
+    traceability = operator_runner.evaluate_traceability_correspondence(
+        job_id="job-1",
+        job_traceability={
+            "job_id": "job-1",
+            "terminal_state": "completed",
+            "expected_trace": [],
+            "actual_trace": [],
+            "mismatches": [],
+            "verdict": "passed",
+            "verdict_reason": "",
+            "strict_one_to_one_proven": False,
+        },
+    )
+
+    assert traceability["status"] == "failed"
+    assert "violated contract" in traceability["reason"]
+
+
+def test_traceability_conclusion_preserves_insufficient_evidence_from_runtime() -> None:
+    traceability = operator_runner.evaluate_traceability_correspondence(
+        job_id="job-2",
+        job_traceability={
+            "job_id": "job-2",
+            "terminal_state": "completed",
+            "expected_trace": [{"trigger_sequence_id": 1}],
+            "actual_trace": [],
+            "mismatches": [{"code": "terminal_trigger_count_mismatch"}],
+            "verdict": "insufficient_evidence",
+            "verdict_reason": "actual trace count does not match expected trace count at terminal state",
+            "strict_one_to_one_proven": False,
+        },
+    )
+
+    assert traceability["status"] == "insufficient_evidence"
+    assert traceability["strict_one_to_one_proven"] is False
+    assert traceability["mismatch_count"] == 1
+
+
+def test_observation_alignment_uses_summary_level_checks_without_rewriting_strict_truth() -> None:
+    alignment = operator_runner.evaluate_observation_alignment(
+        snapshot_result={
+            "preview_source": "planned_glue_snapshot",
+            "preview_kind": "glue_points",
+            "glue_point_count": 2,
+            "glue_points": [
+                {"x": 0.0, "y": 0.0},
+                {"x": 10.0, "y": 10.0},
+            ],
+        },
+        final_job_status={
+            "state": "completed",
+            "overall_progress_percent": 100,
+            "completed_count": 1,
+            "target_count": 1,
+        },
+        log_summary={
+            "execution_mode": "profile_compare",
+            "profile_compare_request_summary": {
+                "request_count": 1,
+                "sum_business_trigger_count": 2,
+                "sum_start_boundary_trigger_count": 1,
+            },
+            "cmp_pulse_once": {"count": 1},
+            "supply_close": {"count": 1},
+            "execution_complete": {"count": 1},
+        },
+        machine_status_history=[
+            {"position": {"x": 0.0, "y": 0.0}},
+            {"position": {"x": 10.0, "y": 10.0}},
+        ],
+        coord_status_history=[{"position": {"x": 0.0, "y": 0.0}}],
+        min_axis_coverage_ratio=0.8,
+    )
+
+    assert alignment["status"] == "passed"
+    assert alignment["summary_checks"]["profile_compare_business_trigger_matches_glue_count"]["passed"] is True
+    assert alignment["coord_status_sample_count"] == 1
+
+
+def test_observation_integrity_warns_on_recovered_supervisor_drop() -> None:
+    integrity = operator_runner.evaluate_observation_integrity(
+        combined_output="\n".join(
+            [
+                "SUPERVISOR_EVENT type=stage_failed stage=hardware_ready recoverable=true",
+                "SUPERVISOR_EVENT type=stage_succeeded stage=online_ready recoverable=true",
+            ]
+        ),
+        observer_poll_errors=["tcp response timeout method=status"],
+        job_status_history=[{"state": "completed"}],
+        machine_status_history=[{"position": {"x": 0.0, "y": 0.0}}],
+        coord_status_history=[],
+        snapshot_result={"plan_id": "plan-1"},
+        job_traceability={"job_id": "job-1", "verdict": "passed", "strict_one_to_one_proven": True},
+    )
+
+    assert integrity["status"] == "warning"
+    assert integrity["recoverable_stage_failure_count"] == 1
+    assert integrity["recovered_online_ready"] is True
+
+
+def test_determine_overall_status_requires_strict_traceability_pass() -> None:
+    status = operator_runner.determine_overall_status(
+        operator_execution={"status": "passed"},
+        traceability={"status": "insufficient_evidence"},
+        observation_integrity={"status": "passed"},
+    )
+
+    assert status == "failed"
+
+
+def test_determine_overall_status_rejects_observation_integrity_warning() -> None:
+    status = operator_runner.determine_overall_status(
+        operator_execution={"status": "passed"},
+        traceability={"status": "passed"},
+        observation_integrity={"status": "warning"},
+    )
+
+    assert status == "failed"
+
+
 def test_build_report_markdown_explicitly_marks_runtime_log_gap() -> None:
     report = {
         "test_goal": ["goal"],
@@ -227,6 +380,14 @@ def test_build_report_markdown_explicitly_marks_runtime_log_gap() -> None:
             "actual_trace_count": 1,
             "mismatch_count": 1,
             "terminal_state": "completed",
+        },
+        "observation_alignment": {
+            "status": "passed",
+            "reason": "summary-level alignment checks passed",
+        },
+        "observation_integrity": {
+            "status": "warning",
+            "reason": "observer polling reported transient errors",
         },
         "control_script_capability": {
             "entry_script": "ui_qtest.py",
@@ -258,6 +419,8 @@ def test_build_report_markdown_explicitly_marks_runtime_log_gap() -> None:
     assert "- gateway tcp log：`D:/reports/tcp_server.log`" in markdown
     assert "- dxf.job.traceability：`D:/reports/job-traceability.json`" in markdown
     assert "runtime strict traceability 已明确失败" in markdown
+    assert "summary-level alignment" in markdown
+    assert "observation integrity 有告警" in markdown
     assert "- runtime：`D:/reports/gateway-stdout.log`" not in markdown
 
 
