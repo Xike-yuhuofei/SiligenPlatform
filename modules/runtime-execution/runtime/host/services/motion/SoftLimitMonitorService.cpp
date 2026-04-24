@@ -1,9 +1,13 @@
+#define MODULE_NAME "SoftLimitMonitorService"
+
 #include "SoftLimitMonitorService.h"
 
 #include "domain/safety/domain-services/InterlockPolicy.h"
+#include "shared/interfaces/ILoggingService.h"
 #include "shared/types/Error.h"
 
 #include <chrono>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 
@@ -14,6 +18,21 @@ using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::IsValid;
 using Siligen::Shared::Types::ToUserDisplay;
 using Siligen::Shared::Types::int16;
+
+namespace {
+
+Error WrapSoftLimitMonitorFailure(
+    const char* stage,
+    const Error& error) {
+    return Error(
+        error.GetCode(),
+        std::string("failure_stage=") + stage + ";failure_code=" +
+            std::to_string(static_cast<int>(error.GetCode())) + ";message=" +
+            error.GetMessage(),
+        "SoftLimitMonitorService");
+}
+
+}  // namespace
 
 SoftLimitMonitorService::SoftLimitMonitorService(
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
@@ -105,7 +124,7 @@ Result<bool> SoftLimitMonitorService::CheckSoftLimits() noexcept {
         if (triggered) {
             auto handle_result = HandleSoftLimitTrigger(axis_id, status, positive_limit);
             if (!handle_result.IsSuccess()) {
-                // 处理失败，但继续检查
+                return Result<bool>::Failure(handle_result.GetError());
             }
             return Result<bool>::Success(true);
         }
@@ -119,7 +138,9 @@ void SoftLimitMonitorService::MonitoringLoop() noexcept {
         // 执行软限位检查
         auto check_result = CheckSoftLimits();
 
-        if (check_result.IsSuccess() && check_result.Value()) {
+        if (check_result.IsError()) {
+            SILIGEN_LOG_ERROR("软限位处理失败: " + check_result.GetError().GetMessage());
+        } else if (check_result.Value()) {
             // 检测到软限位触发
             if (config_.auto_stop_on_trigger) {
                 // 继续监控以防止后续触发
@@ -137,6 +158,7 @@ Result<void> SoftLimitMonitorService::HandleSoftLimitTrigger(
     LogicalAxisId axis_id,
     const Domain::Motion::Ports::MotionStatus& status,
     bool positive_limit) noexcept {
+    std::optional<Error> first_failure;
 
     // 确定是正向还是负向限位
     const int16 axis_display = ToUserDisplay(axis_id);
@@ -165,8 +187,8 @@ Result<void> SoftLimitMonitorService::HandleSoftLimitTrigger(
     // 发布事件
     auto publish_result = event_port_->Publish(event);
     if (!publish_result.IsSuccess()) {
-        // 记录错误但不中断处理
-        // TODO: 添加日志记录
+        SILIGEN_LOG_ERROR("软限位事件发布失败: " + publish_result.GetError().GetMessage());
+        first_failure = WrapSoftLimitMonitorFailure("soft_limit_publish", publish_result.GetError());
     }
 
     // 调用用户回调（线程安全）
@@ -181,9 +203,15 @@ Result<void> SoftLimitMonitorService::HandleSoftLimitTrigger(
     if (config_.auto_stop_on_trigger) {
         auto stop_result = StopMotion(config_.emergency_stop_on_trigger);
         if (!stop_result.IsSuccess()) {
-            // 记录错误
-            // TODO: 添加日志记录
+            SILIGEN_LOG_ERROR("软限位触发后的停机失败: " + stop_result.GetError().GetMessage());
+            if (!first_failure.has_value()) {
+                first_failure = WrapSoftLimitMonitorFailure("soft_limit_stop", stop_result.GetError());
+            }
         }
+    }
+
+    if (first_failure.has_value()) {
+        return Result<void>::Failure(first_failure.value());
     }
 
     return Result<void>::Success();

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -20,6 +21,8 @@ using MotionCommand = Siligen::Domain::Motion::Ports::MotionCommand;
 using MotionStatus = Siligen::Domain::Motion::Ports::MotionStatus;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
 using Point2D = Siligen::Shared::Types::Point2D;
+using Error = Siligen::Shared::Types::Error;
+using ErrorCode = Siligen::Shared::Types::ErrorCode;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
 using float32 = Siligen::Shared::Types::float32;
 using int32 = Siligen::Shared::Types::int32;
@@ -64,6 +67,10 @@ class StubMotionStatePort final : public IMotionStatePort {
 class CapturingEventPublisher final : public IEventPublisherPort {
    public:
     ResultVoid Publish(const DomainEvent& event) override {
+        ++publish_calls;
+        if (publish_error.has_value()) {
+            return ResultVoid::Failure(publish_error.value());
+        }
         if (const auto* typed_event = dynamic_cast<const SoftLimitTriggeredEvent*>(&event)) {
             soft_limit_events.push_back(*typed_event);
         }
@@ -95,6 +102,8 @@ class CapturingEventPublisher final : public IEventPublisherPort {
         return ResultVoid::Success();
     }
 
+    int publish_calls = 0;
+    std::optional<Error> publish_error;
     std::vector<SoftLimitTriggeredEvent> soft_limit_events;
 };
 
@@ -108,11 +117,17 @@ class CountingPositionControlPort final : public IPositionControlPort {
 
     ResultVoid StopAllAxes(bool) override {
         ++stop_all_axes_calls;
+        if (stop_all_axes_error.has_value()) {
+            return ResultVoid::Failure(stop_all_axes_error.value());
+        }
         return ResultVoid::Success();
     }
 
     ResultVoid EmergencyStop() override {
         ++emergency_stop_calls;
+        if (emergency_stop_error.has_value()) {
+            return ResultVoid::Failure(emergency_stop_error.value());
+        }
         return ResultVoid::Success();
     }
 
@@ -121,6 +136,8 @@ class CountingPositionControlPort final : public IPositionControlPort {
 
     int stop_all_axes_calls = 0;
     int emergency_stop_calls = 0;
+    std::optional<Error> stop_all_axes_error;
+    std::optional<Error> emergency_stop_error;
 };
 
 TEST(SoftLimitMonitorServiceTest, PublishesAxisPositionAndTaskIdSnapshot) {
@@ -155,6 +172,72 @@ TEST(SoftLimitMonitorServiceTest, PublishesAxisPositionAndTaskIdSnapshot) {
     EXPECT_EQ(event.task_id, "task-42");
     EXPECT_FLOAT_EQ(event.position, 33.0f);
     EXPECT_FALSE(event.is_positive_limit);
+    EXPECT_FLOAT_EQ(callback_position, 33.0f);
+    EXPECT_EQ(position_control_port->stop_all_axes_calls, 1);
+    EXPECT_EQ(position_control_port->emergency_stop_calls, 0);
+}
+
+TEST(SoftLimitMonitorServiceTest, PublishFailureIsReturnedButCallbackAndStopStillRun) {
+    auto motion_state_port = std::make_shared<StubMotionStatePort>();
+    motion_state_port->y_status.soft_limit_negative = true;
+    motion_state_port->y_status.position = Point2D{11.0f, 22.0f};
+    motion_state_port->y_status.axis_position_mm = 33.0f;
+
+    auto event_port = std::make_shared<CapturingEventPublisher>();
+    event_port->publish_error = Error(ErrorCode::UNKNOWN_ERROR, "publish failed", "test");
+    auto position_control_port = std::make_shared<CountingPositionControlPort>();
+
+    SoftLimitMonitorConfig config;
+    config.monitored_axes = {LogicalAxisId::Y};
+    config.auto_stop_on_trigger = true;
+    config.emergency_stop_on_trigger = false;
+
+    SoftLimitMonitorService service(motion_state_port, event_port, position_control_port, config);
+
+    float32 callback_position = 0.0f;
+    service.SetTriggerCallback([&callback_position](LogicalAxisId, float32 position, bool) {
+        callback_position = position;
+    });
+
+    auto check_result = service.CheckSoftLimits();
+
+    ASSERT_TRUE(check_result.IsError());
+    EXPECT_EQ(check_result.GetError().GetCode(), ErrorCode::UNKNOWN_ERROR);
+    EXPECT_EQ(event_port->publish_calls, 1);
+    EXPECT_TRUE(event_port->soft_limit_events.empty());
+    EXPECT_FLOAT_EQ(callback_position, 33.0f);
+    EXPECT_EQ(position_control_port->stop_all_axes_calls, 1);
+    EXPECT_EQ(position_control_port->emergency_stop_calls, 0);
+}
+
+TEST(SoftLimitMonitorServiceTest, StopFailureIsReturnedAfterEventPublishAndCallback) {
+    auto motion_state_port = std::make_shared<StubMotionStatePort>();
+    motion_state_port->y_status.soft_limit_negative = true;
+    motion_state_port->y_status.position = Point2D{11.0f, 22.0f};
+    motion_state_port->y_status.axis_position_mm = 33.0f;
+
+    auto event_port = std::make_shared<CapturingEventPublisher>();
+    auto position_control_port = std::make_shared<CountingPositionControlPort>();
+    position_control_port->stop_all_axes_error =
+        Error(ErrorCode::HARDWARE_ERROR, "stop failed", "test");
+
+    SoftLimitMonitorConfig config;
+    config.monitored_axes = {LogicalAxisId::Y};
+    config.auto_stop_on_trigger = true;
+    config.emergency_stop_on_trigger = false;
+
+    SoftLimitMonitorService service(motion_state_port, event_port, position_control_port, config);
+
+    float32 callback_position = 0.0f;
+    service.SetTriggerCallback([&callback_position](LogicalAxisId, float32 position, bool) {
+        callback_position = position;
+    });
+
+    auto check_result = service.CheckSoftLimits();
+
+    ASSERT_TRUE(check_result.IsError());
+    EXPECT_EQ(check_result.GetError().GetCode(), ErrorCode::HARDWARE_ERROR);
+    ASSERT_EQ(event_port->soft_limit_events.size(), 1U);
     EXPECT_FLOAT_EQ(callback_position, 33.0f);
     EXPECT_EQ(position_control_port->stop_all_axes_calls, 1);
     EXPECT_EQ(position_control_port->emergency_stop_calls, 0);

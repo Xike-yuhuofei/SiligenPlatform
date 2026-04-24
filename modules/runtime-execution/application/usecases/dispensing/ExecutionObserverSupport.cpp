@@ -10,9 +10,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <thread>
 #include <utility>
 
@@ -20,25 +18,6 @@ using namespace Siligen::Shared::Types;
 
 namespace Siligen::Application::UseCases::Dispensing {
 namespace {
-
-bool PrepareVelocityTraceFile(const std::string& output_path, std::ofstream& file, std::string& error) {
-    std::filesystem::path path(output_path);
-    if (path.has_parent_path()) {
-        std::error_code ec;
-        std::filesystem::create_directories(path.parent_path(), ec);
-    }
-
-    file.open(output_path, std::ios::binary);
-    if (!file) {
-        error = "无法写入速度采样文件: " + output_path;
-        return false;
-    }
-
-    file.setf(std::ios::fixed);
-    file << std::setprecision(6);
-    file << "timestamp_s,x_mm,y_mm,velocity_mm_s,dispense_on\n";
-    return true;
-}
 
 class VelocityTraceObserver final : public Domain::Dispensing::Ports::IDispensingExecutionObserver {
    public:
@@ -73,9 +52,9 @@ class VelocityTraceObserver final : public Domain::Dispensing::Ports::IDispensin
         stop_flag_.store(false);
         worker_ = std::thread([this, trace_interval_ms, trace_path]() {
             std::ofstream file;
-            std::string error;
-            if (!PrepareVelocityTraceFile(trace_path, file, error)) {
-                SILIGEN_LOG_WARNING("速度采样文件初始化失败: " + error);
+            auto prepare_result = VelocityTracePathPolicy::PrepareOutputFile(trace_path, file);
+            if (prepare_result.IsError()) {
+                SILIGEN_LOG_WARNING("速度采样文件初始化失败: " + prepare_result.GetError().GetMessage());
                 return;
             }
 
@@ -231,20 +210,6 @@ class CompositeExecutionObserver final : public Domain::Dispensing::Ports::IDisp
 };
 
 }  // namespace
-
-std::string ResolveVelocityTracePath(const std::string& dxf_path, const std::string& output_path) {
-    std::string resolved = output_path.empty() ? std::string("logs/velocity_trace") : output_path;
-    std::filesystem::path path(resolved);
-    if (path.extension().empty()) {
-        std::filesystem::path dxf(dxf_path);
-        std::string stem = dxf.stem().string();
-        if (stem.empty()) {
-            stem = "dispensing_execution";
-        }
-        path /= (stem + "_velocity_trace.csv");
-    }
-    return path.string();
-}
 
 std::unique_ptr<Domain::Dispensing::Ports::IDispensingExecutionObserver> CreateExecutionObserver(
     const std::shared_ptr<RuntimeExecution::Contracts::Motion::IMotionStatePort>& motion_state_port,

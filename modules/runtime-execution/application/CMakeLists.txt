@@ -143,6 +143,7 @@ set_target_properties(siligen_runtime_execution_safety_services PROPERTIES
 
 if(NOT TARGET siligen_runtime_execution_motion_execution_services)
     add_library(siligen_runtime_execution_motion_execution_services STATIC
+        services/motion/DefaultMotionValidationService.cpp
         services/motion/execution/MotionBufferController.cpp
         services/motion/execution/JogController.cpp
         services/motion/execution/HomingProcess.cpp
@@ -173,7 +174,6 @@ set_target_properties(siligen_runtime_execution_motion_execution_services PROPER
 
 if(NOT TARGET siligen_runtime_execution_application)
     add_library(siligen_runtime_execution_application STATIC
-        services/motion/DefaultMotionValidationService.cpp
         services/motion/MotionControlServiceImpl.cpp
         services/motion/MotionStatusServiceImpl.cpp
         services/motion/interpolation/ValidatedInterpolationPort.cpp
@@ -185,6 +185,7 @@ if(NOT TARGET siligen_runtime_execution_application)
         services/dispensing/SupplyStabilizationPolicy.cpp
         usecases/motion/MotionControlUseCase.cpp
         usecases/dispensing/ExecutionObserverSupport.cpp
+        usecases/dispensing/VelocityTracePathPolicy.cpp
         usecases/dispensing/DispensingExecutionUseCase.cpp
         usecases/dispensing/DispensingExecutionUseCase.Setup.cpp
         usecases/dispensing/DispensingExecutionUseCase.Control.cpp
