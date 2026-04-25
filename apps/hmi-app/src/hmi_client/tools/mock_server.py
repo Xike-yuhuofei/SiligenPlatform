@@ -90,7 +90,6 @@ def _build_preview_signature(filepath: str, params: Dict) -> str:
         "optimize_path": bool(params.get("optimize_path", False)),
         "start_x": float(params.get("start_x", 0.0)),
         "start_y": float(params.get("start_y", 0.0)),
-        "approximate_splines": bool(params.get("approximate_splines", False)),
         "two_opt_iterations": int(params.get("two_opt_iterations", 0)),
         "spline_max_step_mm": float(params.get("spline_max_step_mm", 0.0)),
         "spline_max_error_mm": float(params.get("spline_max_error_mm", 0.0)),
@@ -894,6 +893,13 @@ class MockState:
             if method == "dxf.plan.prepare":
                 if not self.dxf.loaded:
                     return {"error": {"code": -32003, "message": "DXF not loaded"}}
+                if "approximate_splines" in params:
+                    return {
+                        "error": {
+                            "code": -32021,
+                            "message": "Retired parameter approximate_splines is forbidden by DXF input governance v1",
+                        }
+                    }
                 artifact_id = str(params.get("artifact_id", "")).strip()
                 if not artifact_id:
                     return {"error": {"code": -32005, "message": "Missing artifact_id"}}

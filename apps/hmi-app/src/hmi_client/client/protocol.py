@@ -1079,6 +1079,24 @@ class CommandProtocol:
             return {"state": "unknown", "error_message": resp["error"].get("message", "Unknown error")}
         return _as_dict(resp.get("result"))
 
+    def dxf_get_job_observation(self, job_id: str, coord_sys: int = 1) -> JsonDict:
+        resp = self._client.send_request(
+            "dxf.job.observation",
+            {
+                "job_id": job_id,
+                "coord_sys": coord_sys,
+            },
+        )
+        if "error" in resp:
+            return {
+                "sampled_at": "",
+                "machine_status": {},
+                "job_status": {},
+                "coord_status": {},
+                "query_error": _as_dict(resp.get("error")),
+            }
+        return _as_dict(resp.get("result"))
+
     def dxf_get_job_traceability(self, job_id: str) -> JsonDict:
         resp = self._client.send_request("dxf.job.traceability", {"job_id": job_id})
         if "error" in resp:

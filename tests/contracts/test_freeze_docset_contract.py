@@ -12,6 +12,7 @@ FREEZE_REQUIRED_DOCS = (
     FREEZE_ROOT / "dsp-e2e-spec-s06-repo-structure-guide.md",
     FREEZE_ROOT / "dsp-e2e-spec-s09-test-matrix-acceptance-baseline.md",
     FREEZE_ROOT / "dsp-e2e-spec-s10-frozen-directory-index.md",
+    FREEZE_ROOT / "dxf-input-governance-standard-v1.md",
 )
 
 
@@ -44,6 +45,12 @@ class FreezeDocsetContractTest(unittest.TestCase):
         self.assertIn("validate_dsp_e2e_spec_docset.py", local_gate)
         self.assertIn("dsp-e2e-spec-docset", local_gate)
         self.assertIn("dsp-e2e-spec-docset", ci_entry)
+
+    def test_dxf_input_governance_standard_is_registered(self) -> None:
+        readme = _read(FREEZE_ROOT / "README.md")
+
+        self.assertIn("dxf-input-governance-standard-v1.md", readme)
+        self.assertIn("冻结 DXF 输入治理", readme)
 
 
 if __name__ == "__main__":

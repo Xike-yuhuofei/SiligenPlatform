@@ -91,7 +91,6 @@
           "optimize_path": { "type": "boolean" },
           "start_x": { "type": "number" },
           "start_y": { "type": "number" },
-          "approximate_splines": { "type": "boolean" },
           "two_opt_iterations": { "type": "integer" },
           "spline_max_step_mm": { "type": "number" },
           "spline_max_error_mm": { "type": "number" },

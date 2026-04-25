@@ -268,12 +268,9 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
         };
 
         AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);
-        AppendBoolArg(args, "--approx-splines", preprocess_config.approx_splines);
         AppendBoolArg(args, "--snap-enabled", preprocess_config.snap_enabled);
         AppendBoolArg(args, "--densify-enabled", preprocess_config.densify_enabled);
         AppendBoolArg(args, "--min-seg-enabled", preprocess_config.min_seg_enabled);
-        AppendValueArg(args, "--spline-samples", preprocess_config.spline_samples);
-        AppendValueArg(args, "--spline-max-step", preprocess_config.spline_max_step);
         AppendValueArg(args, "--chordal", preprocess_config.chordal);
         AppendValueArg(args, "--max-seg", preprocess_config.max_seg);
         AppendValueArg(args, "--snap", preprocess_config.snap);
@@ -304,12 +301,9 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
     };
 
     AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);
-    AppendBoolArg(args, "--approx-splines", preprocess_config.approx_splines);
     AppendBoolArg(args, "--snap-enabled", preprocess_config.snap_enabled);
     AppendBoolArg(args, "--densify-enabled", preprocess_config.densify_enabled);
     AppendBoolArg(args, "--min-seg-enabled", preprocess_config.min_seg_enabled);
-    AppendValueArg(args, "--spline-samples", preprocess_config.spline_samples);
-    AppendValueArg(args, "--spline-max-step", preprocess_config.spline_max_step);
     AppendValueArg(args, "--chordal", preprocess_config.chordal);
     AppendValueArg(args, "--max-seg", preprocess_config.max_seg);
     AppendValueArg(args, "--snap", preprocess_config.snap);

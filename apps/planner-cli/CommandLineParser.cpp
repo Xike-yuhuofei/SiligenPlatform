@@ -244,8 +244,7 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
             continue;
         }
         if (arg == "--approximate-splines") {
-            config.approximate_splines = true;
-            continue;
+            ThrowUsage("参数已废弃: --approximate-splines。DXF 输入治理 v1 禁止 SPLINE 自动近似。");
         }
         if (arg == "--dxf-r12") {
             config.dxf_output_r12 = true;

@@ -198,6 +198,7 @@ def test_dxf_preview_and_job_contract():
     assert "execution_plan_summary" in plan_prepare["resultSchema"]["required"]
     assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
     assert "path_quality" in plan_prepare["resultSchema"]["required"]
+    assert "approximate_splines" not in plan_prepare["paramsSchema"]["properties"]
 
     job_start = operations["dxf.job.start"]
     assert {"started", "job_id", "plan_id", "plan_fingerprint", "target_count"}.issubset(
@@ -589,14 +590,23 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert legacy_status.action_capabilities.manual_dispenser_resume_permitted is True
     assert legacy_status.action_capabilities.active_job_present is False
     assert legacy_status.action_capabilities.estop_reset_permitted is False
-    assert "BuildRuntimeIdentityJson(status_snapshot)" in tcp_source
     assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
-    assert "BuildRawIoJson(status_snapshot)" in tcp_source
-    assert "BuildEffectiveInterlocksJson(status_snapshot)" in tcp_source
-    assert "BuildSupervisionJson(status_snapshot)" in tcp_source
-    assert "BuildJobExecutionJson(status_snapshot)" in tcp_source
-    assert "BuildSafetyBoundaryJson(status_snapshot)" in tcp_source
-    assert "BuildActionCapabilitiesJson(status_snapshot)" in tcp_source
+    machine_status_match = re.search(
+        r"nlohmann::json BuildMachineStatusJson\(const RuntimeStatusExportSnapshot& ([^)]+)\).*?"
+        r"nlohmann::json BuildDxfJobStatusJson",
+        tcp_source,
+        re.S,
+    )
+    assert machine_status_match, "cannot locate BuildMachineStatusJson body"
+    status_snapshot_param = machine_status_match.group(1)
+    machine_status_body = machine_status_match.group(0)
+    assert f"BuildRuntimeIdentityJson({status_snapshot_param})" in machine_status_body
+    assert f"BuildRawIoJson({status_snapshot_param})" in machine_status_body
+    assert f"BuildEffectiveInterlocksJson({status_snapshot_param})" in machine_status_body
+    assert f"BuildSupervisionJson({status_snapshot_param})" in machine_status_body
+    assert f"BuildJobExecutionJson({status_snapshot_param})" in machine_status_body
+    assert f"BuildSafetyBoundaryJson({status_snapshot_param})" in machine_status_body
+    assert f"BuildActionCapabilitiesJson({status_snapshot_param})" in machine_status_body
     status_source = RUNTIME_STATUS_EXPORT_PORT.read_text(encoding="utf-8")
     assert "RuntimeIdentityExportSnapshot BuildRuntimeIdentitySnapshot()" in status_source
     assert "snapshot.runtime_identity = BuildRuntimeIdentitySnapshot();" in status_source
@@ -608,15 +618,15 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert "snapshot.supervision = supervision.supervision;" in status_source
     assert "snapshot.safety_boundary = BuildSafetyBoundarySnapshot(snapshot);" in status_source
     assert "BuildActionCapabilitiesSnapshot(snapshot, dispenser_status_for_action_capabilities);" in status_source
-    assert "{\"device_mode\", status_snapshot.device_mode}" in tcp_source
-    assert "{\"machine_state\", status_snapshot.machine_state}" in tcp_source
-    assert "{\"machine_state_reason\", status_snapshot.machine_state_reason}" in tcp_source
-    assert "{\"supervision\", supervisionJson}" in tcp_source
-    assert "{\"runtime_identity\", runtimeIdentityJson}" in tcp_source
-    assert "{\"safety_boundary\", safetyBoundaryJson}" in tcp_source
-    assert "{\"action_capabilities\", actionCapabilitiesJson}" in tcp_source
-    assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
-    assert "{\"job_execution\", jobExecutionJson}" in tcp_source
+    assert f'{{"device_mode", {status_snapshot_param}.device_mode}}' in machine_status_body
+    assert f'{{"machine_state", {status_snapshot_param}.machine_state}}' in machine_status_body
+    assert f'{{"machine_state_reason", {status_snapshot_param}.machine_state_reason}}' in machine_status_body
+    assert '{"supervision", supervision_json}' in machine_status_body
+    assert '{"runtime_identity", runtime_identity_json}' in machine_status_body
+    assert '{"safety_boundary", safety_boundary_json}' in machine_status_body
+    assert '{"action_capabilities", action_capabilities_json}' in machine_status_body
+    assert '{"effective_interlocks", effective_interlocks_json}' in machine_status_body
+    assert '{"job_execution", job_execution_json}' in machine_status_body
     assert "{\"active_job_id\"" not in tcp_source
     assert "{\"active_job_state\"" not in tcp_source
 

@@ -570,14 +570,13 @@ void ConfigureProfileCompareRuntimeContractConfig(const std::shared_ptr<FakeConf
     config_port->SyncSystemConfig();
 }
 
-PlanningRequest BuildDemo1GatewayLikePlanningRequest() {
+PlanningRequest BuildGovernedDxfGatewayLikePlanningRequest() {
     PlanningRequest request;
     request.trajectory_config = Siligen::Shared::Types::TrajectoryConfig();
     request.trajectory_config.max_velocity = 10.0f;
     request.optimize_path = true;
     request.start_x = 0.0f;
     request.start_y = 0.0f;
-    request.approximate_splines = false;
     request.two_opt_iterations = 0;
     request.spline_max_step_mm = 0.0f;
     request.spline_max_error_mm = 0.0f;
@@ -769,7 +768,6 @@ PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "can
     request.optimize_path = true;
     request.start_x = 0.0f;
     request.start_y = 0.0f;
-    request.approximate_splines = true;
     request.two_opt_iterations = 7;
     request.spline_max_step_mm = 0.25f;
     request.spline_max_error_mm = 0.05f;
@@ -2418,7 +2416,7 @@ TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanBlocksFragmentedAndDiscontin
 
     PreparePlanRequest request;
     request.artifact_id = artifact_result.Value().artifact_id;
-    request.planning_request = BuildDemo1GatewayLikePlanningRequest();
+    request.planning_request = BuildGovernedDxfGatewayLikePlanningRequest();
     request.runtime_overrides = BuildDemo1ProductionValidationRuntimeOverrides();
 
     const auto result = use_case.PreparePlan(request);
@@ -2442,6 +2440,55 @@ TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanBlocksFragmentedAndDiscontin
             result.Value().path_quality.reason_codes.end(),
             "path_discontinuity"),
         result.Value().path_quality.reason_codes.end());
+
+    const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
+    EXPECT_TRUE(plan_record.execution_contract_ready);
+    EXPECT_FALSE(plan_record.execution_assembly.formal_compare_gate.HasValue());
+}
+
+TEST(DispensingWorkflowUseCaseTest, GovernedDxfPreparePlanWithProductionLikeInputsReturnsProductionReadyContract) {
+    const auto workspace_root = ResolveWorkspaceRoot();
+    ASSERT_FALSE(workspace_root.empty());
+
+    ScopedTempDxfCopy temp_dxf(
+        workspace_root / "shared" / "contracts" / "engineering" / "fixtures" / "cases" / "rect_diag" / "rect_diag.dxf");
+    auto config_port = CreateCanonicalMachineConfigPort(workspace_root);
+    const auto loaded_config = config_port->LoadConfiguration();
+    ASSERT_TRUE(loaded_config.IsSuccess()) << loaded_config.GetError().ToString();
+    ASSERT_GT(loaded_config.Value().dispensing.dot_diameter_target_mm, 0.0f);
+
+    auto planning_use_case = CreatePbBackedPlanningUseCase(config_port);
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto baseline_port = CreateCurrentProductionBaselinePort(config_port);
+    auto upload_port = CreateRuntimeLikeUploadPort(config_port);
+    auto use_case = CreateUseCaseWithUploadAndPlanning(
+        upload_port,
+        planning_use_case,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        baseline_port,
+        config_port);
+
+    const auto artifact_result = use_case.CreateArtifact(BuildUploadRequestFromFile(temp_dxf.path()));
+    ASSERT_TRUE(artifact_result.IsSuccess()) << artifact_result.GetError().ToString();
+
+    PreparePlanRequest request;
+    request.artifact_id = artifact_result.Value().artifact_id;
+    request.planning_request = BuildGovernedDxfGatewayLikePlanningRequest();
+    request.runtime_overrides = BuildDemo1ProductionValidationRuntimeOverrides();
+
+    const auto result = use_case.PreparePlan(request);
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+
+    const auto& gate = result.Value().import_diagnostics.formal_compare_gate;
+    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
+    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
+    EXPECT_FALSE(gate.HasValue());
 
     const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
     EXPECT_TRUE(plan_record.execution_contract_ready);
@@ -4570,7 +4617,20 @@ TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutio
     EXPECT_FALSE(use_case.plans_.at(plan_id).execution_binding_ready);
     EXPECT_EQ(use_case.plans_.at(plan_id).execution_trajectory_points.size(), retained_preview_points);
     EXPECT_EQ(use_case.plans_.at(plan_id).glue_points.size(), retained_glue_points);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).retained_preview_motion_trajectory_points.empty());
     EXPECT_TRUE(use_case.execution_assembly_cache_.find(plan_fingerprint) == use_case.execution_assembly_cache_.end());
+
+    Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
+    snapshot_request.plan_id = plan_id;
+    snapshot_request.max_polyline_points = 128;
+    const auto readback_result = use_case.GetPreviewSnapshot(snapshot_request);
+    ASSERT_TRUE(readback_result.IsSuccess()) << readback_result.GetError().ToString();
+    EXPECT_EQ(readback_result.Value().plan_id, plan_id);
+    EXPECT_EQ(readback_result.Value().snapshot_hash, plan_fingerprint);
+    EXPECT_GT(readback_result.Value().motion_preview_point_count, 0U);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_launch.execution_package);
+    EXPECT_FALSE(use_case.plans_.at(plan_id).execution_assembly.execution_package);
+    EXPECT_TRUE(use_case.plans_.at(plan_id).execution_assembly.motion_trajectory_points.empty());
 
     const auto second_probe = use_case.EnsureExecutionAssemblyReadyForTesting(plan_id);
     ASSERT_TRUE(second_probe.IsSuccess()) << second_probe.GetError().ToString();

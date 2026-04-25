@@ -3136,6 +3136,8 @@ class MainWindowTabsTest(unittest.TestCase):
         self.window._preview_source = "planned_glue_snapshot"
         self.window._preview_session.state.preview_kind = "glue_points"
         self.window._preview_session.state.glue_point_count = 3
+        self.window._preview_session.state.preview_state_resync_pending = True
+        self.window._preview_session.state.preview_refresh_inflight = True
         self.window._preview_gate = SimpleNamespace(
             snapshot=SimpleNamespace(snapshot_hash="snapshot-hash-1"),
             get_confirmed_snapshot_hash=lambda: "snapshot-hash-1",
@@ -3162,6 +3164,8 @@ class MainWindowTabsTest(unittest.TestCase):
         self.assertEqual(context["completed_count"], "1/3")
         self.assertEqual(context["global_progress_percent"], 42)
         self.assertEqual(context["current_operation"], "生产运行中")
+        self.assertTrue(context["preview_resync_pending"])
+        self.assertTrue(context["preview_refresh_inflight"])
 
     def test_preview_snapshot_reports_legacy_backend_contract_when_glue_points_missing(self) -> None:
         messages = []

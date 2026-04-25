@@ -7,7 +7,6 @@ dispensing.supply_stabilization_ms=500
 dispensing.retract_enabled=false
 dispensing.trajectory_sample_dt=0.010000
 dxf_import.normalize_units=true
-dxf_import.spline_samples=64
 dxf_import.chordal=0.005000
 dxf_trajectory.python=python
 dxf_trajectory.script=scripts/engineering-data/path_to_trajectory.py

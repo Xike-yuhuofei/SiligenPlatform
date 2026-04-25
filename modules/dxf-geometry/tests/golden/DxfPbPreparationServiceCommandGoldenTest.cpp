@@ -75,12 +75,9 @@ TEST(DxfPbPreparationServiceCommandGoldenTest, NonDefaultPreprocessConfigMatches
 
     auto config = std::make_shared<FakeConfigurationPort>();
     config->preprocess_config.normalize_units = true;
-    config->preprocess_config.approx_splines = true;
     config->preprocess_config.snap_enabled = true;
     config->preprocess_config.densify_enabled = false;
     config->preprocess_config.min_seg_enabled = true;
-    config->preprocess_config.spline_samples = 12;
-    config->preprocess_config.spline_max_step = 0.25f;
     config->preprocess_config.chordal = 0.01f;
     config->preprocess_config.max_seg = 1.5f;
     config->preprocess_config.snap = 0.2f;

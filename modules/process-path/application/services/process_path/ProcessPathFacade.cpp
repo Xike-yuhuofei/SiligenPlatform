@@ -107,7 +107,7 @@ ProcessPathBuildResult ProcessPathFacade::Build(const ProcessPathBuildRequest& r
     if (result.normalized.report.skipped_spline_count > 0) {
         SetFailure(result,
                    PathGenerationStage::Normalization,
-                   "normalization skipped spline primitives because approximate_splines is disabled");
+                   "normalization rejected spline primitives because DXF input governance forbids SPLINE execution");
         return result;
     }
     if (result.normalized.report.consumable_segment_count == 0 &&

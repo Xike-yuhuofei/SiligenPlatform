@@ -68,6 +68,20 @@ class TcpAdmissionResult:
     status_response: dict[str, Any] | None = None
 
 
+class TcpRequestTimeoutError(TimeoutError):
+    def __init__(self, *, method: str, request_id: str, elapsed_ms: float) -> None:
+        self.method = method
+        self.request_id = request_id
+        self.elapsed_ms = elapsed_ms
+        message = (
+            "tcp response timeout"
+            f" method={method}"
+            f" request_id={request_id}"
+            f" elapsed_ms={elapsed_ms:.1f}"
+        )
+        super().__init__(message)
+
+
 class TcpJsonClient:
     def __init__(self, host: str, port: int) -> None:
         self._host = host
@@ -75,12 +89,14 @@ class TcpJsonClient:
         self._socket: socket.socket | None = None
         self._recv_buffer = ""
         self._request_id = 0
+        self._pending_responses: dict[str, dict[str, Any]] = {}
 
     def connect(self, timeout_seconds: float) -> None:
         self._socket = socket.create_connection((self._host, self._port), timeout=timeout_seconds)
         self._socket.settimeout(timeout_seconds)
         self._recv_buffer = ""
         self._request_id = 0
+        self._pending_responses.clear()
 
     def close(self) -> None:
         if self._socket is None:
@@ -90,6 +106,10 @@ class TcpJsonClient:
         finally:
             self._socket = None
             self._recv_buffer = ""
+            self._pending_responses.clear()
+
+    def is_connected(self) -> bool:
+        return self._socket is not None
 
     def send_request(self, method: str, params: dict[str, Any] | None, timeout_seconds: float) -> dict[str, Any]:
         if self._socket is None:
@@ -97,6 +117,7 @@ class TcpJsonClient:
 
         self._request_id += 1
         request_id = str(self._request_id)
+
         payload: dict[str, Any] = {"id": request_id, "method": method}
         if params:
             payload["params"] = params
@@ -105,7 +126,12 @@ class TcpJsonClient:
         self._socket.settimeout(timeout_seconds)
         self._socket.sendall(wire.encode("utf-8"))
 
-        deadline = time.perf_counter() + max(0.1, timeout_seconds)
+        pending_response = self._pending_responses.pop(request_id, None)
+        if pending_response is not None:
+            return pending_response
+
+        started_at = time.perf_counter()
+        deadline = started_at + max(0.1, timeout_seconds)
         while time.perf_counter() < deadline:
             line = self._recv_line(deadline)
             if line is None:
@@ -113,10 +139,17 @@ class TcpJsonClient:
             if not line.strip():
                 continue
             message = json.loads(line)
-            if str(message.get("id", "")) == request_id:
+            message_id = str(message.get("id", "")).strip()
+            if message_id == request_id:
                 return message
+            if message_id:
+                self._pending_responses[message_id] = message
 
-        raise TimeoutError(f"tcp response timeout method={method}")
+        raise TcpRequestTimeoutError(
+            method=method,
+            request_id=request_id,
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+        )
 
     def _recv_line(self, deadline: float) -> str | None:
         if self._socket is None:

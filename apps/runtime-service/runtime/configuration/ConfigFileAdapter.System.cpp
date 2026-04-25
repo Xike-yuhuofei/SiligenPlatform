@@ -688,8 +688,9 @@ Result<DxfImportConfig> ConfigFileAdapter::GetDxfImportConfig() const {
     result = read_optional_raw(section, "approx_splines", raw, found);
     if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
-        result = parse_bool(section, "approx_splines", raw, config.approx_splines);
-        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
+        return Result<DxfImportConfig>(Error(
+            ErrorCode::CONFIGURATION_ERROR,
+            "配置项已废弃: [DXFImport] approx_splines。DXF 输入治理 v1 禁止 SPLINE 自动近似。"));
     }
 
     result = read_optional_raw(section, "snap_enabled", raw, found);
@@ -716,15 +717,17 @@ Result<DxfImportConfig> ConfigFileAdapter::GetDxfImportConfig() const {
     result = read_optional_raw(section, "spline_samples", raw, found);
     if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
-        result = parse_int(section, "spline_samples", raw, config.spline_samples);
-        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
+        return Result<DxfImportConfig>(Error(
+            ErrorCode::CONFIGURATION_ERROR,
+            "配置项已废弃: [DXFImport] spline_samples。DXF 输入治理 v1 禁止 SPLINE 自动采样。"));
     }
 
     result = read_optional_raw(section, "spline_max_step", raw, found);
     if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
     if (found) {
-        result = parse_float(section, "spline_max_step", raw, config.spline_max_step);
-        if (result.IsError()) return Result<DxfImportConfig>(result.GetError());
+        return Result<DxfImportConfig>(Error(
+            ErrorCode::CONFIGURATION_ERROR,
+            "配置项已废弃: [DXFImport] spline_max_step。DXF 输入治理 v1 禁止 SPLINE 自动采样。"));
     }
 
     result = read_optional_raw(section, "chordal", raw, found);

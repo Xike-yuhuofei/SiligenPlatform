@@ -462,7 +462,7 @@ TEST(ProcessPathFacadeTest, RejectsNonPositiveNormalizationUnitScale) {
     EXPECT_TRUE(result.normalized.report.invalid_unit_scale);
 }
 
-TEST(ProcessPathFacadeTest, RejectsSplineInputWhenApproximationIsDisabled) {
+TEST(ProcessPathFacadeTest, RejectsSplineInputBecauseDxfGovernanceForbidsSplineExecution) {
     using Siligen::Application::Services::ProcessPath::ProcessPathBuildRequest;
     using Siligen::Application::Services::ProcessPath::ProcessPathFacade;
     using Siligen::ProcessPath::Contracts::PathGenerationStage;
@@ -476,15 +476,13 @@ TEST(ProcessPathFacadeTest, RejectsSplineInputWhenApproximationIsDisabled) {
         Point2D(5.0f, 5.0f),
         Point2D(10.0f, 0.0f),
     }));
-    request.normalization.approximate_splines = false;
-
     ProcessPathFacade facade;
     const auto result = facade.Build(request);
 
     EXPECT_EQ(result.status, PathGenerationStatus::StageFailure);
     EXPECT_EQ(result.failed_stage, PathGenerationStage::Normalization);
     EXPECT_EQ(result.error_message,
-              "normalization skipped spline primitives because approximate_splines is disabled");
+              "normalization rejected spline primitives because DXF input governance forbids SPLINE execution");
     EXPECT_EQ(result.normalized.report.skipped_spline_count, 1);
     EXPECT_EQ(result.normalized.report.consumable_segment_count, 0);
 }

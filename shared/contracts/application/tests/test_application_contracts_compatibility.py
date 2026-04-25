@@ -152,6 +152,7 @@ def test_dxf_preview_and_job_contract():
     assert "dxf.plan.prepare" in operations
     assert "dxf.job.start" in operations
     assert "dxf.job.status" in operations
+    assert "dxf.job.observation" in operations
 
     artifact_create = operations["dxf.artifact.create"]
     assert "formal_compare_gate" in artifact_create["resultSchema"]["required"]
@@ -224,6 +225,7 @@ def test_dxf_preview_and_job_contract():
     assert "recipe_id" not in plan_prepare["paramsSchema"]["properties"]
     assert "version_id" not in plan_prepare["paramsSchema"]["properties"]
     assert "speed_mm_s" not in plan_prepare["paramsSchema"]["properties"]
+    assert "approximate_splines" not in plan_prepare["paramsSchema"]["properties"]
     assert not plan_prepare.get("compatibility", {}).get("requestAliases")
     plan_prepare_notes = "\n".join(plan_prepare.get("compatibility", {}).get("notes", []))
     assert "current production baseline" in plan_prepare_notes
@@ -258,6 +260,16 @@ def test_dxf_preview_and_job_contract():
     assert "active_task_id" not in dxf_job_status["required"]
     assert "active_task_id" not in dxf_job_status["properties"]
 
+    job_observation = operations["dxf.job.observation"]
+    assert job_observation["paramsSchema"]["required"] == ["job_id"]
+    assert "coord_sys" in job_observation["paramsSchema"]["properties"]
+    assert job_observation["resultRef"].endswith("#/definitions/dxfJobObservationSnapshot")
+    assert {2930, 2931, 2932, 2933}.issubset(set(job_observation["errorCodes"]))
+    dxf_job_observation = states["definitions"]["dxfJobObservationSnapshot"]
+    assert {"sampled_at", "machine_status", "job_status", "coord_status"}.issubset(
+        set(dxf_job_observation["required"])
+    )
+
     job_continue = operations["dxf.job.continue"]
     assert {"continued", "job_id"} == set(job_continue["resultSchema"]["required"])
 
@@ -265,6 +277,8 @@ def test_dxf_preview_and_job_contract():
     artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
     start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
+    observation_request_fixture = load_json(CONTRACTS / "fixtures" / "requests" / "dxf.job.observation.request.json")
+    observation_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.observation.success.json")
     assert "recipe_id" not in prepare_request_fixture["params"]
     assert "version_id" not in prepare_request_fixture["params"]
     assert artifact_fixture["result"]["formal_compare_gate"] is None
@@ -283,6 +297,12 @@ def test_dxf_preview_and_job_contract():
     assert start_fixture["result"]["production_baseline"]["baseline_id"]
     assert start_fixture["result"]["production_baseline"]["baseline_fingerprint"]
     assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(set(start_fixture["result"].keys()))
+    assert observation_request_fixture["method"] == "dxf.job.observation"
+    assert observation_request_fixture["params"]["job_id"]
+    assert observation_request_fixture["params"]["coord_sys"] == 1
+    assert observation_fixture["result"]["sampled_at"]
+    assert observation_fixture["result"]["machine_status"]["job_execution"]["job_id"] == observation_fixture["result"]["job_status"]["job_id"]
+    assert observation_fixture["result"]["coord_status"]["coord_sys"] == 1
 
 
 def test_status_contract_describes_backend_interlock_authority():
@@ -577,24 +597,25 @@ def test_status_contract_exposes_effective_interlocks_and_supervision():
     assert legacy_status.action_capabilities.manual_dispenser_resume_permitted is True
     assert legacy_status.action_capabilities.active_job_present is False
     assert legacy_status.action_capabilities.estop_reset_permitted is False
-    assert "BuildRuntimeIdentityJson(status_snapshot)" in tcp_source
-    assert "BuildJobExecutionJson(status_snapshot)" in tcp_source
+    assert "BuildMachineStatusJson(const RuntimeStatusExportSnapshot& snapshot)" in tcp_source
+    assert "BuildRuntimeIdentityJson(snapshot)" in tcp_source
+    assert "BuildJobExecutionJson(snapshot)" in tcp_source
     assert "runtimeStatusExportPort_->ReadSnapshot()" in tcp_source
-    assert "BuildRawIoJson(status_snapshot)" in tcp_source
-    assert "BuildEffectiveInterlocksJson(status_snapshot)" in tcp_source
-    assert "BuildSupervisionJson(status_snapshot)" in tcp_source
-    assert "BuildSafetyBoundaryJson(status_snapshot)" in tcp_source
-    assert "BuildActionCapabilitiesJson(status_snapshot)" in tcp_source
+    assert "BuildRawIoJson(snapshot)" in tcp_source
+    assert "BuildEffectiveInterlocksJson(snapshot)" in tcp_source
+    assert "BuildSupervisionJson(snapshot)" in tcp_source
+    assert "BuildSafetyBoundaryJson(snapshot)" in tcp_source
+    assert "BuildActionCapabilitiesJson(snapshot)" in tcp_source
     assert "BuildCompatMachineState(" not in tcp_source
-    assert "{\"device_mode\", status_snapshot.device_mode}" in tcp_source
-    assert "{\"machine_state\", status_snapshot.machine_state}" in tcp_source
-    assert "{\"machine_state_reason\", status_snapshot.machine_state_reason}" in tcp_source
-    assert "{\"supervision\", supervisionJson}" in tcp_source
-    assert "{\"runtime_identity\", runtimeIdentityJson}" in tcp_source
-    assert "{\"safety_boundary\", safetyBoundaryJson}" in tcp_source
-    assert "{\"action_capabilities\", actionCapabilitiesJson}" in tcp_source
-    assert "{\"effective_interlocks\", effectiveInterlocksJson}" in tcp_source
-    assert "{\"job_execution\", jobExecutionJson}" in tcp_source
+    assert "{\"device_mode\", snapshot.device_mode}" in tcp_source
+    assert "{\"machine_state\", snapshot.machine_state}" in tcp_source
+    assert "{\"machine_state_reason\", snapshot.machine_state_reason}" in tcp_source
+    assert "{\"supervision\", supervision_json}" in tcp_source
+    assert "{\"runtime_identity\", runtime_identity_json}" in tcp_source
+    assert "{\"safety_boundary\", safety_boundary_json}" in tcp_source
+    assert "{\"action_capabilities\", action_capabilities_json}" in tcp_source
+    assert "{\"effective_interlocks\", effective_interlocks_json}" in tcp_source
+    assert "{\"job_execution\", job_execution_json}" in tcp_source
     assert "{\"active_job_id\"" not in tcp_source
     assert "{\"active_job_state\"" not in tcp_source
     assert "RuntimeIdentityExportSnapshot BuildRuntimeIdentitySnapshot()" in status_source

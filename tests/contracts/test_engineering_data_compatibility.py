@@ -22,10 +22,16 @@ sys.path.insert(0, str(PACKAGE_ROOT))
 
 from engineering_data.contracts.simulation_input import bundle_to_simulation_payload, load_path_bundle  # noqa: E402
 from engineering_data.processing import dxf_to_pb  # noqa: E402
-from engineering_data.proto import dxf_primitives_pb2 as pb  # noqa: E402
 
 
 PREVIEW_SCRIPT = WORKSPACE_ROOT / "scripts" / "engineering-data" / "generate_preview.py"
+DXF_VALIDATION_SCHEMA_PATH = (
+    WORKSPACE_ROOT / "data" / "schemas" / "engineering" / "dxf" / "v1" / "dxf-validation-report.schema.json"
+)
+SHARED_DXF_VALIDATION_SCHEMA_PATH = (
+    WORKSPACE_ROOT / "shared" / "contracts" / "engineering" / "schemas" / "v1" / "dxf-validation-report.schema.json"
+)
+DXF_COMMAND_SET_PATH = WORKSPACE_ROOT / "shared" / "contracts" / "application" / "commands" / "dxf.command-set.json"
 
 
 def _load_json(path: Path) -> dict:
@@ -101,12 +107,14 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
         expected.header.source_path = ""
         self.assertEqual(actual.SerializeToString(), expected.SerializeToString())
 
-    def test_dxf_to_pb_expands_insert_and_ignores_text_without_affecting_supported_entities(self) -> None:
+    def test_dxf_to_pb_rejects_insert_instead_of_expanding_block_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dxf_path = Path(tmp_dir) / "mixed_noise.dxf"
             output_path = Path(tmp_dir) / "mixed_noise.pb"
+            report_path = Path(tmp_dir) / "mixed_noise.validation.json"
 
             doc = getattr(ezdxf, "new")("R2000")
+            doc.header["$INSUNITS"] = 4
             modelspace = doc.modelspace()
             modelspace.add_line((0.0, 0.0), (10.0, 0.0))
             modelspace.add_point((5.0, 5.0))
@@ -121,19 +129,87 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
                 exit_code = dxf_to_pb.main([
                     "--input", str(dxf_path),
                     "--output", str(output_path),
+                    "--validation-report", str(report_path),
                 ])
 
-            self.assertEqual(exit_code, 0)
-            actual = load_path_bundle(output_path)
+            self.assertEqual(exit_code, 4)
+            self.assertFalse(output_path.exists())
+            report = _load_json(report_path)
 
-        entity_types = [meta.entity_type for meta in actual.metadata]
-        self.assertEqual(len(actual.primitives), 3)
-        self.assertEqual(entity_types.count(pb.DXF_ENTITY_LINE), 2)
-        self.assertEqual(entity_types.count(pb.DXF_ENTITY_POINT), 1)
+        self.assertEqual(report["schema_version"], "DXFValidationReport.v1")
+        self.assertEqual(report["summary"]["gate_result"], "FAIL")
+        self.assertEqual(report["errors"][0]["error_code"], "DXF_BLOCK_INSERT_NOT_EXPLODED")
+        self.assertEqual(report["errors"][0]["stage_id"], "S2")
+        self.assertTrue(report["errors"][0]["is_blocking"])
         warning_text = stderr.getvalue()
         self.assertIn("Warning[DXF_W_TEXT_IGNORED]", warning_text)
         self.assertIn("Ignored non-production DXF entity type: TEXT.", warning_text)
-        self.assertNotIn("INSERT=1", warning_text)
+        self.assertIn("Error[DXF_E_BLOCK_INSERT_NOT_EXPLODED]", warning_text)
+
+    def test_dxf_validation_report_v1_schema_is_shared_contract_truth(self) -> None:
+        data_schema = _load_json(DXF_VALIDATION_SCHEMA_PATH)
+        shared_schema = _load_json(SHARED_DXF_VALIDATION_SCHEMA_PATH)
+
+        self.assertEqual(shared_schema, data_schema)
+        self.assertEqual(data_schema["title"], "DXFValidationReport.v1")
+        self.assertFalse(data_schema["additionalProperties"])
+        self.assertEqual(
+            set(data_schema["required"]),
+            {
+                "schema_version",
+                "file",
+                "policy",
+                "stage",
+                "summary",
+                "entity_summary",
+                "layer_summary",
+                "geometry_summary",
+                "topology_summary",
+                "errors",
+                "warnings",
+                "recommended_actions",
+            },
+        )
+        diagnostic = data_schema["$defs"]["diagnostic"]
+        self.assertFalse(diagnostic["additionalProperties"])
+        self.assertIn("operator_message", diagnostic["required"])
+        self.assertIn("is_blocking", diagnostic["required"])
+
+    def test_retired_dxf_spline_approximation_public_surfaces_are_removed(self) -> None:
+        command_set = _load_json(DXF_COMMAND_SET_PATH)
+        prepare = next(item for item in command_set["operations"] if item["method"] == "dxf.plan.prepare")
+        prepare_params = prepare["paramsSchema"]["properties"]
+        self.assertNotIn("approximate_splines", prepare_params)
+
+        forbidden_runtime_tokens = [
+            "approx_splines",
+            "--approx-splines",
+            "spline_samples",
+            "--spline-samples",
+        ]
+        allowed_fail_closed_files = {
+            WORKSPACE_ROOT / "apps" / "runtime-service" / "runtime" / "configuration" / "ConfigFileAdapter.System.cpp",
+            Path(__file__),
+        }
+        completed = subprocess.run(
+            ["git", "ls-files"],
+            cwd=WORKSPACE_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        searchable_suffixes = {".cpp", ".h", ".hpp", ".py", ".json", ".txt", ".ini", ".md"}
+        violations: list[str] = []
+        for relative in completed.stdout.splitlines():
+            path = WORKSPACE_ROOT / relative
+            if path.suffix not in searchable_suffixes or not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for token in forbidden_runtime_tokens:
+                if token in text and path not in allowed_fail_closed_files:
+                    violations.append(f"{path.relative_to(WORKSPACE_ROOT)} contains {token}")
+        self.assertEqual(violations, [])
 
     def test_generate_preview_matches_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
