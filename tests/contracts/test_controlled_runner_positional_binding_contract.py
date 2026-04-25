@@ -50,6 +50,53 @@ class ControlledRunnerPositionalBindingContractTest(unittest.TestCase):
             "hil controlled test: parameter snapshot",
         )
 
+    def test_hil_controlled_runner_accepts_explicit_false_publish_argument(self) -> None:
+        completed = subprocess.run(
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(HIL_RUNNER),
+                "-HilDurationSeconds",
+                "1",
+                "-PublishLatestOnPass:$false",
+            ],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        output = f"{completed.stdout}\n{completed.stderr}"
+        self.assertNotEqual(completed.returncode, 0, msg=output)
+        self.assertIn("publish_latest_on_pass=False", output, msg=output)
+        self.assertIn("HilDurationSeconds", output, msg=output)
+        self.assertNotIn("ParameterArgumentTransformationError", output, msg=output)
+
+    def test_hil_controlled_runner_rejects_explicit_true_publish_argument(self) -> None:
+        completed = subprocess.run(
+            [
+                POWERSHELL,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(HIL_RUNNER),
+                "-PublishLatestOnPass:$true",
+            ],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        output = f"{completed.stdout}\n{completed.stderr}"
+        self.assertNotEqual(completed.returncode, 0, msg=output)
+        self.assertIn("publish_latest_on_pass=True", output, msg=output)
+        self.assertIn("PublishLatestOnPass", output, msg=output)
+        self.assertIn("必须为 false", output, msg=output)
+        self.assertNotIn("ParameterArgumentTransformationError", output, msg=output)
+
     def test_controlled_production_runner_rejects_boolean_literal_after_timestamp_switch(self) -> None:
         self._assert_timestamp_switch_rejects_boolean_literal(
             CONTROLLED_PRODUCTION_RUNNER,
