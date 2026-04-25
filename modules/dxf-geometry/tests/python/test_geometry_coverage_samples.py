@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -51,6 +52,40 @@ def _export_sample(sample_name: str):
         )
         bundle = load_path_bundle(output_path)
     return bundle, result
+
+
+def _reject_sample(sample_name: str):
+    sample_path = SAMPLES_ROOT / sample_name
+    assert sample_path.exists(), f"missing DXF sample: {sample_path}"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        output_path = Path(tmp_dir) / f"{sample_path.stem}.pb"
+        report_path = Path(tmp_dir) / f"{sample_path.stem}.validation.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "engineering_data.cli.dxf_to_pb",
+                "--input",
+                str(sample_path),
+                "--output",
+                str(output_path),
+                "--validation-report",
+                str(report_path),
+            ],
+            capture_output=True,
+            text=True,
+            env=pythonpath_env(),
+            check=False,
+        )
+
+        assert result.returncode == 4, (
+            f"dxf_to_pb unexpectedly accepted {sample_name}\n"
+            f"stdout={result.stdout}\n"
+            f"stderr={result.stderr}"
+        )
+        assert not output_path.exists()
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    return report, result
 
 
 def _primitive_counts(bundle) -> Counter[int]:
@@ -105,30 +140,12 @@ def test_arc_circle_quadrants_sample_exports_native_arc_primitives() -> None:
     assert "Warning:" not in result.stderr
 
 
-def test_geometry_zoo_sample_covers_supported_importer_primitives() -> None:
-    bundle, result = _export_sample("geometry_zoo.dxf")
+def test_geometry_zoo_sample_rejects_high_order_entities_under_input_governance_v1() -> None:
+    report, result = _reject_sample("geometry_zoo.dxf")
 
-    assert _primitive_counts(bundle) == Counter(
-        {
-            pb.PRIMITIVE_LINE: 1,
-            pb.PRIMITIVE_ARC: 1,
-            pb.PRIMITIVE_CIRCLE: 1,
-            pb.PRIMITIVE_POINT: 1,
-            pb.PRIMITIVE_CONTOUR: 2,
-            pb.PRIMITIVE_SPLINE: 1,
-            pb.PRIMITIVE_ELLIPSE: 1,
-        }
-    )
-    assert _entity_counts(bundle) == Counter(
-        {
-            pb.DXF_ENTITY_LINE: 1,
-            pb.DXF_ENTITY_ARC: 1,
-            pb.DXF_ENTITY_CIRCLE: 1,
-            pb.DXF_ENTITY_POINT: 1,
-            pb.DXF_ENTITY_LWPOLYLINE: 2,
-            pb.DXF_ENTITY_SPLINE: 1,
-            pb.DXF_ENTITY_ELLIPSE: 1,
-        }
-    )
-    assert "Warning:" not in result.stderr
-    assert "LWPOLYLINE=" not in result.stderr
+    error_codes = {item["error_code"] for item in report["errors"]}
+    assert report["schema_version"] == "DXFValidationReport.v1"
+    assert report["summary"]["gate_result"] == "FAIL"
+    assert {"DXF_SPLINE_NOT_SUPPORTED", "DXF_ELLIPSE_NOT_SUPPORTED"}.issubset(error_codes)
+    assert "DXF_E_SPLINE_NOT_SUPPORTED" in result.stderr
+    assert "DXF_E_ELLIPSE_NOT_SUPPORTED" in result.stderr

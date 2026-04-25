@@ -1,5 +1,4 @@
 #include "GeometryNormalizer.h"
-#include "SplineApproximation.h"
 
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/MathConstants.h"
@@ -24,7 +23,6 @@ using Siligen::ProcessPath::Contracts::Segment;
 using Siligen::ProcessPath::Contracts::SegmentEnd;
 using Siligen::ProcessPath::Contracts::SegmentStart;
 using Siligen::ProcessPath::Contracts::SegmentType;
-using Siligen::ProcessPath::Contracts::SplinePrimitive;
 using Siligen::Shared::Types::Point2D;
 
 namespace {
@@ -64,12 +62,6 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
     }
     const float32 scale = config.unit_scale;
 
-    SplineApproximation spline_approximation;
-    SplineApproximationConfig spline_config;
-    spline_config.max_step_mm = config.spline_max_step_mm;
-    spline_config.max_error_mm = config.spline_max_error_mm;
-    spline_config.min_segment_mm = 0.0f;
-
     auto append_line_segment = [&](const Point2D& start, const Point2D& end, bool is_point) {
         Segment segment;
         segment.type = SegmentType::Line;
@@ -98,19 +90,8 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
         result.report.consumable_segment_count++;
     };
 
-    auto append_spline_segments = [&](const SplinePrimitive& spline) {
-        if (!config.approximate_splines) {
-            result.report.skipped_spline_count++;
-            return;
-        }
-        auto approx_segments = spline_approximation.Approximate(spline, spline_config);
-        for (auto& seg : approx_segments) {
-            if (seg.length <= kEpsilon) {
-                continue;
-            }
-            result.path.segments.push_back(seg);
-            result.report.consumable_segment_count++;
-        }
+    auto reject_spline = [&]() {
+        result.report.skipped_spline_count++;
     };
 
     auto append_ellipse_segments = [&](const EllipsePrimitive& ellipse) {
@@ -170,11 +151,7 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
                 break;
             }
             case PrimitiveType::Spline: {
-                SplinePrimitive spline = primitive.spline;
-                for (auto& pt : spline.control_points) {
-                    pt = pt * scale;
-                }
-                append_spline_segments(spline);
+                reject_spline();
                 break;
             }
             case PrimitiveType::Circle: {

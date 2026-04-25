@@ -30,7 +30,7 @@
 |---|---|---|
 | 补充标准 | `project-chain-standard-v1.md` | 冻结项目内正式对象链、live 控制链与支撑链的统一定义与分类边界 |
 | 补充契约 | `internal_execution_contract_v_1.md` | 冻结内部执行契约与执行语义边界 |
-| 补充标准 | `dxf-input-governance-standard-v1.md` | 冻结 DXF 输入治理、质量门禁、诊断报告与拒绝/修复边界 |
+| 补充标准 | `dxf-input-governance-standard-v1.md` | 冻结 DXF 输入治理、验证报告、错误码、policy、fixture 与门禁收敛标准 |
 
 ## 3. 历史迁移映射
 

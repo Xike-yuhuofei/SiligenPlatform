@@ -542,14 +542,13 @@ void ConfigureProfileCompareRuntimeContractConfig(const std::shared_ptr<FakeConf
     config_port->SyncSystemConfig();
 }
 
-PlanningRequest BuildDemo1GatewayLikePlanningRequest() {
+PlanningRequest BuildGovernedDxfGatewayLikePlanningRequest() {
     PlanningRequest request;
     request.trajectory_config = Siligen::Shared::Types::TrajectoryConfig();
     request.trajectory_config.max_velocity = 10.0f;
     request.optimize_path = true;
     request.start_x = 0.0f;
     request.start_y = 0.0f;
-    request.approximate_splines = false;
     request.two_opt_iterations = 0;
     request.spline_max_step_mm = 0.0f;
     request.spline_max_error_mm = 0.0f;
@@ -741,7 +740,6 @@ PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "can
     request.optimize_path = true;
     request.start_x = 0.0f;
     request.start_y = 0.0f;
-    request.approximate_splines = true;
     request.two_opt_iterations = 7;
     request.spline_max_step_mm = 0.25f;
     request.spline_max_error_mm = 0.05f;
@@ -2295,11 +2293,12 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
     EXPECT_EQ(result.Value().production_baseline.baseline_fingerprint, "baseline-fingerprint");
 }
 
-TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanWithProductionLikeInputsReturnsProductionReadyContract) {
+TEST(DispensingWorkflowUseCaseTest, GovernedDxfPreparePlanWithProductionLikeInputsReturnsProductionReadyContract) {
     const auto workspace_root = ResolveWorkspaceRoot();
     ASSERT_FALSE(workspace_root.empty());
 
-    ScopedTempDxfCopy temp_demo_dxf(workspace_root / "samples" / "dxf" / "Demo-1.dxf");
+    ScopedTempDxfCopy temp_dxf(
+        workspace_root / "shared" / "contracts" / "engineering" / "fixtures" / "cases" / "rect_diag" / "rect_diag.dxf");
     auto config_port = CreateCanonicalMachineConfigPort(workspace_root);
     const auto loaded_config = config_port->LoadConfiguration();
     ASSERT_TRUE(loaded_config.IsSuccess()) << loaded_config.GetError().ToString();
@@ -2322,12 +2321,12 @@ TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanWithProductionLikeInputsRetu
         baseline_port,
         config_port);
 
-    const auto artifact_result = use_case.CreateArtifact(BuildUploadRequestFromFile(temp_demo_dxf.path()));
+    const auto artifact_result = use_case.CreateArtifact(BuildUploadRequestFromFile(temp_dxf.path()));
     ASSERT_TRUE(artifact_result.IsSuccess()) << artifact_result.GetError().ToString();
 
     PreparePlanRequest request;
     request.artifact_id = artifact_result.Value().artifact_id;
-    request.planning_request = BuildDemo1GatewayLikePlanningRequest();
+    request.planning_request = BuildGovernedDxfGatewayLikePlanningRequest();
     request.runtime_overrides = BuildDemo1ProductionValidationRuntimeOverrides();
 
     const auto result = use_case.PreparePlan(request);

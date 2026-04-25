@@ -76,7 +76,6 @@ DispensingPlanRequest BuildPlanRequest(float sample_dt, float sample_ds, float a
     request.max_jerk = 0.0f;
     request.trigger_spatial_interval_mm = 1.0f;
     request.use_interpolation_planner = false;
-    request.approximate_splines = false;
     request.spline_max_step_mm = 0.0f;
     request.spline_max_error_mm = 0.0f;
     request.optimize_path = false;

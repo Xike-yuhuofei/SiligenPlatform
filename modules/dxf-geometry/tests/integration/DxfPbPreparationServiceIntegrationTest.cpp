@@ -47,7 +47,6 @@ TEST(DxfPbPreparationServiceIntegrationTest, ResolvesWorkspaceScriptAndAppliesCo
     auto config = std::make_shared<FakeConfigurationPort>();
     config->preprocess_config.normalize_units = false;
     config->preprocess_config.densify_enabled = true;
-    config->preprocess_config.spline_samples = 8;
 
     const ScopedUnsetEnvVar unset_script("SILIGEN_DXF_PB_SCRIPT");
     const ScopedUnsetEnvVar unset_command("SILIGEN_DXF_PB_COMMAND");

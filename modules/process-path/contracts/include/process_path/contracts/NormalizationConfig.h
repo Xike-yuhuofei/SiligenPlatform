@@ -9,7 +9,6 @@ using Siligen::Shared::Types::float32;
 struct NormalizationConfig {
     float32 unit_scale = 1.0f;
     float32 continuity_tolerance = 0.1f;
-    bool approximate_splines = false;
     float32 spline_max_step_mm = 0.0f;
     float32 spline_max_error_mm = 0.0f;
 };

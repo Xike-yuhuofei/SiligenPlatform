@@ -73,7 +73,6 @@ std::string SerializeDefaults() {
     out << "dispensing.retract_enabled=" << dispensing.retract_enabled << "\n";
     out << "dispensing.trajectory_sample_dt=" << dispensing.trajectory_sample_dt << "\n";
     out << "dxf_import.normalize_units=" << preprocess.normalize_units << "\n";
-    out << "dxf_import.spline_samples=" << preprocess.spline_samples << "\n";
     out << "dxf_import.chordal=" << preprocess.chordal << "\n";
     out << "dxf_trajectory.python=" << trajectory.python << "\n";
     out << "dxf_trajectory.script=" << trajectory.script << "\n";

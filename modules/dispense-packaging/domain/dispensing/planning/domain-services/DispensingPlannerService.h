@@ -58,7 +58,6 @@ struct DispensingPlanRequest {
     bool optimize_path = false;
     float32 start_x = 0.0f;
     float32 start_y = 0.0f;
-    bool approximate_splines = false;
     int two_opt_iterations = 0;
     float32 spline_max_step_mm = 0.0f;
     float32 spline_max_error_mm = 0.0f;

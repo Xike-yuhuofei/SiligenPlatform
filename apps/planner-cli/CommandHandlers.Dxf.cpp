@@ -558,7 +558,6 @@ bool TryBuildCliPlanningRequest(
     request.optimize_path = config.optimize_path;
     request.start_x = static_cast<float32>(config.start_x);
     request.start_y = static_cast<float32>(config.start_y);
-    request.approximate_splines = config.approximate_splines;
     request.two_opt_iterations = config.two_opt_iterations;
     request.spline_max_step_mm = static_cast<float32>(config.spline_step_mm);
     request.spline_max_error_mm = static_cast<float32>(config.spline_error_mm);

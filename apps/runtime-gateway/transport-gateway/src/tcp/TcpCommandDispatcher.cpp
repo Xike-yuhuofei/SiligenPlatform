@@ -517,7 +517,6 @@ nlohmann::json BuildPreviewSignaturePayload(const std::string& filepath, const n
     payload["optimize_path"] = ReadJsonBool(params, "optimize_path", true);
     payload["start_x"] = ReadJsonDouble(params, "start_x", 0.0);
     payload["start_y"] = ReadJsonDouble(params, "start_y", 0.0);
-    payload["approximate_splines"] = ReadJsonBool(params, "approximate_splines", false);
     payload["two_opt_iterations"] = ReadJsonInt(params, "two_opt_iterations", 0);
     payload["spline_max_step_mm"] = ReadJsonDouble(params, "spline_max_step_mm", 0.0);
     payload["spline_max_error_mm"] = ReadJsonDouble(params, "spline_max_error_mm", 0.0);
@@ -574,7 +573,6 @@ Application::UseCases::Dispensing::PlanningRequest BuildPreviewPlanningRequest(
     request.optimize_path = ReadJsonBool(params, "optimize_path", true);
     request.start_x = static_cast<float32>(ReadJsonDouble(params, "start_x", 0.0));
     request.start_y = static_cast<float32>(ReadJsonDouble(params, "start_y", 0.0));
-    request.approximate_splines = ReadJsonBool(params, "approximate_splines", false);
     request.two_opt_iterations = ReadJsonInt(params, "two_opt_iterations", 0);
     request.spline_max_step_mm = static_cast<float32>(ReadJsonDouble(params, "spline_max_step_mm", 0.0));
     request.spline_max_error_mm = static_cast<float32>(ReadJsonDouble(params, "spline_max_error_mm", 0.0));
@@ -2180,6 +2178,12 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
     const std::string artifact_id = ReadJsonString(params, "artifact_id");
     if (artifact_id.empty()) {
         return GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id");
+    }
+    if (params.contains("approximate_splines")) {
+        return GatewayJsonProtocol::MakeErrorResponse(
+            id,
+            2896,
+            "Retired parameter approximate_splines is forbidden by DXF input governance v1");
     }
 
     const auto prepare_request = BuildPreparePlanRequest(artifact_id, "", params);
