@@ -81,10 +81,15 @@ self-hosted build runner 必须满足：
 - 注册到 GitHub repository 或 organization。
 - 至少具备以下 labels：
   - `self-hosted`
-  - `windows`
+  - `Windows`
+  - `X64`
   - `build`
 - 具备本仓 native 构建、测试和验证所需的固定工具链。
 - runner workspace 必须从 GitHub 远程提交 checkout 后构建，不得复用开发者本地构建目录作为通过依据。
+- active runner 根目录固定为短路径 `D:\r`。
+- active checkout workspace 固定为 `D:\r\_work\SiligenPlatform\SiligenPlatform`，workspace 根路径长度不得超过 45 个字符。
+- Windows Service 必须运行在可稳定访问 GitHub、可执行 Git/CMake/MSBuild/Python/PowerShell 的账号下。
+- 旧路径 `D:\GitHubRunners\siligen-build` 只允许作为短期回退留存，不得作为正式 active runner path。
 
 ### 4.3 Native 敏感判定
 
@@ -141,6 +146,7 @@ Native 执行入口固定为当前正式 full-offline CI gate：
 - 手工上传 artifact 作为 required check 通过依据。
 - 缺失 runner 时自动降级为 `not required`。
 - 缺失报告时自动放行。
+- checkout 失败时自动跳过 native gate。
 
 ### 4.5 并发
 

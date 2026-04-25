@@ -34,6 +34,7 @@
 - `layered-test-matrix.md`
 - `online-test-matrix-v1.md`
 - `pr-gate-and-hil-gate-policy.md`
+- `self-hosted-build-runner-runbook.md`
 - `release-test-checklist.md`
 - `dispense-trajectory-preview-real-acceptance-checklist.md`
 - `dxf-real-dispense-multi-cycle-template-v1.md`
