@@ -15,6 +15,7 @@
 #include "domain-services/TrajectoryPlanner.h"  // 必须包含完整定义以使用 unique_ptr
 #include "domain-services/TriggerCalculator.h"  // 必须包含完整定义以使用 unique_ptr
 #include "domain-services/TimeTrajectoryPlanner.h"
+#include "domain-services/TriggerTimelineSort.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <algorithm>
@@ -317,19 +318,7 @@ std::vector<TrajectoryPoint> CMPCoordinatedInterpolator::HybridTriggerDispensing
     }
 
     // 按时间排序
-    std::vector<size_t> indices(hybrid_timeline.trigger_times.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&hybrid_timeline](size_t i, size_t j) {
-        return hybrid_timeline.trigger_times[i] < hybrid_timeline.trigger_times[j];
-    });
-
-    TriggerTimeline sorted_timeline;
-    for (size_t idx : indices) {
-        sorted_timeline.trigger_times.push_back(hybrid_timeline.trigger_times[idx]);
-        sorted_timeline.trigger_positions.push_back(hybrid_timeline.trigger_positions[idx]);
-        sorted_timeline.pulse_widths.push_back(hybrid_timeline.pulse_widths[idx]);
-        sorted_timeline.cmp_channels.push_back(hybrid_timeline.cmp_channels[idx]);
-    }
+    auto sorted_timeline = SortTimelineByTime(hybrid_timeline);
 
     return GenerateCMPCoordinatedTrajectory(base_trajectory, sorted_timeline, cmp_config);
 }
@@ -467,12 +456,6 @@ std::vector<float32> CMPCoordinatedInterpolator::AnalyzeTriggerAccuracy(const st
                                                                         const TriggerTimeline& timeline,
                                                                         const CMPConfiguration& cmp_config) const {
     return m_trajectory_generator->AnalyzeTriggerAccuracy(trajectory, timeline, cmp_config);
-}
-
-CMPConfiguration CMPCoordinatedInterpolator::AdjustTriggerParameters(float32 current_accuracy,
-                                                                     float32 target_accuracy,
-                                                                     const CMPConfiguration& cmp_config) const {
-    return m_compensation->AdjustTriggerParameters(current_accuracy, target_accuracy, cmp_config);
 }
 
 // Private helper functions removed - now use m_trigger_calculator

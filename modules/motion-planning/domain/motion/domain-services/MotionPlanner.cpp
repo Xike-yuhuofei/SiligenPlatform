@@ -438,6 +438,35 @@ std::vector<float32> ApplyJerkLimitedScan(const std::vector<float32>& v_in,
     return v_out;
 }
 
+constexpr int32 kMaxJerkIterations = 10;
+constexpr float32 kJerkConvergenceEpsilon = 1e-6f;
+
+std::vector<float32> ApplyJerkLimitedScanIterative(
+    const std::vector<float32>& v_in,
+    const std::vector<float32>& s_samples,
+    const std::vector<float32>& v_limits,
+    float32 amax,
+    float32 jmax) {
+    std::vector<float32> v = v_in;
+    for (int32 iter = 0; iter < kMaxJerkIterations; ++iter) {
+        int32 corrections = 0;
+        auto v_fwd = ApplyJerkLimitedScan(v, s_samples, v_limits, amax, jmax, true, corrections);
+        auto v_bwd = ApplyJerkLimitedScan(v_fwd, s_samples, v_limits, amax, jmax, false, corrections);
+
+        float32 max_diff = 0.0f;
+        for (size_t i = 0; i < v.size(); ++i) {
+            float32 diff = std::abs(v_bwd[i] - v[i]);
+            max_diff = std::max(max_diff, diff);
+        }
+        v = std::move(v_bwd);
+
+        if (max_diff < kJerkConvergenceEpsilon) {
+            break;
+        }
+    }
+    return v;
+}
+
 }  // namespace
 
 MotionPlanner::MotionPlanner(std::shared_ptr<VelocityProfileService> velocity_service)
@@ -533,12 +562,7 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
     }
 
     if (jerk_enforced) {
-        int32 jerk_corrections = 0;
-        auto v_forward = ApplyJerkLimitedScan(v_profile, s_samples, v_limits, amax, effective_jmax, true, jerk_corrections);
-        auto v_backward = ApplyJerkLimitedScan(v_forward, s_samples, v_limits, amax, effective_jmax, false, jerk_corrections);
-        for (size_t i = 0; i < sample_count; ++i) {
-            v_profile[i] = std::min(v_forward[i], v_backward[i]);
-        }
+        v_profile = ApplyJerkLimitedScanIterative(v_profile, s_samples, v_limits, amax, effective_jmax);
         if (!v_profile.empty()) {
             v_profile.front() = 0.0f;
             v_profile.back() = 0.0f;
@@ -546,7 +570,6 @@ MotionPlan MotionPlanner::Plan(const ProcessPath& path, const TimePlanningConfig
         for (size_t i = 0; i < sample_count; ++i) {
             v_profile[i] = std::min(v_profile[i], v_limits[i]);
         }
-        static_cast<void>(jerk_corrections);
     }
 
     std::vector<float32> t_samples(sample_count, 0.0f);

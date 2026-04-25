@@ -32,23 +32,19 @@ endif()
 
 add_library(siligen_motion STATIC
     domain-services/MotionPlanner.cpp
+    domain-services/s_curve/SCurveProfileMath.cpp
     domain-services/interpolation/TrajectoryInterpolatorBase.cpp
     domain-services/interpolation/LinearInterpolator.cpp
     domain-services/interpolation/ArcInterpolator.cpp
     domain-services/interpolation/ArcGeometryMath.cpp
-    domain-services/interpolation/SplineInterpolator.cpp
-    domain-services/interpolation/SplineGeometryMath.cpp
     domain-services/interpolation/InterpolationCommandValidator.cpp
     domain-services/interpolation/InterpolationProgramPlanner.cpp
     domain-services/GeometryBlender.cpp
-    domain-services/SpeedPlanner.cpp
     domain-services/TrajectoryPlanner.cpp
     domain-services/TriggerCalculator.cpp
     domain-services/TimeTrajectoryPlanner.cpp
     domain-services/VelocityProfileService.cpp
     domain-services/SevenSegmentSCurveProfile.cpp
-    BSplineCalculator.cpp
-    BezierCalculator.cpp
     CircleCalculator.cpp
     CMPValidator.cpp
     CMPCompensation.cpp
@@ -62,6 +58,7 @@ target_include_directories(siligen_motion PRIVATE
     ${MOTION_PLANNING_MODULE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/domain-services
+    ${CMAKE_CURRENT_SOURCE_DIR}/domain-services/s_curve
     ${CMAKE_CURRENT_SOURCE_DIR}/domain-services/interpolation
 )
 

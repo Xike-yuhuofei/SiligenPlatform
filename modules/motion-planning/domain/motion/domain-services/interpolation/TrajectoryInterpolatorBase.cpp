@@ -3,7 +3,6 @@
 
 #include "ArcInterpolator.h"
 #include "LinearInterpolator.h"
-#include "SplineInterpolator.h"
 #include "domain/motion/CMPCoordinatedInterpolator.h"
 
 #include "shared/interfaces/ILoggingService.h"
@@ -112,65 +111,6 @@ float32 TrajectoryInterpolatorBase::CalculateCurvature(const Point2D& p1, const 
     return chord < 1e-10 ? 0 : static_cast<float32>(2.0 * std::abs(sin_angle) / chord);
 }
 
-std::vector<float32> TrajectoryInterpolatorBase::GenerateSShapeVelocityProfile(
-    float32 distance, float32 max_vel, float32 max_acc, float32 max_jerk, float32 time_step) const {
-    std::vector<float32> profile;
-    if (distance <= 0 || max_vel <= 0 || max_acc <= 0 || max_jerk <= 0) return profile;
-
-    float32 t_acc = max_acc / max_jerk;
-    float32 v_lim = std::min(max_vel, max_acc * max_acc / max_jerk);
-    float32 s_tri = v_lim * v_lim / max_acc;
-    bool reach_max = distance > s_tri;
-
-    float32 t1, t2, t3, t4, t5, t6, t7, v1, v2, v3;
-    if (reach_max) {
-        t1 = t3 = t5 = t7 = t_acc;
-        t2 = t6 = v_lim / max_acc - t_acc;
-        float32 s_acc = v_lim * (t_acc + t_acc / 2);
-        t4 = (distance - 2 * s_acc) / v_lim;
-        v1 = v3 = max_acc * t_acc;
-        v2 = v_lim;
-    } else {
-        float32 vp = std::sqrt(distance * max_jerk);
-        t1 = t3 = t5 = t7 = vp / max_jerk;
-        t2 = t4 = t6 = 0;
-        v1 = v2 = v3 = vp;
-    }
-
-    float32 total = t1 + t2 + t3 + t4 + t5 + t6 + t7;
-    for (float32 t = 0; t <= total; t += time_step) {
-        float32 vel = 0;
-        float32 T[] = {0,
-                       t1,
-                       t1 + t2,
-                       t1 + t2 + t3,
-                       t1 + t2 + t3 + t4,
-                       t1 + t2 + t3 + t4 + t5,
-                       t1 + t2 + t3 + t4 + t5 + t6,
-                       total};
-        if (t <= T[1])
-            vel = 0.5f * max_jerk * t * t;
-        else if (t <= T[2])
-            vel = v1 + max_acc * (t - T[1]);
-        else if (t <= T[3]) {
-            float32 tl = t - T[2];
-            vel = v2 + max_acc * tl - 0.5f * max_jerk * tl * tl;
-        } else if (t <= T[4])
-            vel = v3;
-        else if (t <= T[5]) {
-            float32 tl = t - T[4];
-            vel = v3 - 0.5f * max_jerk * tl * tl;
-        } else if (t <= T[6])
-            vel = v3 - max_acc * (t - T[5]);
-        else {
-            float32 tl = t - T[6];
-            vel = v1 - max_acc * tl + 0.5f * max_jerk * tl * tl;
-        }
-        profile.push_back(std::clamp(vel, 0.0f, max_vel));
-    }
-    return profile;
-}
-
 std::unique_ptr<TrajectoryInterpolatorBase> TrajectoryInterpolatorFactory::CreateInterpolator(
     InterpolationAlgorithm type) {
     switch (type) {
@@ -178,8 +118,6 @@ std::unique_ptr<TrajectoryInterpolatorBase> TrajectoryInterpolatorFactory::Creat
             return std::make_unique<LinearInterpolator>();
         case InterpolationAlgorithm::ARC:
             return std::make_unique<ArcInterpolator>();
-        case InterpolationAlgorithm::SPLINE:
-            return std::make_unique<SplineInterpolator>();
         case InterpolationAlgorithm::CMP_COORDINATED:
             return std::make_unique<CMPCoordinatedInterpolator>();
         default:
@@ -191,7 +129,6 @@ std::vector<InterpolationAlgorithm> TrajectoryInterpolatorFactory::GetSupportedA
     return {
         InterpolationAlgorithm::LINEAR,
         InterpolationAlgorithm::ARC,
-        InterpolationAlgorithm::SPLINE,
         InterpolationAlgorithm::CMP_COORDINATED,
     };
 }
