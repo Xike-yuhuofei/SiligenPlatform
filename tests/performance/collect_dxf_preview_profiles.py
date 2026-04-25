@@ -63,13 +63,13 @@ def gateway_executable_candidates(
         explicit_build_root=os.getenv("SILIGEN_CONTROL_APPS_BUILD_ROOT"),
     )
     prioritized_roots: list[Path] = []
-    seen_roots: set[Path] = set()
+    seen_roots: set[str] = set()
     for root in (control_apps_build_root, *discovered_roots):
-        resolved_root = root.resolve()
-        if resolved_root in seen_roots:
+        normalized_root = os.path.normcase(os.path.abspath(os.fspath(root)))
+        if normalized_root in seen_roots:
             continue
-        seen_roots.add(resolved_root)
-        prioritized_roots.append(resolved_root)
+        seen_roots.add(normalized_root)
+        prioritized_roots.append(root)
 
     build_root_candidates: list[Path] = []
     for root in prioritized_roots:

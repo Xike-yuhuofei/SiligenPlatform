@@ -537,7 +537,7 @@ def build_cases(
 
     cases: list[ValidationCase] = []
 
-    static_report_dir = (WORKSPACE_ROOT / "tests" / "reports" / "static").resolve()
+    static_report_dir = (resolved_report_dir / "static").resolve()
     cases.extend(
         [
             ValidationCase(
@@ -894,8 +894,11 @@ def build_cases(
                         "-TimeoutMs",
                         "45000",
                         "-ExerciseRuntimeActions",
+                        "-DxfBrowsePath",
+                        str(WORKSPACE_ROOT / "samples" / "dxf" / "rect_diag.dxf"),
                     ),
                     cwd=WORKSPACE_ROOT,
+                    required_assets=("sample.dxf.rect_diag",),
                 ),
             ]
         )

@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 function Get-WorkspacePythonCommand {
     $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
     if ($null -eq $pythonCommand) {
-        throw "未找到 python 命令。请先安装 Python 3.11+。"
+        throw "python command not found. Install Python 3.11+ before running validation."
     }
 
     return $pythonCommand.Source
@@ -14,7 +14,7 @@ function Get-WorkspacePythonUserScriptsDirectory {
     $userBase = (& $pythonCommand -c "import site; print(site.USER_BASE)").Trim()
     $versionTag = (& $pythonCommand -c "import sys; print(f'Python{sys.version_info.major}{sys.version_info.minor}')").Trim()
     if ([string]::IsNullOrWhiteSpace($userBase) -or [string]::IsNullOrWhiteSpace($versionTag)) {
-        throw "无法解析 Python user scripts 目录。"
+        throw "Unable to resolve Python user scripts directory."
     }
 
     return Join-Path $userBase "$versionTag\Scripts"
@@ -45,7 +45,7 @@ function Resolve-WorkspaceToolPath {
     }
 
     if ($Required) {
-        throw "未找到工具: $($ToolNames -join ', ')。请先运行 .\\scripts\\validation\\install-python-deps.ps1 或安装对应工具。"
+        throw "Required tool not found: $($ToolNames -join ', '). Run .\\scripts\\validation\\install-python-deps.ps1 or install the corresponding tool."
     }
 
     return $null

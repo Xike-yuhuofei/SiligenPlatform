@@ -158,6 +158,8 @@ class LaunchSupervisionFlow:
                 backend_state="failed",
                 tcp_state="failed",
                 hardware_state="failed",
+                runtime_contract_verified=False,
+                runtime_identity=None,
                 snapshot_callback=snapshot_callback,
                 event_callback=event_callback,
                 session_id=session_id,

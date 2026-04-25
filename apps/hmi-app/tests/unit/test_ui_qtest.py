@@ -41,7 +41,7 @@ def _operator_context(**overrides: object) -> dict[str, object]:
 
 
 def _make_export_runner(context: dict[str, object]) -> GuiContractRunner:
-    runner = object.__new__(GuiContractRunner)
+    runner = cast(Any, object.__new__(GuiContractRunner))
     runner.failed = False
     runner.timed_out = False
     runner.timeout_ms = 1000
@@ -51,7 +51,7 @@ def _make_export_runner(context: dict[str, object]) -> GuiContractRunner:
         _preview_gate=SimpleNamespace(last_error_message="", state="ready"),
     )
     runner._switch_to_production_tab = lambda: None
-    runner._click_button = lambda _testid: None
+    runner._click_button = lambda testid: None
     runner._wait_for = lambda *_args, **_kwargs: True
     runner._status_message = lambda: ""
     runner._capture_screenshot = lambda *_args, **_kwargs: None
@@ -210,19 +210,20 @@ class _ExclusiveWindowRunner(GuiContractRunner):
             preview_state_resync_pending=bool(context.get("preview_resync_pending", False)),
             preview_refresh_inflight=bool(context.get("preview_refresh_inflight", False)),
         )
-        self.window._preview_session = SimpleNamespace(state=preview_state)
-        self.window._target_count = int(context.get("target_count", 0) or 0)
+        window = cast(Any, self.window)
+        window._preview_session = SimpleNamespace(state=preview_state)
+        window._target_count = int(cast(Any, context.get("target_count", 0) or 0))
         completed_count = str(context.get("completed_count", "0/0")).replace(" ", "").split("/")[0]
-        self.window._completed_count = int(completed_count or 0)
-        self.window._current_job_id = str(context.get("job_id", "") or "")
-        self.window._global_progress = _ValueBox(int(context.get("global_progress_percent", 0) or 0))
-        self.window._operation_status = _TextBox(str(context.get("current_operation", "") or ""))
+        window._completed_count = int(completed_count or 0)
+        window._current_job_id = str(context.get("job_id", "") or "")
+        window._global_progress = _ValueBox(int(cast(Any, context.get("global_progress_percent", 0) or 0)))
+        window._operation_status = _TextBox(str(context.get("current_operation", "") or ""))
         self.sync_calls = 0
 
         def _sync_preview_state_from_runtime() -> None:
             self.sync_calls += 1
 
-        self.window._sync_preview_state_from_runtime = _sync_preview_state_from_runtime
+        window._sync_preview_state_from_runtime = _sync_preview_state_from_runtime
 
     def _emit_operator_exclusive_window(self, *, kind: str, state: str) -> None:
         self.emitted_windows.append((kind, state))
