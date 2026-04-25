@@ -32,6 +32,51 @@
 
 ## 3. 仓内必跑门禁
 
+### 3.1 推送门禁
+
+`git push` 与发布不是同一语义：push 只是把提交同步到远程分支，不等于版本可发布。
+
+本仓库支持安装本地 `pre-push` 硬门禁，使每次推送远程前先验证当前提交：
+
+```powershell
+Set-Location <repo-root>
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\install-pre-push-gate.ps1
+```
+
+安装后，`git push` 会调用：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\invoke-pre-push-gate.ps1
+```
+
+默认策略：
+
+1. 工作树必须干净，确保验证对象就是即将推送的提交。
+2. 不允许 unresolved conflict。
+3. 执行 `ci.ps1 -Suite all -Lane full-offline-gate -RiskProfile high -DesiredDepth full-offline`。
+4. 证据写入 `tests\reports\pre-push-gate\<timestamp>-<remote>\`。
+
+说明：本地 `pre-push` 能阻止当前机器发起的 push，但不能替代远程服务端策略。若要阻止绕过本地 hook 的推送，必须在远程仓库启用受保护分支、required checks，或在自托管 Git 服务端启用 pre-receive hook。
+
+### 3.2 PR 合并门禁
+
+合并到 `main` 前的远程硬门禁由 GitHub Actions + branch protection 执行。
+
+PR 入口：
+
+- `.github/workflows/strict-pr-gate.yml`
+- check 名称：`Strict PR Gate`
+
+该 check 在 `pull_request` 与 `merge_group` 上执行：
+
+```powershell
+.\ci.ps1 -Suite all -ReportDir tests\reports\github-actions\strict-pr-gate -Lane full-offline-gate -RiskProfile high -DesiredDepth full-offline
+```
+
+仓库的 `main` 分支保护必须将 `Strict PR Gate` 配置为 required status check。未通过该 check 的 PR 不得合并。
+
+### 3.3 发布门禁
+
 发布前默认门禁入口（本地）：
 
 ```powershell
