@@ -67,13 +67,18 @@ PR 入口：
 - `.github/workflows/strict-pr-gate.yml`
 - check 名称：`Strict PR Gate`
 
-该 check 在 `pull_request` 与 `merge_group` 上执行：
+该 check 在 `pull_request` 与 `merge_group` 上执行快速托管基线：
 
 ```powershell
-.\ci.ps1 -Suite all -ReportDir tests\reports\github-actions\strict-pr-gate -Lane full-offline-gate -RiskProfile high -DesiredDepth full-offline
+.\scripts\validation\assert-hmi-formal-gateway-launch-contract.ps1
+.\legacy-exit-check.ps1 -Profile CI -ReportDir tests\reports\github-actions\strict-pr-gate\legacy-exit
+.\scripts\validation\invoke-semgrep.ps1 -ReportDir tests\reports\github-actions\strict-pr-gate\semgrep
+.\scripts\validation\invoke-import-linter.ps1 -ReportDir tests\reports\github-actions\strict-pr-gate\import-linter
 ```
 
 仓库的 `main` 分支保护必须将 `Strict PR Gate` 配置为 required status check。未通过该 check 的 PR 不得合并。
+
+native 敏感 PR 还必须通过 `Strict Native Gate`。该 check 由 self-hosted Windows build runner 执行完整 full-offline 构建测试；非 native 敏感 PR 只能由 workflow classifier 明确判定为 `not required` 后通过。
 
 硬件敏感 PR 还必须通过 `Strict HIL Gate`。该 check 由 self-hosted Windows HIL runner 执行真实受控 HIL；非硬件敏感 PR 只能由 workflow classifier 明确判定为 `not required` 后通过。具体策略以 `docs/validation/pr-gate-and-hil-gate-policy.md` 为准。
 
@@ -137,9 +142,9 @@ Set-Location <repo-root>
 
 说明：
 
-- 仓库已弃用 GitHub Actions 作为默认门禁，不再要求云端 checks 才能给出发布结论。
-- 验收以本地门禁实跑证据为准。
-- `release-check.ps1` 只能证明仓内自动化门禁通过，不替代仓外观察、HIL 与真机门禁。
+- GitHub Actions required checks 是 PR 合并到 `main` 前的远程硬门禁。
+- release gate 是版本发布前的 Go/No-Go 门禁，必须基于发布环境实跑证据给出结论。
+- `release-check.ps1` 只能证明仓内发布自动化门禁通过，不替代仓外观察、HIL 与真机门禁。
 - `hil-case-matrix` 现在是默认 release 自动化证据的一部分；若显式使用 `-IncludeHilCaseMatrix:$false`，该结果只可用于临时隔离排障，不应作为默认放行口径。
 
 ## 4. 正式发布前的附加硬门禁

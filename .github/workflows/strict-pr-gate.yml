@@ -20,7 +20,7 @@ jobs:
   strict-pr-gate:
     name: Strict PR Gate
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -31,15 +31,29 @@ jobs:
         run: |
           .\scripts\validation\install-python-deps.ps1
 
-      - name: Run strict CI gate
+      - name: Assert HMI formal gateway launch contract
         shell: pwsh
         run: |
-          .\ci.ps1 `
-            -Suite all `
-            -ReportDir tests\reports\github-actions\strict-pr-gate `
-            -Lane full-offline-gate `
-            -RiskProfile high `
-            -DesiredDepth full-offline
+          .\scripts\validation\assert-hmi-formal-gateway-launch-contract.ps1
+
+      - name: Run legacy exit gate
+        shell: pwsh
+        run: |
+          .\legacy-exit-check.ps1 `
+            -Profile CI `
+            -ReportDir tests\reports\github-actions\strict-pr-gate\legacy-exit
+
+      - name: Run Semgrep architecture gate
+        shell: pwsh
+        run: |
+          .\scripts\validation\invoke-semgrep.ps1 `
+            -ReportDir tests\reports\github-actions\strict-pr-gate\semgrep
+
+      - name: Run Import Linter gate
+        shell: pwsh
+        run: |
+          .\scripts\validation\invoke-import-linter.ps1 `
+            -ReportDir tests\reports\github-actions\strict-pr-gate\import-linter
 
       - name: Upload strict gate evidence
         if: always()
@@ -47,4 +61,4 @@ jobs:
         with:
           name: strict-pr-gate-evidence
           path: tests/reports/github-actions/strict-pr-gate
-          if-no-files-found: warn
+          if-no-files-found: error

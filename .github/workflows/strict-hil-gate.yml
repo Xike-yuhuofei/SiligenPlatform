@@ -61,6 +61,7 @@ jobs:
           }
 
           $hardwarePatterns = @(
+            '^\.github/workflows/strict-hil-gate\.yml$',
             '^apps/runtime-service/',
             '^apps/runtime-gateway/',
             '^modules/runtime-execution/',
