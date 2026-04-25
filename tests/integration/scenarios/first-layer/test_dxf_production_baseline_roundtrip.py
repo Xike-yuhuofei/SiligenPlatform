@@ -148,6 +148,8 @@ def test_dxf_prepare_and_start_return_runtime_owned_production_baseline() -> Non
         plan_fingerprint = str(plan_result.get("plan_fingerprint", "")).strip()
         assert plan_id, truncate_json(plan_response)
         assert plan_fingerprint, truncate_json(plan_response)
+        assert plan_result["path_quality"]["blocking"] is False, truncate_json(plan_response)
+        assert plan_result["path_quality"]["verdict"] == "pass", truncate_json(plan_response)
         plan_baseline = production_baseline_metadata(plan_result, source="dxf.plan.prepare")
 
         snapshot_response = client.send_request(
@@ -159,6 +161,8 @@ def test_dxf_prepare_and_start_return_runtime_owned_production_baseline() -> Non
         snapshot_result = status_result(snapshot_response)
         snapshot_hash = str(snapshot_result.get("snapshot_hash", "")).strip()
         assert snapshot_hash, truncate_json(snapshot_response)
+        assert snapshot_result["path_quality"]["blocking"] is False, truncate_json(snapshot_response)
+        assert snapshot_result["path_quality"]["verdict"] == "pass", truncate_json(snapshot_response)
 
         confirm_response = client.send_request(
             "dxf.preview.confirm",

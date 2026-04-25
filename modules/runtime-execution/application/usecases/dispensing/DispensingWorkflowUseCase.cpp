@@ -98,6 +98,95 @@ std::optional<std::string> ValidatePreviewBindingPayload(
     return std::nullopt;
 }
 
+bool HasPathQualityReasonCode(
+    const Siligen::Shared::Types::PathQualityAssessment& assessment,
+    const std::string_view reason_code) {
+    return std::find(
+               assessment.reason_codes.begin(),
+               assessment.reason_codes.end(),
+               reason_code) != assessment.reason_codes.end();
+}
+
+std::string JoinPathQualityReasonCodes(const std::vector<std::string>& reason_codes) {
+    std::ostringstream oss;
+    for (std::size_t index = 0; index < reason_codes.size(); ++index) {
+        if (index > 0U) {
+            oss << ", ";
+        }
+        oss << reason_codes[index];
+    }
+    return oss.str();
+}
+
+std::size_t CountShortSegmentExceptions(
+    const std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup>& groups) {
+    return static_cast<std::size_t>(std::count_if(
+        groups.begin(),
+        groups.end(),
+        [](const auto& group) { return group.short_segment_exception; }));
+}
+
+bool IsAllowlistedPathQualityExceptionReason(const std::string_view /*exception_reason*/) {
+    return false;
+}
+
+bool IsLineBacktrackCandidate(
+    const Siligen::ProcessPath::Contracts::ProcessSegment& segment) {
+    return segment.dispense_on &&
+           segment.geometry.type == Siligen::ProcessPath::Contracts::SegmentType::Line &&
+           !segment.geometry.is_point;
+}
+
+bool DetectSmallBacktrack(
+    const Siligen::ProcessPath::Contracts::ProcessPath& process_path,
+    const Siligen::Shared::Types::PathQualityThresholds& thresholds) {
+    constexpr float32 kVectorEpsilon = 1e-4f;
+    const auto& segments = process_path.segments;
+    if (segments.size() < 3U) {
+        return false;
+    }
+
+    for (std::size_t index = 1; index + 1 < segments.size(); ++index) {
+        const auto& previous = segments[index - 1U];
+        const auto& current = segments[index];
+        const auto& next = segments[index + 1U];
+        if (!IsLineBacktrackCandidate(previous) ||
+            !IsLineBacktrackCandidate(current) ||
+            !IsLineBacktrackCandidate(next)) {
+            continue;
+        }
+
+        const auto previous_vector =
+            previous.geometry.line.end - previous.geometry.line.start;
+        const auto current_vector =
+            current.geometry.line.end - current.geometry.line.start;
+        const auto next_vector =
+            next.geometry.line.end - next.geometry.line.start;
+        const auto previous_length = previous_vector.Length();
+        const auto current_length = current_vector.Length();
+        const auto next_length = next_vector.Length();
+        if (previous_length <= kVectorEpsilon ||
+            current_length <= kVectorEpsilon ||
+            next_length <= kVectorEpsilon) {
+            continue;
+        }
+        if (current_length > thresholds.small_backtrack_leg_max_mm) {
+            continue;
+        }
+
+        const auto cosine_previous_current =
+            previous_vector.Dot(current_vector) / (previous_length * current_length);
+        const auto cosine_previous_next =
+            previous_vector.Dot(next_vector) / (previous_length * next_length);
+        if (cosine_previous_current <= thresholds.small_backtrack_cosine_threshold &&
+            cosine_previous_next >= std::abs(thresholds.small_backtrack_cosine_threshold)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 }  // namespace
 
 const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated*
@@ -295,6 +384,8 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     record.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
     record.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
     record.preview_diagnostic_code = authority_preview.preview_diagnostic_code;
+    record.spacing_validation_groups = authority_preview.artifacts.spacing_validation_groups;
+    record.path_quality.reset();
     record.preview_state = PlanPreviewState::PREPARED;
     record.preview_estimated_time_s = authority_preview.artifacts.estimated_time;
     record.latest = true;
@@ -355,6 +446,8 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
             reusable->preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
             reusable->preview_diagnostic_code = authority_preview.preview_diagnostic_code;
+            reusable->spacing_validation_groups = authority_preview.artifacts.spacing_validation_groups;
+            reusable->path_quality.reset();
             reusable->preview_estimated_time_s = authority_preview.artifacts.estimated_time;
             reusable->glue_points = authority_preview.artifacts.glue_points;
             reusable->execution_trajectory_points = authority_preview.artifacts.preview_trajectory_points;
@@ -504,7 +597,14 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         std::lock_guard<std::mutex> lock(plans_mutex_);
         auto it = plans_.find(request.plan_id);
         if (it != plans_.end() && it->second.latest) {
+            RefreshResponseExecutionContract(it->second);
+            RefreshPathQualityAssessment(it->second);
             RefreshPlanImportDiagnostics(it->second);
+            if (const auto path_quality_failure = ResolvePathQualityGateFailure(it->second);
+                !path_quality_failure.empty()) {
+                return Result<StartJobResponse>::Failure(
+                    Error(ErrorCode::INVALID_STATE, path_quality_failure, "DispensingWorkflowUseCase"));
+            }
             if (!it->second.response.import_diagnostics.production_ready) {
                 const std::string detail = it->second.response.import_diagnostics.summary.empty()
                     ? "DXF import is not production-ready"
@@ -706,6 +806,9 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.exception_reason = plan_record.preview_exception_reason;
     input.failure_reason = plan_record.preview_failure_reason;
     input.diagnostic_code = plan_record.preview_diagnostic_code;
+    input.path_quality = plan_record.path_quality.has_value()
+        ? &plan_record.path_quality.value()
+        : &plan_record.response.path_quality;
 
     Siligen::Application::Services::Dispensing::PreviewSnapshotService snapshot_service;
     return snapshot_service.BuildResponse(input, max_polyline_points, max_glue_points);
@@ -1016,7 +1119,13 @@ Result<DispensingWorkflowUseCase::ExecutionAssemblyResolveResult> DispensingWork
     it->second.execution_contract_ready = assembly.execution_contract_ready;
     it->second.execution_failure_reason = assembly.execution_failure_reason;
     it->second.execution_diagnostic_code = assembly.execution_diagnostic_code;
-    it->second.preview_failure_reason = it->second.execution_launch.authority_preview.artifacts.preview_failure_reason;
+    if (!it->second.execution_launch.authority_preview.artifacts.preview_failure_reason.empty()) {
+        it->second.preview_failure_reason =
+            it->second.execution_launch.authority_preview.artifacts.preview_failure_reason;
+    }
+    RefreshResponseExecutionContract(it->second);
+    RefreshPathQualityAssessment(it->second);
+    RefreshPlanImportDiagnostics(it->second);
     std::ostringstream oss;
     oss << "workflow_execution_assembly_profile"
         << " plan_id=" << plan_id
@@ -1200,6 +1309,11 @@ Result<DispensingWorkflowUseCase::PlanExecutionLaunch> DispensingWorkflowUseCase
             it->second, false, require_execution_binding); preview_gate_error.has_value()) {
         return Result<PlanExecutionLaunch>::Failure(preview_gate_error.value());
     }
+    if (const auto path_quality_failure = ResolvePathQualityGateFailure(it->second);
+        !path_quality_failure.empty()) {
+        return Result<PlanExecutionLaunch>::Failure(
+            Error(ErrorCode::INVALID_STATE, path_quality_failure, "DispensingWorkflowUseCase"));
+    }
     if (it->second.preview_snapshot_hash != it->second.response.plan_fingerprint) {
         return Result<PlanExecutionLaunch>::Failure(
             Error(ErrorCode::INVALID_STATE, "preview fingerprint mismatch", "DispensingWorkflowUseCase"));
@@ -1295,10 +1409,9 @@ std::string DispensingWorkflowUseCase::ResolveProductionGateFailure(const PlanRe
     if (!preview_gate.owner_message.empty()) {
         return preview_gate.owner_message;
     }
-    if (plan_record.execution_assembly.formal_compare_gate.IsProductionBlocked()) {
-        return plan_record.execution_failure_reason.empty()
-            ? "owner execution package is not production-ready"
-            : plan_record.execution_failure_reason;
+    const auto path_quality_failure = ResolvePathQualityGateFailure(plan_record);
+    if (!path_quality_failure.empty()) {
+        return path_quality_failure;
     }
     if (!plan_record.execution_authority_shared_with_execution) {
         return "preview authority is not shared with execution";
@@ -1539,7 +1652,92 @@ Result<std::shared_ptr<const ProfileCompareExpectedTrace>> DispensingWorkflowUse
     return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Success(trace);
 }
 
+void DispensingWorkflowUseCase::RefreshPathQualityAssessment(PlanRecord& plan_record) const {
+    using Siligen::Shared::Types::AppendPathQualityReasonCode;
+    using Siligen::Shared::Types::PathQualityAssessment;
+    using Siligen::Shared::Types::PathQualityVerdict;
+    using Siligen::Shared::Types::kDefaultPathQualityThresholds;
+    using Siligen::Shared::Types::kPathQualityReasonAbnormalShortSegment;
+    using Siligen::Shared::Types::kPathQualityReasonFormalCompareBlocked;
+    using Siligen::Shared::Types::kPathQualityReasonMicroSegmentBurst;
+    using Siligen::Shared::Types::kPathQualityReasonPathDiscontinuity;
+    using Siligen::Shared::Types::kPathQualityReasonProcessPathFragmentation;
+    using Siligen::Shared::Types::kPathQualityReasonSmallBacktrack;
+    using Siligen::Shared::Types::kPathQualityReasonSpacingInvalid;
+    using Siligen::Shared::Types::kPathQualityReasonUnclassifiedPathException;
+
+    PathQualityAssessment assessment;
+    bool has_hard_failure = false;
+
+    if (plan_record.preview_diagnostic_code == kPathQualityReasonProcessPathFragmentation) {
+        AppendPathQualityReasonCode(assessment, kPathQualityReasonProcessPathFragmentation);
+        has_hard_failure = true;
+    }
+
+    if (plan_record.execution_launch.authority_preview.discontinuity_count > 0) {
+        AppendPathQualityReasonCode(assessment, kPathQualityReasonPathDiscontinuity);
+        has_hard_failure = true;
+    }
+
+    const auto short_segment_exception_count =
+        CountShortSegmentExceptions(plan_record.spacing_validation_groups);
+    const auto spacing_group_count = plan_record.spacing_validation_groups.size();
+    const bool has_short_segment_exception =
+        plan_record.preview_has_short_segment_exceptions || short_segment_exception_count > 0U;
+    if (has_short_segment_exception) {
+        AppendPathQualityReasonCode(assessment, kPathQualityReasonAbnormalShortSegment);
+        has_hard_failure = true;
+    }
+    if (short_segment_exception_count >= kDefaultPathQualityThresholds.max_micro_segment_count &&
+        spacing_group_count > 0U) {
+        const auto micro_segment_ratio = static_cast<float32>(short_segment_exception_count) /
+            static_cast<float32>(spacing_group_count);
+        if (micro_segment_ratio >= kDefaultPathQualityThresholds.max_micro_segment_ratio) {
+            AppendPathQualityReasonCode(assessment, kPathQualityReasonMicroSegmentBurst);
+            has_hard_failure = true;
+        }
+    }
+
+    if (DetectSmallBacktrack(
+            plan_record.execution_launch.authority_preview.canonical_execution_process_path,
+            kDefaultPathQualityThresholds)) {
+        AppendPathQualityReasonCode(assessment, kPathQualityReasonSmallBacktrack);
+        has_hard_failure = true;
+    }
+
+    if (!plan_record.preview_spacing_valid ||
+        plan_record.preview_validation_classification == "fail") {
+        AppendPathQualityReasonCode(assessment, kPathQualityReasonSpacingInvalid);
+        has_hard_failure = true;
+    }
+
+    if (plan_record.execution_assembly.formal_compare_gate.IsProductionBlocked()) {
+        AppendPathQualityReasonCode(assessment, kPathQualityReasonFormalCompareBlocked);
+        has_hard_failure = true;
+    }
+
+    if (plan_record.preview_validation_classification == "pass_with_exception" &&
+        !has_short_segment_exception &&
+        !IsAllowlistedPathQualityExceptionReason(plan_record.preview_exception_reason)) {
+        AppendPathQualityReasonCode(assessment, kPathQualityReasonUnclassifiedPathException);
+    }
+
+    assessment.blocking = !assessment.reason_codes.empty();
+    if (!assessment.blocking) {
+        assessment.verdict = PathQualityVerdict::Pass;
+    } else if (!has_hard_failure &&
+               plan_record.preview_validation_classification == "pass_with_exception") {
+        assessment.verdict = PathQualityVerdict::PassWithException;
+    } else {
+        assessment.verdict = PathQualityVerdict::Fail;
+    }
+
+    plan_record.path_quality = assessment;
+    plan_record.response.path_quality = assessment;
+}
+
 void DispensingWorkflowUseCase::RefreshPlanImportDiagnostics(PlanRecord& plan_record) const {
+    RefreshPathQualityAssessment(plan_record);
     auto& diagnostics = plan_record.response.import_diagnostics;
     const bool import_preview_ready = diagnostics.preview_ready;
     const bool import_production_ready = diagnostics.production_ready;
@@ -1557,6 +1755,33 @@ void DispensingWorkflowUseCase::RefreshPlanImportDiagnostics(PlanRecord& plan_re
     } else if (diagnostics.summary.empty()) {
         diagnostics.summary = "DXF import succeeded and is ready for production.";
     }
+}
+
+std::string DispensingWorkflowUseCase::ResolvePathQualityGateFailure(const PlanRecord& plan_record) const {
+    using Siligen::Shared::Types::kPathQualityReasonSpacingInvalid;
+    using Siligen::Shared::Types::kPathQualityReasonUnclassifiedPathException;
+
+    if (!plan_record.path_quality.has_value()) {
+        return "path_quality unavailable";
+    }
+
+    const auto& path_quality = plan_record.path_quality.value();
+    if (!path_quality.blocking) {
+        return {};
+    }
+
+    if (HasPathQualityReasonCode(path_quality, kPathQualityReasonSpacingInvalid) &&
+        !plan_record.preview_failure_reason.empty()) {
+        return plan_record.preview_failure_reason;
+    }
+
+    std::ostringstream oss;
+    oss << "path_quality blocked production: " << JoinPathQualityReasonCodes(path_quality.reason_codes);
+    if (HasPathQualityReasonCode(path_quality, kPathQualityReasonUnclassifiedPathException) &&
+        !plan_record.preview_exception_reason.empty()) {
+        oss << " (" << plan_record.preview_exception_reason << ')';
+    }
+    return oss.str();
 }
 
 DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::BuildPreviewGateDiagnostic(
@@ -1589,18 +1814,6 @@ DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::Buil
         diagnostic.owner_message = diagnostic.failure_reason.empty()
             ? "preview binding unavailable"
             : diagnostic.failure_reason;
-        return diagnostic;
-    }
-    if (!diagnostic.spacing_valid || diagnostic.validation_classification == "fail") {
-        if (!diagnostic.failure_reason.empty()) {
-            diagnostic.owner_message = diagnostic.failure_reason;
-            return diagnostic;
-        }
-        if (diagnostic.validation_classification == "fail" && !diagnostic.exception_reason.empty()) {
-            diagnostic.owner_message = diagnostic.exception_reason;
-            return diagnostic;
-        }
-        diagnostic.owner_message = "preview spacing validation failed";
         return diagnostic;
     }
     if (diagnostic.glue_point_count == 0U) {

@@ -172,8 +172,14 @@ def test_dxf_preview_and_job_contract():
     assert "glue_reveal_lengths_mm" in preview_result_properties
     assert "preview_binding" in preview_result_properties
     assert "motion_preview" in preview_result_properties
+    assert "path_quality" in preview_result_properties
 
     preview_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json")
+    assert preview_fixture["result"]["path_quality"] == {
+        "verdict": "pass",
+        "blocking": False,
+        "reason_codes": [],
+    }
     glue_reveal_lengths = preview_fixture["result"]["glue_reveal_lengths_mm"]
     assert len(glue_reveal_lengths) == len(preview_fixture["result"]["glue_points"])
     assert glue_reveal_lengths == sorted(glue_reveal_lengths)
@@ -212,6 +218,7 @@ def test_dxf_preview_and_job_contract():
     assert "execution_nominal_time_s" in plan_prepare["resultSchema"]["required"]
     assert "execution_plan_summary" in plan_prepare["resultSchema"]["required"]
     assert "production_baseline" in plan_prepare["resultSchema"]["required"]
+    assert "path_quality" in plan_prepare["resultSchema"]["required"]
     assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(plan_prepare["paramsSchema"]["required"]))
     assert "recipe_id" not in plan_prepare["paramsSchema"]["properties"]
@@ -264,6 +271,11 @@ def test_dxf_preview_and_job_contract():
     assert prepare_fixture["result"]["formal_compare_gate"] is None
     assert prepare_fixture["result"]["production_baseline"]["baseline_id"]
     assert prepare_fixture["result"]["production_baseline"]["baseline_fingerprint"]
+    assert prepare_fixture["result"]["path_quality"] == {
+        "verdict": "pass",
+        "blocking": False,
+        "reason_codes": [],
+    }
     assert "estimated_time_s" not in prepare_fixture["result"]
     assert "execution_nominal_time_s" in prepare_fixture["result"]
     assert "execution_plan_summary" in prepare_fixture["result"]
