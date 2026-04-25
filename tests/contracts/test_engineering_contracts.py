@@ -203,7 +203,7 @@ class EngineeringContractsCompatibilityTest(unittest.TestCase):
         bundle = pb.PathBundle()
         bundle.ParseFromString(self.pb_fixture_path.read_bytes())
 
-        self.assertEqual(bundle.header.schema_version, 1)
+        self.assertEqual(bundle.header.schema_version, 2)
         self.assertEqual(bundle.header.units, "mm")
         self.assertGreater(len(bundle.primitives), 0)
         self.assertEqual(len(bundle.primitives), len(bundle.metadata))

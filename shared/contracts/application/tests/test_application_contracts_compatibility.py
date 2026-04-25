@@ -155,7 +155,8 @@ def test_dxf_preview_and_job_contract():
     assert "dxf.job.observation" in operations
 
     artifact_create = operations["dxf.artifact.create"]
-    assert "formal_compare_gate" in artifact_create["resultSchema"]["required"]
+    assert "formal_compare_gate" not in artifact_create["resultSchema"]["required"]
+    assert "input_quality" in artifact_create["resultSchema"]["required"]
 
     preview = operations["dxf.preview.snapshot"]
     preview_params = preview["paramsSchema"]
@@ -174,6 +175,7 @@ def test_dxf_preview_and_job_contract():
     assert "preview_binding" in preview_result_properties
     assert "motion_preview" in preview_result_properties
     assert "path_quality" in preview_result_properties
+    assert "input_quality" in preview_result_properties
 
     preview_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json")
     assert preview_fixture["result"]["path_quality"] == {
@@ -181,6 +183,7 @@ def test_dxf_preview_and_job_contract():
         "blocking": False,
         "reason_codes": [],
     }
+    assert preview_fixture["result"]["input_quality"]["classification"] == "success"
     glue_reveal_lengths = preview_fixture["result"]["glue_reveal_lengths_mm"]
     assert len(glue_reveal_lengths) == len(preview_fixture["result"]["glue_points"])
     assert glue_reveal_lengths == sorted(glue_reveal_lengths)
@@ -212,8 +215,7 @@ def test_dxf_preview_and_job_contract():
 
     plan_prepare = operations["dxf.plan.prepare"]
     assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
-    assert "import_result_classification" in plan_prepare["resultSchema"]["required"]
-    assert "import_production_ready" in plan_prepare["resultSchema"]["required"]
+    assert "input_quality" in plan_prepare["resultSchema"]["required"]
     assert "formal_compare_gate" in plan_prepare["resultSchema"]["required"]
     assert "prepared_filepath" in plan_prepare["resultSchema"]["required"]
     assert "execution_nominal_time_s" in plan_prepare["resultSchema"]["required"]
@@ -244,7 +246,7 @@ def test_dxf_preview_and_job_contract():
     assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
-    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
+    assert {"input_quality", "prepared_filepath"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
     assert "formal_compare_gate" in job_start["resultSchema"]["required"]
@@ -281,7 +283,8 @@ def test_dxf_preview_and_job_contract():
     observation_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.observation.success.json")
     assert "recipe_id" not in prepare_request_fixture["params"]
     assert "version_id" not in prepare_request_fixture["params"]
-    assert artifact_fixture["result"]["formal_compare_gate"] is None
+    assert "formal_compare_gate" not in artifact_fixture["result"]
+    assert artifact_fixture["result"]["input_quality"]["classification"] == "success"
     assert prepare_fixture["result"]["formal_compare_gate"] is None
     assert prepare_fixture["result"]["production_baseline"]["baseline_id"]
     assert prepare_fixture["result"]["production_baseline"]["baseline_fingerprint"]
@@ -294,6 +297,7 @@ def test_dxf_preview_and_job_contract():
     assert "execution_nominal_time_s" in prepare_fixture["result"]
     assert "execution_plan_summary" in prepare_fixture["result"]
     assert start_fixture["result"]["formal_compare_gate"] is None
+    assert start_fixture["result"]["input_quality"]["classification"] == "success"
     assert start_fixture["result"]["production_baseline"]["baseline_id"]
     assert start_fixture["result"]["production_baseline"]["baseline_fingerprint"]
     assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(set(start_fixture["result"].keys()))

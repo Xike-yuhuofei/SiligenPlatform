@@ -46,8 +46,8 @@ struct FixturePlanningInput {
     Siligen::Shared::Types::float32 max_jerk = 0.0f;
     Siligen::Shared::Types::float32 sample_dt = 0.01f;
     Siligen::Shared::Types::float32 sample_ds = 0.0f;
-    Siligen::Shared::Types::float32 spline_max_step_mm = 0.0f;
-    Siligen::Shared::Types::float32 spline_max_error_mm = 0.0f;
+    Siligen::Shared::Types::float32 curve_flatten_max_step_mm = 0.0f;
+    Siligen::Shared::Types::float32 curve_flatten_max_error_mm = 0.0f;
     Siligen::Shared::Types::float32 execution_nominal_time_s = 0.0f;
     Siligen::Shared::Types::DispensingStrategy dispensing_strategy =
         Siligen::Shared::Types::DispensingStrategy::BASELINE;
@@ -169,8 +169,8 @@ inline WorkflowAuthorityPreviewRequest BuildWorkflowAuthorityPreviewInput(const 
     authority_input.runtime_options.min_interval_ms = input.min_interval_ms;
     authority_input.runtime_options.sample_dt = input.sample_dt;
     authority_input.runtime_options.sample_ds = input.sample_ds;
-    authority_input.runtime_options.spline_max_step_mm = input.spline_max_step_mm;
-    authority_input.runtime_options.spline_max_error_mm = input.spline_max_error_mm;
+    authority_input.runtime_options.curve_flatten_max_step_mm = input.curve_flatten_max_step_mm;
+    authority_input.runtime_options.curve_flatten_max_error_mm = input.curve_flatten_max_error_mm;
     authority_input.dispensing_strategy = input.dispensing_strategy;
     authority_input.subsegment_count = input.subsegment_count;
     authority_input.dispense_only_cruise = input.dispense_only_cruise;
@@ -203,8 +203,8 @@ inline WorkflowExecutionAssemblyRequest BuildWorkflowExecutionInput(
     execution_input.max_jerk = input.max_jerk;
     execution_input.runtime_options.sample_dt = input.sample_dt;
     execution_input.runtime_options.sample_ds = input.sample_ds;
-    execution_input.runtime_options.spline_max_step_mm = input.spline_max_step_mm;
-    execution_input.runtime_options.spline_max_error_mm = input.spline_max_error_mm;
+    execution_input.runtime_options.curve_flatten_max_step_mm = input.curve_flatten_max_step_mm;
+    execution_input.runtime_options.curve_flatten_max_error_mm = input.curve_flatten_max_error_mm;
     execution_input.execution_nominal_time_s = input.execution_nominal_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;

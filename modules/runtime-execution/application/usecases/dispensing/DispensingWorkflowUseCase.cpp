@@ -260,7 +260,7 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
     response.generated_filename = upload.generated_filename;
     response.size = upload.size;
     response.timestamp = upload.timestamp;
-    response.import_diagnostics = upload.import_diagnostics;
+    response.input_quality = upload.input_quality;
 
     ArtifactRecord record;
     record.response = response;
@@ -325,7 +325,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
     response.point_count = static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
     response.total_length_mm = authority_preview.artifacts.total_length;
-    response.import_diagnostics = artifact.upload_response.import_diagnostics;
+    response.input_quality = artifact.upload_response.input_quality;
     response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
     response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
     response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
@@ -426,7 +426,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
                 static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
             reusable->response.total_length_mm = authority_preview.artifacts.total_length;
             reusable->response.generated_at = response.generated_at;
-            reusable->response.import_diagnostics = artifact.upload_response.import_diagnostics;
+            reusable->response.input_quality = artifact.upload_response.input_quality;
             reusable->response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
             reusable->response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
             reusable->response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
@@ -490,7 +490,7 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
         auto it = plans_.find(prepared_plan_id);
         if (it != plans_.end() && it->second.latest) {
             RefreshResponseExecutionContract(it->second);
-            RefreshPlanImportDiagnostics(it->second);
+            RefreshPlanInputQuality(it->second);
             response = it->second.response;
             response.performance_profile = current_prepare_profile;
         }
@@ -606,16 +606,16 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         if (it != plans_.end() && it->second.latest) {
             RefreshResponseExecutionContract(it->second);
             RefreshPathQualityAssessment(it->second);
-            RefreshPlanImportDiagnostics(it->second);
+            RefreshPlanInputQuality(it->second);
             if (const auto path_quality_failure = ResolvePathQualityGateFailure(it->second);
                 !path_quality_failure.empty()) {
                 return Result<StartJobResponse>::Failure(
                     Error(ErrorCode::INVALID_STATE, path_quality_failure, "DispensingWorkflowUseCase"));
             }
-            if (!it->second.response.import_diagnostics.production_ready) {
-                const std::string detail = it->second.response.import_diagnostics.summary.empty()
+            if (!it->second.response.input_quality.production_ready) {
+                const std::string detail = it->second.response.input_quality.summary.empty()
                     ? "DXF import is not production-ready"
-                    : it->second.response.import_diagnostics.summary;
+                    : it->second.response.input_quality.summary;
                 return Result<StartJobResponse>::Failure(
                     Error(ErrorCode::INVALID_STATE, detail, "DispensingWorkflowUseCase"));
             }
@@ -687,6 +687,13 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         response.execution_budget_s = response.execution_budget_breakdown.total_budget_s;
     }
     response.production_baseline = production_baseline;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        auto it = plans_.find(request.plan_id);
+        if (it != plans_.end() && it->second.latest) {
+            response.input_quality = it->second.response.input_quality;
+        }
+    }
     response.performance_profile.execution_cache_hit = execution_resolution.cache_hit;
     response.performance_profile.execution_joined_inflight = execution_resolution.joined_inflight;
     response.performance_profile.execution_wait_ms = execution_resolution.wait_ms;
@@ -1138,7 +1145,7 @@ Result<DispensingWorkflowUseCase::ExecutionAssemblyResolveResult> DispensingWork
     }
     RefreshResponseExecutionContract(it->second);
     RefreshPathQualityAssessment(it->second);
-    RefreshPlanImportDiagnostics(it->second);
+    RefreshPlanInputQuality(it->second);
     std::ostringstream oss;
     oss << "workflow_execution_assembly_profile"
         << " plan_id=" << plan_id
@@ -1776,24 +1783,23 @@ void DispensingWorkflowUseCase::RefreshPathQualityAssessment(PlanRecord& plan_re
     plan_record.response.path_quality = assessment;
 }
 
-void DispensingWorkflowUseCase::RefreshPlanImportDiagnostics(PlanRecord& plan_record) const {
+void DispensingWorkflowUseCase::RefreshPlanInputQuality(PlanRecord& plan_record) const {
     RefreshPathQualityAssessment(plan_record);
-    auto& diagnostics = plan_record.response.import_diagnostics;
-    const bool import_preview_ready = diagnostics.preview_ready;
-    const bool import_production_ready = diagnostics.production_ready;
+    auto& input_quality = plan_record.response.input_quality;
+    const bool source_preview_ready = input_quality.preview_ready;
+    const bool source_production_ready = input_quality.production_ready;
     const auto preview_gate = BuildPreviewGateDiagnostic(plan_record, false);
     const auto production_failure = ResolveProductionGateFailure(plan_record);
 
-    diagnostics.formal_compare_gate = plan_record.execution_assembly.formal_compare_gate;
-    diagnostics.preview_ready = import_preview_ready && preview_gate.owner_message.empty();
-    diagnostics.production_ready = import_production_ready && production_failure.empty();
+    input_quality.preview_ready = source_preview_ready && preview_gate.owner_message.empty();
+    input_quality.production_ready = source_production_ready && production_failure.empty();
 
     if (!production_failure.empty()) {
-        diagnostics.summary = production_failure;
+        input_quality.summary = production_failure;
     } else if (!preview_gate.owner_message.empty()) {
-        diagnostics.summary = preview_gate.owner_message;
-    } else if (diagnostics.summary.empty()) {
-        diagnostics.summary = "DXF import succeeded and is ready for production.";
+        input_quality.summary = preview_gate.owner_message;
+    } else if (input_quality.summary.empty()) {
+        input_quality.summary = "DXF import succeeded and is ready for production.";
     }
 }
 

@@ -91,8 +91,8 @@ def _build_preview_signature(filepath: str, params: Dict) -> str:
         "start_x": float(params.get("start_x", 0.0)),
         "start_y": float(params.get("start_y", 0.0)),
         "two_opt_iterations": int(params.get("two_opt_iterations", 0)),
-        "spline_max_step_mm": float(params.get("spline_max_step_mm", 0.0)),
-        "spline_max_error_mm": float(params.get("spline_max_error_mm", 0.0)),
+        "curve_flatten_max_step_mm": float(params.get("curve_flatten_max_step_mm", 0.0)),
+        "curve_flatten_max_error_mm": float(params.get("curve_flatten_max_error_mm", 0.0)),
         "arc_tolerance_mm": float(params.get("arc_tolerance_mm", params.get("arc_tolerance", 0.0))),
         "continuity_tolerance_mm": float(
             params.get("continuity_tolerance_mm", params.get("continuity_tolerance", 0.0))
@@ -212,16 +212,23 @@ def _build_execution_budget_breakdown(dxf: DxfState, target_count: int) -> Dict[
 def _build_import_contract(dxf: DxfState) -> Dict[str, object]:
     return {
         "prepared_filepath": dxf.filepath.replace(".dxf", ".pb"),
-        "import_result_classification": "success",
-        "import_preview_ready": True,
-        "import_production_ready": True,
-        "formal_compare_gate": None,
-        "import_summary": "DXF import succeeded and is ready for production.",
-        "import_primary_code": "",
-        "import_warning_codes": [],
-        "import_error_codes": [],
-        "import_resolved_units": "mm",
-        "import_resolved_unit_scale": 1.0,
+        "input_quality": {
+            "report_id": "mock-report",
+            "report_path": dxf.filepath.replace(".dxf", ".validation.json"),
+            "schema_version": "DXFValidationReport.v1",
+            "dxf_hash": "mock-dxf-hash",
+            "source_drawing_ref": "sha256:mock-dxf-hash",
+            "gate_result": "PASS",
+            "classification": "success",
+            "preview_ready": True,
+            "production_ready": True,
+            "summary": "DXF import succeeded and is ready for production.",
+            "primary_code": "",
+            "warning_codes": [],
+            "error_codes": [],
+            "resolved_units": "mm",
+            "resolved_unit_scale": 1.0,
+        },
     }
 
 
@@ -799,15 +806,23 @@ class MockState:
                         "artifact_id": self.dxf.artifact_id,
                         "filepath": self.dxf.filepath,
                         "prepared_filepath": self.dxf.filepath.replace(".dxf", ".pb"),
-                        "import_result_classification": "success",
-                        "import_preview_ready": True,
-                        "import_production_ready": True,
-                        "import_summary": "DXF import succeeded and is ready for production.",
-                        "import_primary_code": "",
-                        "import_warning_codes": [],
-                        "import_error_codes": [],
-                        "import_resolved_units": "mm",
-                        "import_resolved_unit_scale": 1.0,
+                        "input_quality": {
+                            "report_id": "mock-report",
+                            "report_path": self.dxf.filepath.replace(".dxf", ".validation.json"),
+                            "schema_version": "DXFValidationReport.v1",
+                            "dxf_hash": "mock-dxf-hash",
+                            "source_drawing_ref": "sha256:mock-dxf-hash",
+                            "gate_result": "PASS",
+                            "classification": "success",
+                            "preview_ready": True,
+                            "production_ready": True,
+                            "summary": "DXF import succeeded and is ready for production.",
+                            "primary_code": "",
+                            "warning_codes": [],
+                            "error_codes": [],
+                            "resolved_units": "mm",
+                            "resolved_unit_scale": 1.0,
+                        },
                         "segment_count": self.dxf.segment_count,
                     }
                 }
@@ -898,6 +913,13 @@ class MockState:
                         "error": {
                             "code": -32021,
                             "message": "Retired parameter approximate_splines is forbidden by DXF input governance v1",
+                        }
+                    }
+                if "spline_max_step_mm" in params or "spline_max_error_mm" in params:
+                    return {
+                        "error": {
+                            "code": -32022,
+                            "message": "Retired parameters spline_max_* are forbidden; use curve_flatten_max_*",
                         }
                     }
                 artifact_id = str(params.get("artifact_id", "")).strip()

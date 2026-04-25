@@ -19,6 +19,7 @@ CANONICAL_HIGH_ORDER_PRIMITIVE_TYPES = {
     pb.PRIMITIVE_SPLINE,
     pb.PRIMITIVE_ELLIPSE,
 }
+CANONICAL_PATH_BUNDLE_SCHEMA_VERSION = 2
 
 
 def _point_to_dict(point: pb.Point2D) -> dict:
@@ -202,6 +203,13 @@ def primitive_to_segments(primitive: pb.Primitive, max_seg: float) -> List[dict]
 def load_path_bundle(path: Path) -> pb.PathBundle:
     bundle = pb.PathBundle()
     bundle.ParseFromString(path.read_bytes())
+    if bundle.header.schema_version != CANONICAL_PATH_BUNDLE_SCHEMA_VERSION:
+        raise ValueError(
+            f"Unsupported PathBundle schema_version={bundle.header.schema_version}; "
+            f"expected {CANONICAL_PATH_BUNDLE_SCHEMA_VERSION}"
+        )
+    if len(bundle.primitives) == 0:
+        raise ValueError("PathBundle has no primitives")
     return bundle
 
 

@@ -83,7 +83,7 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
     response.size = request.file_size;
     response.generated_filename = safe_filename;
     response.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-    response.import_diagnostics = prepared_result.Value().import_diagnostics;
+    response.input_quality = prepared_result.Value().input_quality;
 
     SILIGEN_LOG_INFO("File uploaded successfully: " + response.filepath);
 

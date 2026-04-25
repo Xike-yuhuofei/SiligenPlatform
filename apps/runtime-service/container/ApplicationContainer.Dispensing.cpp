@@ -212,15 +212,21 @@ class DxfPreparationAdapter final : public IUploadPreparationPort {
 
         PreparedInputArtifact artifact;
         artifact.prepared_path = result.Value().prepared_path;
-        artifact.import_diagnostics.result_classification = result.Value().import_diagnostics.result_classification;
-        artifact.import_diagnostics.preview_ready = result.Value().import_diagnostics.preview_ready;
-        artifact.import_diagnostics.production_ready = result.Value().import_diagnostics.production_ready;
-        artifact.import_diagnostics.summary = result.Value().import_diagnostics.summary;
-        artifact.import_diagnostics.primary_code = result.Value().import_diagnostics.primary_code;
-        artifact.import_diagnostics.warning_codes = result.Value().import_diagnostics.warning_codes;
-        artifact.import_diagnostics.error_codes = result.Value().import_diagnostics.error_codes;
-        artifact.import_diagnostics.resolved_units = result.Value().import_diagnostics.resolved_units;
-        artifact.import_diagnostics.resolved_unit_scale = result.Value().import_diagnostics.resolved_unit_scale;
+        artifact.input_quality.report_id = result.Value().input_quality.report_id;
+        artifact.input_quality.report_path = result.Value().input_quality.report_path;
+        artifact.input_quality.schema_version = result.Value().input_quality.schema_version;
+        artifact.input_quality.dxf_hash = result.Value().input_quality.dxf_hash;
+        artifact.input_quality.source_drawing_ref = result.Value().input_quality.source_drawing_ref;
+        artifact.input_quality.gate_result = result.Value().input_quality.gate_result;
+        artifact.input_quality.classification = result.Value().input_quality.classification;
+        artifact.input_quality.preview_ready = result.Value().input_quality.preview_ready;
+        artifact.input_quality.production_ready = result.Value().input_quality.production_ready;
+        artifact.input_quality.summary = result.Value().input_quality.summary;
+        artifact.input_quality.primary_code = result.Value().input_quality.primary_code;
+        artifact.input_quality.warning_codes = result.Value().input_quality.warning_codes;
+        artifact.input_quality.error_codes = result.Value().input_quality.error_codes;
+        artifact.input_quality.resolved_units = result.Value().input_quality.resolved_units;
+        artifact.input_quality.resolved_unit_scale = result.Value().input_quality.resolved_unit_scale;
         return Result<PreparedInputArtifact>::Success(std::move(artifact));
     }
 

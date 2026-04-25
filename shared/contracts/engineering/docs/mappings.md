@@ -8,6 +8,8 @@
 
 ## 重要声明
 
+- `PathBundle` 现在是 geometry-only payload；`import_diagnostics` 已退出 canonical schema，任何 consumer 都不得再从 `.pb` 读取输入治理语义。
+- DXF 输入治理唯一真值是同名 sidecar `*.validation.json`；preview/prod gate、classification、primary_code 等判定必须来自该报告。
 - Preview canonical 是 `scripts/engineering-data/generate_preview.py --json` 输出的 `PreviewArtifact`。
 - HTML 预览文件中的内嵌脚本数据不是 preview canonical。
 - Simulation input canonical 是 `tests/e2e/simulated-line` 当前仿真执行链可直接读取的段级 JSON，不是 `.path.json` 或 `.traj.json`。

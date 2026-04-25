@@ -104,8 +104,8 @@ struct CommandLineConfig {
     double start_x = 0.0;
     double start_y = 0.0;
     int two_opt_iterations = 0;
-    double spline_step_mm = 0.0;
-    double spline_error_mm = 0.0;
+    double curve_flatten_max_step_mm = 0.0;
+    double curve_flatten_max_error_mm = 0.0;
     double continuity_tolerance_mm = 0.0;
     double curve_chain_angle_deg = 0.0;
     double curve_chain_max_segment_mm = 0.0;

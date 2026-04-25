@@ -34,8 +34,8 @@ TEST(UploadFileUseCaseTest, GeneratesPbAfterUpload) {
     EXPECT_EQ(ReadTextFile(pb_path), "pb");
     EXPECT_EQ(dxf_path.filename().string(), result.Value().generated_filename);
     EXPECT_EQ(result.Value().prepared_filepath, pb_path.string());
-    EXPECT_EQ(result.Value().import_diagnostics.result_classification, "success");
-    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
+    EXPECT_EQ(result.Value().input_quality.classification, "success");
+    EXPECT_TRUE(result.Value().input_quality.production_ready);
 }
 
 TEST(UploadFileUseCaseTest, CleansUpArtifactsWhenPbGenerationFails) {
@@ -86,14 +86,14 @@ TEST(UploadFileUseCaseTest, UploadLayerNoLongerSniffsDxfPayloadContent) {
             out.close();
             Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact artifact;
             artifact.prepared_path = pb_path.string();
-            artifact.import_diagnostics.result_classification = "preview_only";
-            artifact.import_diagnostics.preview_ready = true;
-            artifact.import_diagnostics.production_ready = false;
-            artifact.import_diagnostics.summary = "DXF unit missing; production import requires explicit unit.";
-            artifact.import_diagnostics.primary_code = "DXF_E_UNIT_REQUIRED_FOR_PRODUCTION";
-            artifact.import_diagnostics.error_codes = {"DXF_E_UNIT_REQUIRED_FOR_PRODUCTION"};
-            artifact.import_diagnostics.resolved_units = "mm";
-            artifact.import_diagnostics.resolved_unit_scale = 1.0;
+            artifact.input_quality.classification = "preview_only";
+            artifact.input_quality.preview_ready = true;
+            artifact.input_quality.production_ready = false;
+            artifact.input_quality.summary = "DXF unit missing; production import requires explicit unit.";
+            artifact.input_quality.primary_code = "DXF_E_UNIT_REQUIRED_FOR_PRODUCTION";
+            artifact.input_quality.error_codes = {"DXF_E_UNIT_REQUIRED_FOR_PRODUCTION"};
+            artifact.input_quality.resolved_units = "mm";
+            artifact.input_quality.resolved_unit_scale = 1.0;
             return Siligen::Shared::Types::Result<Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact>::Success(std::move(artifact));
         });
     UploadFileUseCase usecase(storage, preparation);
@@ -106,9 +106,9 @@ TEST(UploadFileUseCaseTest, UploadLayerNoLongerSniffsDxfPayloadContent) {
     auto result = usecase.Execute(request);
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
     EXPECT_TRUE(preparation_called);
-    EXPECT_EQ(result.Value().import_diagnostics.result_classification, "preview_only");
-    EXPECT_FALSE(result.Value().import_diagnostics.production_ready);
-    EXPECT_EQ(result.Value().import_diagnostics.primary_code, "DXF_E_UNIT_REQUIRED_FOR_PRODUCTION");
+    EXPECT_EQ(result.Value().input_quality.classification, "preview_only");
+    EXPECT_FALSE(result.Value().input_quality.production_ready);
+    EXPECT_EQ(result.Value().input_quality.primary_code, "DXF_E_UNIT_REQUIRED_FOR_PRODUCTION");
 }
 
 TEST(UploadFileUseCaseTest, PreparationPortOwnsInvalidPayloadFailureAndCleanup) {

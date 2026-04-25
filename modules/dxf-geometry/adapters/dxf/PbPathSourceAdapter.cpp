@@ -7,6 +7,7 @@
 #include "dxf_primitives.pb.h"
 #endif
 
+#include <cstdint>
 #include <fstream>
 
 namespace Siligen::Infrastructure::Adapters::Parsing {
@@ -25,6 +26,8 @@ using Siligen::Shared::Types::float32;
 
 #if SILIGEN_ENABLE_PROTOBUF
 namespace {
+
+constexpr std::uint32_t kCanonicalPathBundleSchemaVersion = 2U;
 
 Point2D ToPoint(const siligen::dxf::Point2D& point) {
     return Point2D(static_cast<float32>(point.x()), static_cast<float32>(point.y()));
@@ -152,6 +155,14 @@ Result<PathSourceResult> PbPathSourceAdapter::LoadFromFile(const std::string& fi
     if (!bundle.ParseFromIstream(&input)) {
         return Result<PathSourceResult>::Failure(
             Error(ErrorCode::FILE_FORMAT_INVALID, "PB parse failed: " + filepath, "PbPathSourceAdapter"));
+    }
+    if (bundle.header().schema_version() != kCanonicalPathBundleSchemaVersion) {
+        return Result<PathSourceResult>::Failure(
+            Error(
+                ErrorCode::FILE_FORMAT_INVALID,
+                "PB schema_version unsupported: " + std::to_string(bundle.header().schema_version()) +
+                    " expected=" + std::to_string(kCanonicalPathBundleSchemaVersion),
+                "PbPathSourceAdapter"));
     }
 
     PathSourceResult result;

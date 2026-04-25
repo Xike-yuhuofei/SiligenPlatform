@@ -12,7 +12,7 @@
 
 | Contract | Producer | Consumer | Notes |
 | --- | --- | --- | --- |
-| `PathBundle` (`.pb`) | `engineering_data.processing.dxf_to_pb` / `engineering_data.cli.dxf_to_pb` | `engineering-data` 仿真导出、`control-core` DXF 规划适配 | 当前 wire format 延续 `Backend_CPP/proto/dxf_primitives.proto` |
+| `PathBundle` (`.pb`) | `engineering_data.processing.dxf_to_pb` / `engineering_data.cli.dxf_to_pb` | `engineering-data` 仿真导出、`control-core` DXF 规划适配 | 当前 canonical payload 为 geometry-only `schema_version=2`；输入治理只允许来自 `.validation.json` |
 | Preview Artifact JSON | `scripts/engineering-data/generate_preview.py --json`（实现 owner：`apps/planner-cli/tools/planner_cli_preview`） | canonical preview artifact consumer / HMI preview gate 辅助校验 | HMI 运行时主链路改走 gateway preview snapshot；不再依赖本地 preview integration shim |
 | Simulation Input JSON | `engineering_data.contracts.simulation_input.bundle_to_simulation_payload` / `engineering_data.cli.export_simulation_input` | `tests/e2e/simulated-line/` 回归链路与相关仿真执行器 | stable surface 保持不变；runtime concrete owner 已迁到 `modules/runtime-execution/application/runtime_execution/`，geometry helper 仍由 `modules/dxf-geometry/application/engineering_data/processing/simulation_geometry.py` 提供 |
 

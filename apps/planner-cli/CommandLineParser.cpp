@@ -376,12 +376,12 @@ CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
             AssignNumber("--two-opt-iterations", value, config.two_opt_iterations);
             continue;
         }
-        if (const auto value = ConsumeValue(arg, "--spline-step-mm", argc, argv, i); !value.empty()) {
-            AssignNumber("--spline-step-mm", value, config.spline_step_mm);
+        if (const auto value = ConsumeValue(arg, "--curve-flatten-max-step-mm", argc, argv, i); !value.empty()) {
+            AssignNumber("--curve-flatten-max-step-mm", value, config.curve_flatten_max_step_mm);
             continue;
         }
-        if (const auto value = ConsumeValue(arg, "--spline-error-mm", argc, argv, i); !value.empty()) {
-            AssignNumber("--spline-error-mm", value, config.spline_error_mm);
+        if (const auto value = ConsumeValue(arg, "--curve-flatten-max-error-mm", argc, argv, i); !value.empty()) {
+            AssignNumber("--curve-flatten-max-error-mm", value, config.curve_flatten_max_error_mm);
             continue;
         }
         if (const auto value = ConsumeValue(arg, "--continuity-tolerance", argc, argv, i); !value.empty()) {

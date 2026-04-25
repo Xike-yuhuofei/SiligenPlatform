@@ -45,8 +45,8 @@ struct AuthorityTriggerLayoutPlannerRequest {
     float32 closed_loop_corner_cluster_distance_mm = 0.0f;
     float32 closed_loop_anchor_tolerance_mm = 0.0f;
     DispenseCompensationProfile compensation_profile{};
-    float32 spline_max_error_mm = 0.0f;
-    float32 spline_max_step_mm = 0.0f;
+    float32 curve_flatten_max_error_mm = 0.0f;
+    float32 curve_flatten_max_step_mm = 0.0f;
 };
 
 class AuthorityTriggerLayoutPlanner {

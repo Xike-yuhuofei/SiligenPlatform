@@ -48,8 +48,8 @@ struct WorkflowAssemblyRuntimeOptions {
     Siligen::Shared::Types::float32 min_interval_ms = 0.0f;
     Siligen::Shared::Types::float32 sample_dt = 0.01f;
     Siligen::Shared::Types::float32 sample_ds = 0.0f;
-    Siligen::Shared::Types::float32 spline_max_step_mm = 0.0f;
-    Siligen::Shared::Types::float32 spline_max_error_mm = 0.0f;
+    Siligen::Shared::Types::float32 curve_flatten_max_step_mm = 0.0f;
+    Siligen::Shared::Types::float32 curve_flatten_max_error_mm = 0.0f;
     Siligen::Domain::Dispensing::ValueObjects::DispenseCompensationProfile compensation_profile{};
 };
 

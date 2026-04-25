@@ -117,7 +117,7 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
         }
         float32 perimeter = EstimateEllipsePerimeter(a, b);
         float32 length_est = perimeter * (std::abs(sweep) / (2.0f * kPi));
-        float32 step_mm = (config.spline_max_step_mm > kEpsilon) ? config.spline_max_step_mm : 1.0f;
+        float32 step_mm = (config.curve_flatten_max_step_mm > kEpsilon) ? config.curve_flatten_max_step_mm : 1.0f;
         if (step_mm <= kEpsilon) {
             step_mm = 1.0f;
         }

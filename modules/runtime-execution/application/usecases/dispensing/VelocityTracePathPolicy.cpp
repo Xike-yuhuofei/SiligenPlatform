@@ -49,12 +49,13 @@ Result<std::filesystem::path> VelocityTracePathPolicy::BuildBaseDirectory(const 
     if (source.is_relative()) {
         source = std::filesystem::absolute(source);
     }
-    const auto normalized_source = WeaklyCanonical(source);
-    if (normalized_source.IsError()) {
-        return Result<std::filesystem::path>::Failure(normalized_source.GetError());
+
+    const auto normalized_source_dir = WeaklyCanonical(source.parent_path());
+    if (normalized_source_dir.IsError()) {
+        return Result<std::filesystem::path>::Failure(normalized_source_dir.GetError());
     }
 
-    const auto source_dir = normalized_source.Value().parent_path();
+    const auto source_dir = normalized_source_dir.Value();
     auto base_dir = source_dir / "_runtime-execution" / "velocity-traces";
     return Result<std::filesystem::path>::Success(base_dir);
 }
@@ -96,16 +97,10 @@ Result<std::filesystem::path> VelocityTracePathPolicy::NormalizeCandidatePath(
     }
 
     const auto raw_candidate = base_dir / filename_candidate;
-    const auto normalized_base = WeaklyCanonical(base_dir);
-    if (normalized_base.IsError()) {
-        return Result<std::filesystem::path>::Failure(normalized_base.GetError());
-    }
-    const auto normalized_candidate = WeaklyCanonical(raw_candidate);
-    if (normalized_candidate.IsError()) {
-        return Result<std::filesystem::path>::Failure(normalized_candidate.GetError());
-    }
+    const auto normalized_base = base_dir.lexically_normal();
+    const auto normalized_candidate = raw_candidate.lexically_normal();
 
-    if (!IsWithinBaseDirectory(normalized_base.Value(), normalized_candidate.Value())) {
+    if (!IsWithinBaseDirectory(normalized_base, normalized_candidate)) {
         return Result<std::filesystem::path>::Failure(
             Error(
                 ErrorCode::FILE_PATH_INVALID,
@@ -113,7 +108,7 @@ Result<std::filesystem::path> VelocityTracePathPolicy::NormalizeCandidatePath(
                 kErrorSource));
     }
 
-    return Result<std::filesystem::path>::Success(normalized_candidate.Value());
+    return Result<std::filesystem::path>::Success(normalized_candidate);
 }
 
 Result<std::string> VelocityTracePathPolicy::ResolveOutputPath(

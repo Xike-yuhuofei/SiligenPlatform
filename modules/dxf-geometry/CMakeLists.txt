@@ -80,7 +80,7 @@ if(SILIGEN_DXF_GEOMETRY_APPLICATION_PROTOBUF_ENABLED)
                 -I ${SILIGEN_DXF_APP_PROTO_ROOT}
                 ${DXF_APP_PROTO_FILE}
         DEPENDS ${DXF_APP_PROTO_FILE} protobuf::protoc
-        COMMENT "Generating protobuf sources for DXF import diagnostics"
+        COMMENT "Generating protobuf sources for DXF geometry PathBundle"
     )
 
     set(DXF_APP_PROTO_SRCS "${DXF_APP_PROTO_OUT_DIR}/dxf_primitives.pb.cc")

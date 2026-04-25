@@ -1,6 +1,5 @@
 #pragma once
 
-#include "dispense_packaging/contracts/FormalCompareGateDiagnostic.h"
 #include "shared/types/Result.h"
 
 #include <cstddef>
@@ -12,11 +11,16 @@ namespace Siligen::JobIngest::Contracts {
 
 using Siligen::Shared::Types::Result;
 
-struct DxfImportDiagnostics {
-    std::string result_classification;
+struct DxfInputQuality {
+    std::string report_id;
+    std::string report_path;
+    std::string schema_version;
+    std::string dxf_hash;
+    std::string source_drawing_ref;
+    std::string gate_result;
+    std::string classification;
     bool preview_ready = false;
     bool production_ready = false;
-    Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     std::string summary;
     std::string primary_code;
     std::vector<std::string> warning_codes;
@@ -44,7 +48,7 @@ struct UploadResponse {
     size_t size = 0;
     std::string generated_filename;
     int64_t timestamp = 0;
-    DxfImportDiagnostics import_diagnostics;
+    DxfInputQuality input_quality;
 };
 
 class IUploadFilePort {

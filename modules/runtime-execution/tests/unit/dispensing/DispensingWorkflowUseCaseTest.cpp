@@ -63,7 +63,7 @@ using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Infrastructure::Adapters::ConfigFileAdapter;
-using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
+using Siligen::JobIngest::Contracts::DxfInputQuality;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::JobIngest::Contracts::UploadRequest;
 using Siligen::JobIngest::Contracts::UploadResponse;
@@ -299,25 +299,25 @@ PointFlyingCarrierPolicy BuildCanonicalPointFlyingCarrierPolicy() {
     return policy;
 }
 
-DxfImportDiagnostics BuildProductionReadyImportDiagnostics() {
-    DxfImportDiagnostics diagnostics;
-    diagnostics.result_classification = "success";
-    diagnostics.preview_ready = true;
-    diagnostics.production_ready = true;
-    diagnostics.summary = "DXF import succeeded and is ready for production.";
-    diagnostics.resolved_units = "mm";
-    diagnostics.resolved_unit_scale = 1.0;
-    return diagnostics;
+DxfInputQuality BuildProductionReadyInputQuality() {
+    DxfInputQuality input_quality;
+    input_quality.classification = "success";
+    input_quality.preview_ready = true;
+    input_quality.production_ready = true;
+    input_quality.summary = "DXF import succeeded and is ready for production.";
+    input_quality.resolved_units = "mm";
+    input_quality.resolved_unit_scale = 1.0;
+    return input_quality;
 }
 
-void SeedProductionReadyImportDiagnostics(DispensingWorkflowUseCase::PlanRecord& plan_record) {
-    plan_record.response.import_diagnostics = BuildProductionReadyImportDiagnostics();
+void SeedProductionReadyInputQuality(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    plan_record.response.input_quality = BuildProductionReadyInputQuality();
 }
 
-void SeedProductionReadyImportDiagnostics(DispensingWorkflowUseCase::ArtifactRecord& artifact_record) {
-    const auto diagnostics = BuildProductionReadyImportDiagnostics();
-    artifact_record.response.import_diagnostics = diagnostics;
-    artifact_record.upload_response.import_diagnostics = diagnostics;
+void SeedProductionReadyInputQuality(DispensingWorkflowUseCase::ArtifactRecord& artifact_record) {
+    const auto input_quality = BuildProductionReadyInputQuality();
+    artifact_record.response.input_quality = input_quality;
+    artifact_record.upload_response.input_quality = input_quality;
 }
 
 class FakeProductionBaselinePort final : public IProductionBaselinePort {
@@ -578,8 +578,8 @@ PlanningRequest BuildGovernedDxfGatewayLikePlanningRequest() {
     request.start_x = 0.0f;
     request.start_y = 0.0f;
     request.two_opt_iterations = 0;
-    request.spline_max_step_mm = 0.0f;
-    request.spline_max_error_mm = 0.0f;
+    request.curve_flatten_max_step_mm = 0.0f;
+    request.curve_flatten_max_error_mm = 0.0f;
     request.continuity_tolerance_mm = 0.0f;
     request.curve_chain_angle_deg = 0.0f;
     request.curve_chain_max_segment_mm = 0.0f;
@@ -597,8 +597,8 @@ PreparePlanRuntimeOverrides BuildDemo1ProductionValidationRuntimeOverrides() {
     return overrides;
 }
 
-DxfImportDiagnostics ToUploadImportDiagnostics(
-    const Siligen::Application::Services::DXF::ImportDiagnosticsSummary& summary);
+DxfInputQuality ToUploadInputQuality(
+    const Siligen::Application::Services::DXF::InputQualitySummary& summary);
 
 class TempUploadStoragePort final : public IUploadStoragePort {
    public:
@@ -691,7 +691,7 @@ class TempDxfPreparationPort final : public IUploadPreparationPort {
 
         PreparedInputArtifact artifact;
         artifact.prepared_path = result.Value().prepared_path;
-        artifact.import_diagnostics = ToUploadImportDiagnostics(result.Value().import_diagnostics);
+        artifact.input_quality = ToUploadInputQuality(result.Value().input_quality);
         return Result<PreparedInputArtifact>::Success(std::move(artifact));
     }
 
@@ -747,19 +747,25 @@ UploadRequest BuildUploadRequestFromFile(const std::filesystem::path& filepath) 
     return request;
 }
 
-DxfImportDiagnostics ToUploadImportDiagnostics(
-    const Siligen::Application::Services::DXF::ImportDiagnosticsSummary& summary) {
-    DxfImportDiagnostics diagnostics;
-    diagnostics.result_classification = summary.result_classification;
-    diagnostics.preview_ready = summary.preview_ready;
-    diagnostics.production_ready = summary.production_ready;
-    diagnostics.summary = summary.summary;
-    diagnostics.primary_code = summary.primary_code;
-    diagnostics.warning_codes = summary.warning_codes;
-    diagnostics.error_codes = summary.error_codes;
-    diagnostics.resolved_units = summary.resolved_units;
-    diagnostics.resolved_unit_scale = summary.resolved_unit_scale;
-    return diagnostics;
+DxfInputQuality ToUploadInputQuality(
+    const Siligen::Application::Services::DXF::InputQualitySummary& summary) {
+    DxfInputQuality input_quality;
+    input_quality.report_id = summary.report_id;
+    input_quality.report_path = summary.report_path;
+    input_quality.schema_version = summary.schema_version;
+    input_quality.dxf_hash = summary.dxf_hash;
+    input_quality.source_drawing_ref = summary.source_drawing_ref;
+    input_quality.gate_result = summary.gate_result;
+    input_quality.classification = summary.classification;
+    input_quality.preview_ready = summary.preview_ready;
+    input_quality.production_ready = summary.production_ready;
+    input_quality.summary = summary.summary;
+    input_quality.primary_code = summary.primary_code;
+    input_quality.warning_codes = summary.warning_codes;
+    input_quality.error_codes = summary.error_codes;
+    input_quality.resolved_units = summary.resolved_units;
+    input_quality.resolved_unit_scale = summary.resolved_unit_scale;
+    return input_quality;
 }
 
 PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "canonical.dxf") {
@@ -769,8 +775,8 @@ PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "can
     request.start_x = 0.0f;
     request.start_y = 0.0f;
     request.two_opt_iterations = 7;
-    request.spline_max_step_mm = 0.25f;
-    request.spline_max_error_mm = 0.05f;
+    request.curve_flatten_max_step_mm = 0.25f;
+    request.curve_flatten_max_error_mm = 0.05f;
     request.continuity_tolerance_mm = 0.02f;
     request.curve_chain_angle_deg = 15.0f;
     request.curve_chain_max_segment_mm = 1.5f;
@@ -1117,7 +1123,6 @@ void ApplyOwnerExecutionContractState(DispensingWorkflowUseCase::PlanRecord& pla
     plan_record.execution_contract_ready = true;
     plan_record.execution_failure_reason.clear();
     plan_record.execution_diagnostic_code.clear();
-    plan_record.response.import_diagnostics.formal_compare_gate = {};
     plan_record.execution_assembly.execution_contract_ready = true;
     plan_record.execution_assembly.execution_failure_reason.clear();
     plan_record.execution_assembly.execution_diagnostic_code.clear();
@@ -1772,7 +1777,7 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = plan_id;
     plan_record.response.plan_fingerprint = "fp-" + plan_id;
-    SeedProductionReadyImportDiagnostics(plan_record);
+    SeedProductionReadyInputQuality(plan_record);
     plan_record.execution_launch.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             BuildMinimalExecutionPackage());
@@ -2159,7 +2164,7 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.response.total_length_mm = 0.0f;
     plan_record.response.execution_nominal_time_s = 1.0f;
     plan_record.preview_estimated_time_s = 1.0f;
-    SeedProductionReadyImportDiagnostics(plan_record);
+    SeedProductionReadyInputQuality(plan_record);
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
     plan_record.preview_binding_ready = true;
@@ -2326,7 +2331,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     artifact_record.response.artifact_id = "artifact-prepare";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2374,7 +2379,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
     artifact_record.response.artifact_id = "artifact-missing-legacy-identifiers";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     const auto result = use_case.PreparePlan(BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
@@ -2422,10 +2427,8 @@ TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanBlocksFragmentedAndDiscontin
     const auto result = use_case.PreparePlan(request);
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
 
-    const auto& gate = result.Value().import_diagnostics.formal_compare_gate;
-    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
-    EXPECT_FALSE(result.Value().import_diagnostics.production_ready);
-    EXPECT_FALSE(gate.HasValue());
+    EXPECT_TRUE(result.Value().input_quality.preview_ready);
+    EXPECT_FALSE(result.Value().input_quality.production_ready);
     EXPECT_TRUE(result.Value().path_quality.blocking);
     EXPECT_EQ(std::string(Siligen::Shared::Types::ToString(result.Value().path_quality.verdict)), "fail");
     EXPECT_NE(
@@ -2485,10 +2488,8 @@ TEST(DispensingWorkflowUseCaseTest, GovernedDxfPreparePlanWithProductionLikeInpu
     const auto result = use_case.PreparePlan(request);
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
 
-    const auto& gate = result.Value().import_diagnostics.formal_compare_gate;
-    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
-    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
-    EXPECT_FALSE(gate.HasValue());
+    EXPECT_TRUE(result.Value().input_quality.preview_ready);
+    EXPECT_TRUE(result.Value().input_quality.production_ready);
 
     const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
     EXPECT_TRUE(plan_record.execution_contract_ready);
@@ -2513,7 +2514,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
     artifact_record.response.artifact_id = "artifact-cache-hit";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2558,7 +2559,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityP
     artifact_record.response.artifact_id = "artifact-single-flight";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2617,7 +2618,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecuti
     artifact_record.response.artifact_id = "artifact-start-profile";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2717,7 +2718,7 @@ TEST(DispensingWorkflowUseCaseTest, EnsureExecutionAssemblySingleFlightsConcurre
     artifact_record.response.artifact_id = "artifact-exec-single-flight";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2795,7 +2796,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
     artifact_record.response.artifact_id = "artifact-preview-execution-alignment";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -3716,7 +3717,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGlue
     artifact_record.response.artifact_id = "artifact-consistency";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -3780,7 +3781,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanParameterChangeInvalidatesPreviou
     artifact_record.response.artifact_id = "artifact-preview-stale";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -3842,7 +3843,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanExecutionStrategyPresenceUpdatesP
     artifact_record.response.artifact_id = "artifact-strategy-fingerprint";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -3888,7 +3889,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBaselinePolicyUpdatesPlanFingerpr
     artifact_record.response.artifact_id = "artifact-policy-fingerprint";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     const auto first_prepare = use_case.PreparePlan(
@@ -3979,8 +3980,8 @@ TEST(DispensingWorkflowUseCaseTest, StartJobAllowsProfileComparePlanRequiringMul
     const auto result = use_case.StartJob(request);
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
-    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.production_ready);
+    EXPECT_TRUE(plan_record.response.input_quality.preview_ready);
+    EXPECT_TRUE(plan_record.response.input_quality.production_ready);
     ASSERT_TRUE(plan_record.execution_launch.profile_compare_schedule);
     ASSERT_TRUE(plan_record.execution_launch.expected_trace);
     EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans.size(), 2U);
@@ -4077,11 +4078,10 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsClosedLoopBranchRevisitProfil
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
     EXPECT_NE(result.GetError().GetMessage().find("无法编译正式 execution schedule"), std::string::npos);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
-    EXPECT_FALSE(plan_record.response.import_diagnostics.production_ready);
-    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(plan_record.response.input_quality.preview_ready);
+    EXPECT_FALSE(plan_record.response.input_quality.production_ready);
     EXPECT_NE(
-        plan_record.response.import_diagnostics.summary.find("owner execution package 不满足 formal runtime compare contract"),
+        plan_record.response.input_quality.summary.find("owner execution package 不满足 formal runtime compare contract"),
         std::string::npos);
 }
 
@@ -4120,7 +4120,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContract
     artifact_record.upload_response.filepath = rect_diag_pb.string();
     artifact_record.upload_response.prepared_filepath = rect_diag_pb.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     auto request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -4128,9 +4128,8 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContract
     const auto result = use_case.PreparePlan(request);
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
-    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
-    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
-    EXPECT_FALSE(result.Value().import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(result.Value().input_quality.preview_ready);
+    EXPECT_TRUE(result.Value().input_quality.production_ready);
 
     const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
     EXPECT_TRUE(plan_record.preview_binding_ready);
@@ -4138,7 +4137,6 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContract
     EXPECT_TRUE(plan_record.execution_contract_ready);
     EXPECT_EQ(plan_record.execution_diagnostic_code, "");
     EXPECT_FALSE(plan_record.execution_assembly.formal_compare_gate.HasValue());
-    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
 }
 
 TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowReadyAfterConfirm) {
@@ -4172,7 +4170,7 @@ TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowR
     artifact_record.upload_response.filepath = rect_diag_pb.string();
     artifact_record.upload_response.prepared_filepath = rect_diag_pb.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     auto prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -4180,9 +4178,8 @@ TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowR
     const auto prepare_result = use_case.PreparePlan(prepare_request);
 
     ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
-    EXPECT_TRUE(prepare_result.Value().import_diagnostics.preview_ready);
-    EXPECT_TRUE(prepare_result.Value().import_diagnostics.production_ready);
-    EXPECT_FALSE(prepare_result.Value().import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(prepare_result.Value().input_quality.preview_ready);
+    EXPECT_TRUE(prepare_result.Value().input_quality.production_ready);
 
     Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
     snapshot_request.plan_id = prepare_result.Value().plan_id;
@@ -4201,9 +4198,8 @@ TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowR
 
     const auto& plan_record = use_case.plans_.at(prepare_result.Value().plan_id);
     EXPECT_EQ(plan_record.preview_state, DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.production_ready);
-    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(plan_record.response.input_quality.preview_ready);
+    EXPECT_TRUE(plan_record.response.input_quality.production_ready);
     EXPECT_EQ(plan_record.preview_failure_reason, prepare_result.Value().preview_failure_reason);
 }
 
@@ -4563,7 +4559,7 @@ TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutio
     artifact_record.response.artifact_id = "artifact-release-rebuild";
     artifact_record.upload_response.filepath = temp_pb_file.string();
     artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedProductionReadyInputQuality(artifact_record);
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);

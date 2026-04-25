@@ -559,9 +559,40 @@
       },
       "additionalProperties": false
     },
+    "productionBaseline": {
+      "type": "object",
+      "required": ["baseline_id", "baseline_fingerprint"],
+      "properties": {
+        "baseline_id": { "type": "string" },
+        "baseline_fingerprint": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "inputQuality": {
+      "type": "object",
+      "required": ["report_id", "report_path", "schema_version", "dxf_hash", "source_drawing_ref", "gate_result", "classification", "preview_ready", "production_ready", "summary", "primary_code", "warning_codes", "error_codes", "resolved_units", "resolved_unit_scale"],
+      "properties": {
+        "report_id": { "type": "string" },
+        "report_path": { "type": "string" },
+        "schema_version": { "type": "string" },
+        "dxf_hash": { "type": "string" },
+        "source_drawing_ref": { "type": "string" },
+        "gate_result": { "type": "string", "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"] },
+        "classification": { "type": "string", "enum": ["success", "success_with_warnings", "preview_only", "failed", "unspecified"] },
+        "preview_ready": { "type": "boolean" },
+        "production_ready": { "type": "boolean" },
+        "summary": { "type": "string" },
+        "primary_code": { "type": "string" },
+        "warning_codes": { "type": "array", "items": { "type": "string" } },
+        "error_codes": { "type": "array", "items": { "type": "string" } },
+        "resolved_units": { "type": "string" },
+        "resolved_unit_scale": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
     "dxfJobTraceability": {
       "type": "object",
-      "required": ["job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"],
+      "required": ["job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven", "production_baseline", "input_quality"],
       "properties": {
         "job_id": { "type": "string" },
         "plan_id": { "type": "string" },
@@ -581,7 +612,9 @@
         },
         "verdict": { "type": "string", "enum": ["passed", "failed", "insufficient_evidence"] },
         "verdict_reason": { "type": "string" },
-        "strict_one_to_one_proven": { "type": "boolean" }
+        "strict_one_to_one_proven": { "type": "boolean" },
+        "production_baseline": { "$ref": "#/definitions/productionBaseline" },
+        "input_quality": { "$ref": "#/definitions/inputQuality" }
       },
       "additionalProperties": false
     },

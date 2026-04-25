@@ -1003,8 +1003,8 @@ float32 ResolveInterpolationStep(const DispensingPlanRequest& request) {
     if (request.sample_ds > kEpsilon) {
         return request.sample_ds;
     }
-    if (request.spline_max_step_mm > kEpsilon) {
-        return request.spline_max_step_mm;
+    if (request.curve_flatten_max_step_mm > kEpsilon) {
+        return request.curve_flatten_max_step_mm;
     }
     return 1.0f;
 }
@@ -1369,8 +1369,8 @@ ProcessPathMotionRequest BuildProcessPathMotionRequest(const DispensingPlanReque
     plan_request.shaping.corner_smoothing_radius = 0.0f;
     plan_request.shaping.corner_max_deviation_mm = 0.0f;
 
-    plan_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
-    plan_request.normalization.spline_max_error_mm = request.spline_max_error_mm;
+    plan_request.normalization.curve_flatten_max_step_mm = request.curve_flatten_max_step_mm;
+    plan_request.normalization.curve_flatten_max_error_mm = request.curve_flatten_max_error_mm;
     if (request.continuity_tolerance_mm > kEpsilon) {
         plan_request.normalization.continuity_tolerance = request.continuity_tolerance_mm;
     }
@@ -1428,7 +1428,7 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(const ProcessPath& path, const Di
     layout_request.subsegment_count = request.subsegment_count;
     layout_request.dispense_only_cruise = request.dispense_only_cruise;
     layout_request.compensation_profile = request.compensation_profile;
-    layout_request.spline_max_error_mm = request.spline_max_error_mm;
+    layout_request.curve_flatten_max_error_mm = request.curve_flatten_max_error_mm;
 
     auto layout_result = layout_planner.Plan(layout_request);
     if (layout_result.IsError()) {
@@ -1493,8 +1493,8 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     config.max_acceleration = request.acceleration;
     config.max_jerk = request.max_jerk;
     config.time_step = (request.sample_dt > kEpsilon) ? request.sample_dt : 0.001f;
-    if (request.spline_max_error_mm > kEpsilon) {
-        config.position_tolerance = request.spline_max_error_mm;
+    if (request.curve_flatten_max_error_mm > kEpsilon) {
+        config.position_tolerance = request.curve_flatten_max_error_mm;
     }
     if (request.compensation_profile.curvature_speed_factor > kEpsilon) {
         config.curvature_speed_factor = request.compensation_profile.curvature_speed_factor;

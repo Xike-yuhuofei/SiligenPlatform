@@ -235,12 +235,12 @@ class FakeUploadPreparationPort final : public IUploadPreparationPort {
         WriteTextFile(pb_path, "pb");
         PreparedInputArtifact artifact;
         artifact.prepared_path = pb_path.string();
-        artifact.import_diagnostics.result_classification = "success";
-        artifact.import_diagnostics.preview_ready = true;
-        artifact.import_diagnostics.production_ready = true;
-        artifact.import_diagnostics.summary = "DXF import succeeded and is ready for production.";
-        artifact.import_diagnostics.resolved_units = "mm";
-        artifact.import_diagnostics.resolved_unit_scale = 1.0;
+        artifact.input_quality.classification = "success";
+        artifact.input_quality.preview_ready = true;
+        artifact.input_quality.production_ready = true;
+        artifact.input_quality.summary = "DXF import succeeded and is ready for production.";
+        artifact.input_quality.resolved_units = "mm";
+        artifact.input_quality.resolved_unit_scale = 1.0;
         return Result<PreparedInputArtifact>::Success(std::move(artifact));
     }
 

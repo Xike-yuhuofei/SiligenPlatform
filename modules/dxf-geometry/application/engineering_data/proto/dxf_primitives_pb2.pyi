@@ -2,8 +2,7 @@ from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -33,14 +32,6 @@ class DxfEntityType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     DXF_ENTITY_SPLINE: _ClassVar[DxfEntityType]
     DXF_ENTITY_ELLIPSE: _ClassVar[DxfEntityType]
     DXF_ENTITY_POINT: _ClassVar[DxfEntityType]
-
-class ImportResultClassification(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    IMPORT_RESULT_UNSPECIFIED: _ClassVar[ImportResultClassification]
-    IMPORT_RESULT_SUCCESS: _ClassVar[ImportResultClassification]
-    IMPORT_RESULT_SUCCESS_WITH_WARNINGS: _ClassVar[ImportResultClassification]
-    IMPORT_RESULT_PREVIEW_ONLY: _ClassVar[ImportResultClassification]
-    IMPORT_RESULT_FAILED: _ClassVar[ImportResultClassification]
 PRIMITIVE_LINE: PrimitiveType
 PRIMITIVE_ARC: PrimitiveType
 PRIMITIVE_SPLINE: PrimitiveType
@@ -59,11 +50,6 @@ DXF_ENTITY_LWPOLYLINE: DxfEntityType
 DXF_ENTITY_SPLINE: DxfEntityType
 DXF_ENTITY_ELLIPSE: DxfEntityType
 DXF_ENTITY_POINT: DxfEntityType
-IMPORT_RESULT_UNSPECIFIED: ImportResultClassification
-IMPORT_RESULT_SUCCESS: ImportResultClassification
-IMPORT_RESULT_SUCCESS_WITH_WARNINGS: ImportResultClassification
-IMPORT_RESULT_PREVIEW_ONLY: ImportResultClassification
-IMPORT_RESULT_FAILED: ImportResultClassification
 
 class Point2D(_message.Message):
     __slots__ = ("x", "y")
@@ -221,44 +207,12 @@ class PathHeader(_message.Message):
     tolerance: ToleranceSettings
     def __init__(self, schema_version: _Optional[int] = ..., source_path: _Optional[str] = ..., units: _Optional[str] = ..., unit_scale: _Optional[float] = ..., tolerance: _Optional[_Union[ToleranceSettings, _Mapping]] = ...) -> None: ...
 
-class ImportDiagnostics(_message.Message):
-    __slots__ = ("classification", "preview_ready", "production_ready", "summary", "primary_code", "warning_codes", "error_codes", "warning_messages", "error_messages", "ignored_entity_types", "rejected_entity_types", "resolved_units", "resolved_unit_scale")
-    CLASSIFICATION_FIELD_NUMBER: _ClassVar[int]
-    PREVIEW_READY_FIELD_NUMBER: _ClassVar[int]
-    PRODUCTION_READY_FIELD_NUMBER: _ClassVar[int]
-    SUMMARY_FIELD_NUMBER: _ClassVar[int]
-    PRIMARY_CODE_FIELD_NUMBER: _ClassVar[int]
-    WARNING_CODES_FIELD_NUMBER: _ClassVar[int]
-    ERROR_CODES_FIELD_NUMBER: _ClassVar[int]
-    WARNING_MESSAGES_FIELD_NUMBER: _ClassVar[int]
-    ERROR_MESSAGES_FIELD_NUMBER: _ClassVar[int]
-    IGNORED_ENTITY_TYPES_FIELD_NUMBER: _ClassVar[int]
-    REJECTED_ENTITY_TYPES_FIELD_NUMBER: _ClassVar[int]
-    RESOLVED_UNITS_FIELD_NUMBER: _ClassVar[int]
-    RESOLVED_UNIT_SCALE_FIELD_NUMBER: _ClassVar[int]
-    classification: ImportResultClassification
-    preview_ready: bool
-    production_ready: bool
-    summary: str
-    primary_code: str
-    warning_codes: _containers.RepeatedScalarFieldContainer[str]
-    error_codes: _containers.RepeatedScalarFieldContainer[str]
-    warning_messages: _containers.RepeatedScalarFieldContainer[str]
-    error_messages: _containers.RepeatedScalarFieldContainer[str]
-    ignored_entity_types: _containers.RepeatedScalarFieldContainer[str]
-    rejected_entity_types: _containers.RepeatedScalarFieldContainer[str]
-    resolved_units: str
-    resolved_unit_scale: float
-    def __init__(self, classification: _Optional[_Union[ImportResultClassification, str]] = ..., preview_ready: bool = ..., production_ready: bool = ..., summary: _Optional[str] = ..., primary_code: _Optional[str] = ..., warning_codes: _Optional[_Iterable[str]] = ..., error_codes: _Optional[_Iterable[str]] = ..., warning_messages: _Optional[_Iterable[str]] = ..., error_messages: _Optional[_Iterable[str]] = ..., ignored_entity_types: _Optional[_Iterable[str]] = ..., rejected_entity_types: _Optional[_Iterable[str]] = ..., resolved_units: _Optional[str] = ..., resolved_unit_scale: _Optional[float] = ...) -> None: ...
-
 class PathBundle(_message.Message):
-    __slots__ = ("header", "primitives", "metadata", "import_diagnostics")
+    __slots__ = ("header", "primitives", "metadata")
     HEADER_FIELD_NUMBER: _ClassVar[int]
     PRIMITIVES_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
-    IMPORT_DIAGNOSTICS_FIELD_NUMBER: _ClassVar[int]
     header: PathHeader
     primitives: _containers.RepeatedCompositeFieldContainer[Primitive]
     metadata: _containers.RepeatedCompositeFieldContainer[PrimitiveMeta]
-    import_diagnostics: ImportDiagnostics
-    def __init__(self, header: _Optional[_Union[PathHeader, _Mapping]] = ..., primitives: _Optional[_Iterable[_Union[Primitive, _Mapping]]] = ..., metadata: _Optional[_Iterable[_Union[PrimitiveMeta, _Mapping]]] = ..., import_diagnostics: _Optional[_Union[ImportDiagnostics, _Mapping]] = ...) -> None: ...
+    def __init__(self, header: _Optional[_Union[PathHeader, _Mapping]] = ..., primitives: _Optional[_Iterable[_Union[Primitive, _Mapping]]] = ..., metadata: _Optional[_Iterable[_Union[PrimitiveMeta, _Mapping]]] = ...) -> None: ...

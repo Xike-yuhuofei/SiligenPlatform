@@ -82,6 +82,21 @@ private:
         std::string artifact_id;
         std::string filepath;
         std::string prepared_filepath;
+        std::string input_quality_report_id;
+        std::string input_quality_report_path;
+        std::string input_quality_schema_version;
+        std::string input_quality_dxf_hash;
+        std::string input_quality_source_drawing_ref;
+        std::string input_quality_gate_result;
+        std::string input_quality_classification;
+        bool input_quality_preview_ready = false;
+        bool input_quality_production_ready = false;
+        std::string input_quality_summary;
+        std::string input_quality_primary_code;
+        std::vector<std::string> input_quality_warning_codes;
+        std::vector<std::string> input_quality_error_codes;
+        std::string input_quality_resolved_units;
+        double input_quality_resolved_unit_scale = 0.0;
         uint32_t segment_count = 0;
         double total_length = 0.0;
         double x_min = 0.0;
@@ -100,15 +115,6 @@ private:
         double preview_speed_mm_s = 0.0;
         std::string production_baseline_id;
         std::string production_baseline_fingerprint;
-        std::string import_result_classification;
-        bool import_preview_ready = false;
-        bool import_production_ready = false;
-        std::string import_summary;
-        std::string import_primary_code;
-        std::vector<std::string> import_warning_codes;
-        std::vector<std::string> import_error_codes;
-        std::string import_resolved_units;
-        double import_resolved_unit_scale = 1.0;
         Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     };
 
