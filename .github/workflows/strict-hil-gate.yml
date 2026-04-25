@@ -1,0 +1,208 @@
+name: Strict HIL Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      force_hil:
+        description: Force the HIL job even when path/label classification does not require it.
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  classify-hil-requirement:
+    name: Classify HIL Requirement
+    runs-on: windows-latest
+    outputs:
+      requires_hil: ${{ steps.classify.outputs.requires_hil }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify hardware-sensitive changes
+        id: classify
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          FORCE_HIL: ${{ inputs.force_hil || 'false' }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
+          $labels = @()
+          if ($null -ne $event.pull_request -and $null -ne $event.pull_request.labels) {
+            $labels = @($event.pull_request.labels | ForEach-Object { $_.name })
+          }
+
+          $changedFiles = @()
+          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
+            $changedFiles = @(gh pr diff $event.pull_request.number --repo $env:GITHUB_REPOSITORY --name-only)
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:BASE_SHA)) {
+            $changedFiles = @(git diff --name-only $env:BASE_SHA $env:HEAD_SHA)
+          } else {
+            $changedFiles = @(git diff --name-only "HEAD~1" "HEAD")
+          }
+
+          $hardwarePatterns = @(
+            '^apps/runtime-service/',
+            '^apps/runtime-gateway/',
+            '^modules/runtime-execution/',
+            '^modules/motion-planning/',
+            '^modules/.*/adapters/device/',
+            '^tests/e2e/hardware-in-loop/',
+            '^tests/integration/.*/hil',
+            '^tests/integration/.*/hmi_operator',
+            '^config/.*(hil|hardware|machine|motion|device|gateway)',
+            '^shared/contracts/engineering/fixtures/dxf-truth-matrix\.json',
+            '^apps/hmi-app/.*(operator|production|gateway|runtime|tcp)',
+            '^modules/hmi-application/.*(operator|production|gateway|runtime|tcp)'
+          )
+
+          $requiresHil = $false
+          $reasons = New-Object System.Collections.Generic.List[string]
+
+          if ($env:FORCE_HIL -eq "true") {
+            $requiresHil = $true
+            $reasons.Add("workflow_dispatch force_hil=true")
+          }
+          if ($labels -contains "hardware-sensitive") {
+            $requiresHil = $true
+            $reasons.Add("label hardware-sensitive")
+          }
+
+          foreach ($file in $changedFiles) {
+            $normalized = $file -replace '\\', '/'
+            foreach ($pattern in $hardwarePatterns) {
+              if ($normalized -match $pattern) {
+                $requiresHil = $true
+                $reasons.Add("path $normalized matches $pattern")
+                break
+              }
+            }
+          }
+
+          $requiresHilText = if ($requiresHil) { "true" } else { "false" }
+          $reasonText = if ($reasons.Count -gt 0) { ($reasons | Select-Object -Unique) -join "; " } else { "not hardware-sensitive" }
+
+          "requires_hil=$requiresHilText" >> $env:GITHUB_OUTPUT
+          "reason=$reasonText" >> $env:GITHUB_OUTPUT
+
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## HIL classification"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_hil: ``$requiresHilText``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$reasonText``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Changed files"
+          foreach ($file in $changedFiles) {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- ``$file``"
+          }
+
+  run-hil:
+    name: Run Controlled HIL
+    needs: classify-hil-requirement
+    if: needs.classify-hil-requirement.outputs.requires_hil == 'true'
+    runs-on: [self-hosted, windows, hil]
+    timeout-minutes: 120
+    concurrency:
+      group: strict-hil-runner
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run controlled HIL quick gate
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
+            -Profile Local `
+            -ReportDir tests\reports\github-actions\strict-hil-gate `
+            -UseTimestampedReportDir `
+            -PublishLatestOnPass:$false
+
+      - name: Assert HIL evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $reportRoot = "tests\reports\github-actions\strict-hil-gate"
+          $gateSummary = Get-ChildItem -Path $reportRoot -Recurse -Filter "hil-controlled-gate-summary.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          $releaseSummary = Get-ChildItem -Path $reportRoot -Recurse -Filter "hil-controlled-release-summary.md" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          $caseMatrix = Get-ChildItem -Path $reportRoot -Recurse -Filter "case-matrix-summary.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $gateSummary) {
+            throw "Strict HIL Gate missing hil-controlled-gate-summary.json under $reportRoot"
+          }
+          if ($null -eq $releaseSummary) {
+            throw "Strict HIL Gate missing hil-controlled-release-summary.md under $reportRoot"
+          }
+          if ($null -eq $caseMatrix) {
+            throw "Strict HIL Gate missing hil-case-matrix/case-matrix-summary.json under $reportRoot"
+          }
+          Write-Output "HIL evidence present:"
+          Write-Output "  gate_summary=$($gateSummary.FullName)"
+          Write-Output "  release_summary=$($releaseSummary.FullName)"
+          Write-Output "  case_matrix=$($caseMatrix.FullName)"
+
+      - name: Upload strict HIL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-hil-gate-evidence
+          path: tests/reports/github-actions/strict-hil-gate
+          if-no-files-found: error
+
+  strict-hil-gate:
+    name: Strict HIL Gate
+    needs:
+      - classify-hil-requirement
+      - run-hil
+    if: always()
+    runs-on: windows-latest
+    steps:
+      - name: Summarize required HIL status
+        shell: pwsh
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify-hil-requirement.result }}
+          REQUIRES_HIL: ${{ needs.classify-hil-requirement.outputs.requires_hil }}
+          CLASSIFICATION_REASON: ${{ needs.classify-hil-requirement.outputs.reason }}
+          HIL_RESULT: ${{ needs.run-hil.result }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Strict HIL Gate"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- classify_result: ``$env:CLASSIFY_RESULT``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_hil: ``$env:REQUIRES_HIL``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$env:CLASSIFICATION_REASON``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- run_hil_result: ``$env:HIL_RESULT``"
+
+          if ($env:CLASSIFY_RESULT -ne "success") {
+            throw "Strict HIL Gate classification failed with result '$env:CLASSIFY_RESULT'."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:REQUIRES_HIL)) {
+            throw "Strict HIL Gate classification did not publish requires_hil."
+          }
+
+          if ($env:REQUIRES_HIL -ne "true") {
+            Write-Output "Strict HIL Gate not required for this PR."
+            exit 0
+          }
+
+          if ($env:HIL_RESULT -ne "success") {
+            throw "Strict HIL Gate required but controlled HIL result was '$env:HIL_RESULT'."
+          }
+
+          Write-Output "Strict HIL Gate passed."

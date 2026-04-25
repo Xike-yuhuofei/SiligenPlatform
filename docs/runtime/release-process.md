@@ -75,6 +75,8 @@ PR 入口：
 
 仓库的 `main` 分支保护必须将 `Strict PR Gate` 配置为 required status check。未通过该 check 的 PR 不得合并。
 
+硬件敏感 PR 还必须通过 `Strict HIL Gate`。该 check 由 self-hosted Windows HIL runner 执行真实受控 HIL；非硬件敏感 PR 只能由 workflow classifier 明确判定为 `not required` 后通过。具体策略以 `docs/validation/pr-gate-and-hil-gate-policy.md` 为准。
+
 ### 3.3 发布门禁
 
 发布前默认门禁入口（本地）：
