@@ -26,6 +26,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install validation dependencies
+        shell: pwsh
+        run: |
+          .\scripts\validation\install-python-deps.ps1
+
       - name: Run strict CI gate
         shell: pwsh
         run: |
