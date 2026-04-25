@@ -138,6 +138,8 @@ class LaunchSupervisionFlow:
                 recoverable=True,
                 last_error_message="Offline mode active: startup sequence skipped.",
                 updated_at=snapshot_timestamp(),
+                runtime_contract_verified=False,
+                runtime_identity=None,
             )
             return self._emit_snapshot(snapshot, snapshot_callback)
 
@@ -158,6 +160,8 @@ class LaunchSupervisionFlow:
                 backend_state="failed",
                 tcp_state="failed",
                 hardware_state="failed",
+                runtime_contract_verified=False,
+                runtime_identity=None,
                 snapshot_callback=snapshot_callback,
                 event_callback=event_callback,
                 session_id=session_id,

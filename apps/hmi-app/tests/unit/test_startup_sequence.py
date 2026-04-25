@@ -2,7 +2,6 @@ import sys
 import unittest
 import os
 from pathlib import Path
-from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -23,7 +22,7 @@ from hmi_client.client.launch_supervision_contract import (
     SessionSnapshot,
     snapshot_timestamp,
 )
-from hmi_client.client.protocol import RuntimeIdentityStatus, StatusQueryResult
+from hmi_client.client.protocol import MachineStatus, RuntimeIdentityStatus, StatusQueryResult
 
 
 EXPECTED_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -82,7 +81,7 @@ class _FakeRuntimeProbe:
     def __init__(self, status_result: StatusQueryResult | None = None) -> None:
         self.status_result = status_result or StatusQueryResult(
             ok=True,
-            status=SimpleNamespace(
+            status=MachineStatus(
                 runtime_identity=RuntimeIdentityStatus(
                     executable_path=EXPECTED_RUNTIME_IDENTITY.executable_path,
                     working_directory=EXPECTED_RUNTIME_IDENTITY.working_directory,
@@ -293,8 +292,11 @@ class StartupSequenceContractTest(unittest.TestCase):
                 ("System ready", 100),
             ],
         )
-        self.assertTrue(result.session_snapshot.runtime_contract_verified)
-        self.assertEqual(result.session_snapshot.runtime_identity, EXPECTED_RUNTIME_IDENTITY)
+        session_snapshot = result.session_snapshot
+        self.assertIsNotNone(session_snapshot)
+        assert session_snapshot is not None
+        self.assertTrue(session_snapshot.runtime_contract_verified)
+        self.assertEqual(session_snapshot.runtime_identity, EXPECTED_RUNTIME_IDENTITY)
 
     def test_recovery_retry_stage_restores_online_ready(self) -> None:
         backend = _FakeBackend()

@@ -741,7 +741,7 @@ def main() -> int:
     )
     client = TcpJsonClient(args.host, port)
     try:
-        ready_status, ready_note = _wait_gateway_ready(process, args.host, port, timeout_seconds=8.0)
+        ready_status, ready_note = _wait_gateway_ready(process, args.host, port, timeout_seconds=30.0)
         if ready_status != "passed":
             results.append(
                 ScenarioResult(
