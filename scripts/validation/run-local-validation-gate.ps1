@@ -514,7 +514,7 @@ if ($IncludeHilClosedLoop) {
 }
 foreach ($artifact in $requiredArtifacts) {
     if (-not (Test-Path $artifact)) {
-        Write-Error "根级门禁未发布预期报告: $artifact"
+        Write-Error "Root validation gate did not publish expected report: $artifact"
     }
 }
 
