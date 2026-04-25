@@ -894,11 +894,10 @@ def build_cases(
                         "-TimeoutMs",
                         "45000",
                         "-ExerciseRuntimeActions",
-                        "-DxfBrowsePath",
-                        str(WORKSPACE_ROOT / "samples" / "dxf" / "rect_diag.dxf"),
+                        "-RuntimeActionProfile",
+                        "home_move",
                     ),
                     cwd=WORKSPACE_ROOT,
-                    required_assets=("sample.dxf.rect_diag",),
                 ),
             ]
         )
