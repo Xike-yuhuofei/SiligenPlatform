@@ -9,10 +9,10 @@
     "preview_state": "snapshot_ready",
     "preview_source": "planned_glue_snapshot",
     "preview_kind": "glue_points",
-    "preview_validation_classification": "pass_with_exception",
-    "preview_exception_reason": "span spacing outside configured window but accepted as explicit exception",
+    "preview_validation_classification": "pass",
+    "preview_exception_reason": "",
     "preview_failure_reason": "",
-    "preview_diagnostic_code": "process_path_fragmentation",
+    "preview_diagnostic_code": "",
     "confirmed_at": "",
     "segment_count": 128,
     "point_count": 3,
@@ -32,7 +32,7 @@
       "display_path_length_mm": 91.594063,
       "source_trigger_indices": [0, 1, 2],
       "display_reveal_lengths_mm": [0.0, 45.797031, 91.594063],
-      "diagnostic_code": "process_path_fragmentation",
+      "diagnostic_code": "",
       "failure_reason": ""
     },
     "execution_point_count": 384,
@@ -53,6 +53,11 @@
     },
     "total_length_mm": 1542.25,
     "estimated_time_s": 123.38,
+    "path_quality": {
+      "verdict": "pass",
+      "blocking": false,
+      "reason_codes": []
+    },
     "generated_at": "2026-03-21T12:00:00Z"
   }
 }

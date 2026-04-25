@@ -176,6 +176,8 @@ def test_dxf_preview_and_job_contract():
     preview_result_properties = preview["resultSchema"]["properties"]
     assert "preview_source" in preview_result_properties
     assert "motion_preview" in preview_result_properties
+    assert "path_quality" in preview["resultSchema"]["required"]
+    assert "path_quality" in preview_result_properties
 
     preview_confirm = operations["dxf.preview.confirm"]
     assert {"plan_id", "snapshot_hash"}.issubset(set(preview_confirm["paramsSchema"]["required"]))
@@ -195,6 +197,7 @@ def test_dxf_preview_and_job_contract():
     assert "execution_nominal_time_s" in plan_prepare["resultSchema"]["required"]
     assert "execution_plan_summary" in plan_prepare["resultSchema"]["required"]
     assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
+    assert "path_quality" in plan_prepare["resultSchema"]["required"]
     assert "approximate_splines" not in plan_prepare["paramsSchema"]["properties"]
 
     job_start = operations["dxf.job.start"]
@@ -234,12 +237,23 @@ def test_dxf_preview_and_job_contract():
 
     artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
+    preview_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json")
     start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
     assert artifact_fixture["result"]["formal_compare_gate"] is None
     assert prepare_fixture["result"]["formal_compare_gate"] is None
     assert "estimated_time_s" not in prepare_fixture["result"]
     assert "execution_nominal_time_s" in prepare_fixture["result"]
     assert "execution_plan_summary" in prepare_fixture["result"]
+    assert prepare_fixture["result"]["path_quality"] == {
+        "verdict": "pass",
+        "blocking": False,
+        "reason_codes": [],
+    }
+    assert preview_fixture["result"]["path_quality"] == {
+        "verdict": "pass",
+        "blocking": False,
+        "reason_codes": [],
+    }
     assert start_fixture["result"]["formal_compare_gate"] is None
     assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(set(start_fixture["result"].keys()))
 

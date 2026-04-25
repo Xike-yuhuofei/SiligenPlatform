@@ -1,6 +1,6 @@
 # DXF Motion Execution Contract V1
 
-更新时间：`2026-03-22`
+更新时间：`2026-04-25`
 
 ## 1. 目的与适用范围
 
@@ -71,6 +71,15 @@ DXF
 - DXF / PB 契约 authority 以 `shared/contracts/engineering/` 与 `data/schemas/engineering/dxf/v1/` 为准。
 - DXF preprocess 与 PB 准备链当前 owner 以 `modules/dxf-geometry/` 为准。
 - `process_path`、`motion_trajectory`、`interpolation_segments` 三层对象的 live surface 已切到 `modules/*`，不再以 package-era 路径作为默认代码入口。
+
+### 3.1 生产路径质量门禁
+
+当前 `dxf.plan.prepare` / `dxf.preview.snapshot` / `dxf.job.start` 共享同一份 `path_quality` authority：
+
+- `path_quality` 是生产路径质量唯一 gate；`preview_validation_classification` / `preview_exception_reason` / `preview_failure_reason` / `preview_diagnostic_code` 仅保留为 preview metadata。
+- `path_quality.reason_codes` 当前至少包括：`process_path_fragmentation`、`path_discontinuity`、`micro_segment_burst`、`abnormal_short_segment`、`small_backtrack`、`unclassified_path_exception`、`spacing_invalid`、`formal_compare_blocked`。
+- 任一 blocking reason 必须令 `path_quality.blocking=true`，并且 `dxf.job.start` fail-closed；runtime start port 不得被调用。
+- 第一阶段不做复杂自动修复、不做静默降级、不做 warning-only 放行；低质量路径默认阻断生产。
 
 ## 4. 三层契约
 
@@ -218,6 +227,8 @@ DXF
 ### 6.2 必须保留的保留意见
 
 - `motion_trajectory` 不应直接称为“设备实际执行轨迹”。
+- `preview_diagnostic_code` 不再是独立 production authority；它只能通过 `path_quality` 收敛为可执行/不可执行结论。
+- 路径质量例外若未进入显式 allowlist，不得以 `pass_with_exception` 名义进入生产。
 - 实际执行轨迹以控制卡对 `interpolation_segments` 的执行结果为准。
 - 若系统需要声明“轨迹一致性闭合”，必须额外验证板卡执行结果与上位机时间律参考之间的偏差。
 

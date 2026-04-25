@@ -650,6 +650,9 @@ PreviewSnapshotResponse PreviewSnapshotService::BuildResponse(
     response.preview_exception_reason = input.exception_reason;
     response.preview_failure_reason = input.failure_reason;
     response.preview_diagnostic_code = input.diagnostic_code;
+    if (input.path_quality != nullptr) {
+        response.path_quality = *input.path_quality;
+    }
     response.generated_at = input.generated_at;
     response.preview_binding.source = "runtime_authority_preview_binding";
     response.preview_binding.status = "unavailable";

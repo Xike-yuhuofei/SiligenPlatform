@@ -248,6 +248,14 @@ nlohmann::json BuildProductionBaselineJson(
     };
 }
 
+nlohmann::json BuildPathQualityJson(const Siligen::Shared::Types::PathQualityAssessment& path_quality) {
+    return {
+        {"verdict", Siligen::Shared::Types::ToString(path_quality.verdict)},
+        {"blocking", path_quality.blocking},
+        {"reason_codes", path_quality.reason_codes},
+    };
+}
+
 nlohmann::json BuildImportDiagnosticsJson(const DxfImportDiagnostics& diagnostics, const std::string& prepared_filepath) {
     return BuildImportDiagnosticsJson(
         diagnostics.result_classification,
@@ -2261,6 +2269,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"snapshot_hash", ""},
         {"preview_request_signature", request_signature},
         {"preview_state", "prepared"},
+        {"path_quality", BuildPathQualityJson(plan.path_quality)},
         {"performance_profile", performance_profile},
     };
     result.update(BuildImportDiagnosticsJson(plan.import_diagnostics, plan.prepared_filepath));
@@ -2861,6 +2870,10 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"preview_state", snapshot.preview_state},
         {"preview_source", snapshot.preview_source},
         {"preview_kind", snapshot.preview_kind},
+        {"preview_validation_classification", snapshot.preview_validation_classification},
+        {"preview_exception_reason", snapshot.preview_exception_reason},
+        {"preview_failure_reason", snapshot.preview_failure_reason},
+        {"preview_diagnostic_code", snapshot.preview_diagnostic_code},
         {"confirmed_at", snapshot.confirmed_at},
         {"segment_count", snapshot.segment_count},
         {"point_count", snapshot.point_count},
@@ -2872,6 +2885,7 @@ std::string TcpCommandDispatcher::HandleDxfPreviewSnapshot(const std::string& id
         {"execution_point_count", snapshot.execution_point_count},
         {"total_length_mm", snapshot.total_length_mm},
         {"estimated_time_s", snapshot.estimated_time_s},
+        {"path_quality", BuildPathQualityJson(snapshot.path_quality)},
         {"generated_at", snapshot.generated_at}
     });
 }

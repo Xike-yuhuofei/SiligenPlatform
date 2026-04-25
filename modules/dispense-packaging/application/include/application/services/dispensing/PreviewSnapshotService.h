@@ -1,5 +1,6 @@
 #pragma once
 
+#include "shared/types/PathQualityAssessment.h"
 #include "shared/types/Point.h"
 
 #include <cstddef>
@@ -72,6 +73,7 @@ struct PreviewSnapshotResponse {
     std::string preview_exception_reason;
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
+    Siligen::Shared::Types::PathQualityAssessment path_quality;
     std::string generated_at;
 };
 
@@ -97,6 +99,7 @@ struct PreviewSnapshotInput {
     std::string exception_reason;
     std::string failure_reason;
     std::string diagnostic_code;
+    const Siligen::Shared::Types::PathQualityAssessment* path_quality = nullptr;
 };
 
 class PreviewSnapshotService {

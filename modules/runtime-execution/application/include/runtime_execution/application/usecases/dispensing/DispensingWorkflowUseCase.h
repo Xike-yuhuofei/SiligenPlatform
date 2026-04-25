@@ -13,6 +13,7 @@
 #include "process_path/contracts/ProcessPath.h"
 #include "siligen/device/contracts/ports/device_ports.h"
 #include "shared/types/Error.h"
+#include "shared/types/PathQualityAssessment.h"
 #include "shared/types/Point.h"
 #include "shared/types/Result.h"
 
@@ -118,6 +119,7 @@ struct PreparePlanResponse {
     std::string preview_exception_reason;
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
+    Siligen::Shared::Types::PathQualityAssessment path_quality;
     std::string generated_at;
     ProductionBaselineContext production_baseline;
     PerformanceProfile performance_profile;
@@ -308,6 +310,9 @@ class DispensingWorkflowUseCase {
         std::string preview_exception_reason;
         std::string preview_failure_reason;
         std::string preview_diagnostic_code;
+        std::vector<Siligen::Application::Services::Dispensing::WorkflowSpacingValidationGroup>
+            spacing_validation_groups;
+        std::optional<Siligen::Shared::Types::PathQualityAssessment> path_quality;
         PlanPreviewState preview_state = PlanPreviewState::PREPARED;
         std::string preview_snapshot_id;
         std::string preview_snapshot_hash;
@@ -463,11 +468,15 @@ class DispensingWorkflowUseCase {
     Siligen::Shared::Types::Result<void> MaterializeProfileCompareSchedule(PlanRecord& plan_record) const;
     Siligen::Shared::Types::Result<std::shared_ptr<const Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace>>
     BuildExpectedTrace(const PlanRecord& plan_record) const;
+public:
+    void RefreshPathQualityAssessment(PlanRecord& plan_record) const;
+private:
     void RefreshPlanImportDiagnostics(PlanRecord& plan_record) const;
     std::optional<Siligen::Shared::Types::Error> BuildPreviewGateError(
         PlanRecord& plan_record,
         bool mark_failed,
         bool require_execution_binding) const;
+    std::string ResolvePathQualityGateFailure(const PlanRecord& plan_record) const;
     std::string ResolvePreviewGateFailure(const PlanRecord& plan_record) const;
     std::string PreviewStateToString(PlanPreviewState state) const;
     void ReleaseRetainedExecutionState(PlanRecord& plan_record) const;
