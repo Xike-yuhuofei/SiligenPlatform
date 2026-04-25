@@ -1,11 +1,11 @@
 # DXF 输入治理冻结补充标准 v1
 
-Status: Frozen Supplement Standard  
-Owner: M1 job-ingest / M2 dxf-geometry / M3 topology-feature / M4 process-planning / M6 process-path / M8 dispense-packaging / M9 runtime-execution / M10 trace-diagnostics  
-Canonical Docset: `docs/architecture/dsp-e2e-spec/`  
-Recommended Repo Path: `docs/architecture/dsp-e2e-spec/dxf-input-governance-standard-v1.md`  
-Scope: 无痕内衣视觉点胶机上位机 DXF 输入治理  
-Target: 产品级可靠 + 算法领先基础版，并保留 L5 工艺闭环演进路径  
+Status: Frozen Supplement Standard
+Owner: M1 job-ingest / M2 dxf-geometry / M3 topology-feature / M4 process-planning / M6 process-path / M8 dispense-packaging / M9 runtime-execution / M10 trace-diagnostics
+Canonical Docset: `docs/architecture/dsp-e2e-spec/`
+Recommended Repo Path: `docs/architecture/dsp-e2e-spec/dxf-input-governance-standard-v1.md`
+Scope: 无痕内衣视觉点胶机上位机 DXF 输入治理
+Target: 产品级可靠 + 算法领先基础版，并保留 L5 工艺闭环演进路径
 Last Updated: 2026-04-24
 
 ---
@@ -14,7 +14,7 @@ Last Updated: 2026-04-24
 
 本文档是 `docs/architecture/dsp-e2e-spec/` 正式冻结文档集下的 **DXF 输入治理专项冻结补充标准**。
 
-本文档不是第二套冻结文档集，不替代 `S01-S10`，不另建并行对象链。  
+本文档不是第二套冻结文档集，不替代 `S01-S10`，不另建并行对象链。
 凡涉及 DXF 输入治理的专项规则，必须回链到 `dsp-e2e-spec` 已冻结的阶段链、对象链、模块边界、状态机、测试矩阵与归档规则。
 
 本文档主要细化以下阶段：
@@ -87,12 +87,12 @@ JobDefinition
 
 ## 3.1 DXF 不是可直接执行文件
 
-DXF 在本系统中不是“能打开就能点胶”的图纸文件。  
+DXF 在本系统中不是“能打开就能点胶”的图纸文件。
 DXF 必须先经过输入规范校验、解析标准化、拓扑质量检查、制造特征识别、工艺语义映射、路径质量门禁、预览执行一致性验证和执行安全门禁。
 
 ## 3.2 第一阶段不追求无限兼容
 
-第一阶段目标不是兼容所有 CAD 软件、所有 DXF 版本、所有 DXF entity。  
+第一阶段目标不是兼容所有 CAD 软件、所有 DXF 版本、所有 DXF entity。
 第一阶段目标是：
 
 ```text
@@ -541,7 +541,7 @@ ACAD_PROXY_ENTITY
 
 ## 7.1 图层是工艺语义边界
 
-DXF 图层不是装饰属性。  
+DXF 图层不是装饰属性。
 图层用于表达：
 
 ```text
@@ -762,7 +762,7 @@ LayerSemanticPolicy
 
 ## 10.1 目的
 
-`CanonicalGeometry` 是 DXF 输入治理后的几何事实对象。  
+`CanonicalGeometry` 是 DXF 输入治理后的几何事实对象。
 它不是胶点，不是运动轨迹，不是执行段。
 
 它用于连接：
@@ -1185,7 +1185,7 @@ FAIL
 
 ## 13.1 tolerance 必须集中定义
 
-不得在各模块散落 magic number。  
+不得在各模块散落 magic number。
 必须由 `GeometryTolerancePolicy` 提供。
 
 ## 13.2 第一阶段建议默认值
@@ -1334,7 +1334,7 @@ error code 1003
 
 ## 16.1 预览不是 DXF 原图显示
 
-HMI 预览不得只是把 DXF 画出来。  
+HMI 预览不得只是把 DXF 画出来。
 预览必须逐步升级为：
 
 ```text
@@ -1359,7 +1359,7 @@ HMI 预览不得只是把 DXF 画出来。
 
 ## 16.3 预览必须追溯到执行前模型
 
-最终预览不应直接来自原始 DXF。  
+最终预览不应直接来自原始 DXF。
 推荐链路：
 
 ```text
@@ -1389,8 +1389,8 @@ owner_module
 
 # 17. 与路径质量门禁的关系
 
-DXF 输入治理只判断输入是否合格。  
-路径质量门禁判断生成后的路径是否适合执行。  
+DXF 输入治理只判断输入是否合格。
+路径质量门禁判断生成后的路径是否适合执行。
 二者都必须通过。
 
 标准关系：
