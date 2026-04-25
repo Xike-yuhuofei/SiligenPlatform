@@ -31,22 +31,4 @@ Point2D CMPCompensation::CompensateTriggerPosition(const Point2D& current_positi
     return compensated_position;
 }
 
-CMPConfiguration CMPCompensation::AdjustTriggerParameters(float32 current_accuracy,
-                                                          float32 target_accuracy,
-                                                          const CMPConfiguration& cmp_config) const {
-    CMPConfiguration adjusted_config = cmp_config;
-
-    if (current_accuracy > target_accuracy) {
-        adjusted_config.compensation_factor *= 1.1f;
-        adjusted_config.trigger_position_tolerance *= 0.9f;
-        adjusted_config.time_tolerance_ms *= 0.9f;
-    } else if (current_accuracy < target_accuracy * 0.5f) {
-        adjusted_config.compensation_factor *= 0.95f;
-        adjusted_config.trigger_position_tolerance *= 1.05f;
-        adjusted_config.time_tolerance_ms *= 1.05f;
-    }
-
-    return adjusted_config;
-}
-
 }  // namespace Siligen::Domain::Motion

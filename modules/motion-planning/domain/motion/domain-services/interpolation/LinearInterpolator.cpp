@@ -6,15 +6,15 @@
 
 namespace Siligen::Domain::Motion {
 
+namespace SCurveMath = Siligen::Domain::Motion::DomainServices::SCurveMath;
+
 LinearInterpolator::LinearInterpolator() : TrajectoryInterpolatorBase() {
-    m_sshape_cache.reserve(100);
     m_velocity_cache.reserve(1000);
 }
 
 std::vector<TrajectoryPoint> LinearInterpolator::CalculateInterpolation(const std::vector<Point2D>& points,
                                                                         const InterpolationConfig& config) {
     if (!ValidateParameters(points, config)) {
-        // 通过依赖注入或静态实例记录日志，而不是直接依赖基础设施层
         return {};
     }
     if (points.size() == 2) {
@@ -48,8 +48,31 @@ std::vector<TrajectoryPoint> LinearInterpolator::SShapeLinearInterpolation(const
     if (!ValidateLinearParameters(start, end, start_vel, end_vel, max_vel, max_acc, max_jerk)) return {};
     float32 dist = CalculateDistance(start, end);
     if (dist < 1e-6f) return {TrajectoryPoint(start, start_vel)};
-    return GenerateSShapeTrajectory(
-        start, end, CalculateSShapeParameters(dist, start_vel, end_vel, max_vel, max_acc, max_jerk), time_step);
+
+    SCurveMath::SCurveConfig sconfig;
+    sconfig.start_velocity = start_vel;
+    sconfig.max_velocity = max_vel;
+    sconfig.end_velocity = end_vel;
+    sconfig.max_acceleration = max_acc;
+    sconfig.max_jerk = max_jerk;
+
+    auto samples = SCurveMath::GenerateProfile(dist, sconfig, time_step);
+    if (samples.empty()) return {};
+
+    Point2D dir = (end - start) / dist;
+    std::vector<TrajectoryPoint> trajectory;
+    trajectory.reserve(samples.size());
+
+    for (const auto& s : samples) {
+        TrajectoryPoint pt;
+        pt.position = start + dir * s.position;
+        pt.velocity = s.velocity;
+        pt.timestamp = s.t;
+        pt.sequence_id = static_cast<uint32>(trajectory.size());
+        trajectory.push_back(pt);
+    }
+
+    return trajectory;
 }
 
 std::vector<TrajectoryPoint> LinearInterpolator::VariableSpeedLinearInterpolation(
@@ -155,112 +178,6 @@ bool LinearInterpolator::ValidateLinearParameters(const Point2D& start,
     return CalculateDistance(start, end) >= 1e-6f;
 }
 
-LinearInterpolator::SShapeParameters LinearInterpolator::CalculateSShapeParameters(
-    float32 dist, float32 sv, float32 ev, float32 mv, float32 ma, float32 mj) const {
-    SShapeParameters p{};
-    p.total_distance = dist;
-    p.max_acc = ma;
-    p.max_jerk = mj;
-    float32 ta = ma / mj, s_acc = (mv * mv - sv * sv) / (2 * ma), s_dec = (mv * mv - ev * ev) / (2 * ma);
-
-    if (dist > s_acc + s_dec) {
-        p.reach_max_velocity = true;
-        if (mv > sv) {
-            p.t1 = ta;
-            p.t2 = (mv - sv) / ma - ta;
-            p.t3 = ta;
-            p.v1 = sv + ma * ta;
-            p.v2 = mv;
-        } else {
-            p.v1 = p.v2 = sv;
-        }
-        float32 sa = (sv + mv) * (p.t1 + p.t2 + p.t3) / 2, sd = (mv + ev) * ta;
-        p.t4 = (dist - sa - sd) / mv;
-        if (mv > ev) {
-            p.t5 = ta;
-            p.t6 = (mv - ev) / ma - ta;
-            p.t7 = ta;
-            p.v3 = ev + ma * ta;
-        } else
-            p.v3 = ev;
-    } else {
-        p.reach_max_velocity = false;
-        float32 vp = std::min(mv, std::sqrt((ma * ma * dist + sv * sv + ev * ev) / 2));
-        if (vp > sv) {
-            p.t1 = (vp - sv) / mj;
-            p.t3 = (vp - ev) / mj;
-        }
-        p.v1 = p.v2 = p.v3 = vp;
-    }
-    p.total_time = p.t1 + p.t2 + p.t3 + p.t4 + p.t5 + p.t6 + p.t7;
-    return p;
-}
-
-std::vector<TrajectoryPoint> LinearInterpolator::GenerateSShapeTrajectory(const Point2D& start,
-                                                                          const Point2D& end,
-                                                                          const SShapeParameters& p,
-                                                                          float32 ts) const {
-    std::vector<TrajectoryPoint> traj;
-    float32 dist = CalculateDistance(start, end);
-    Point2D dir = (end - start) / dist;
-    for (float32 t = 0; t <= p.total_time; t += ts) {
-        auto [pos, vel] = CalculatePositionAndVelocity(t, p, dist);
-        TrajectoryPoint pt;
-        pt.position = start + dir * pos;
-        pt.velocity = vel;
-        pt.timestamp = t;
-        pt.sequence_id = static_cast<uint32>(traj.size());
-        traj.push_back(pt);
-    }
-    return traj;
-}
-
-std::pair<float32, float32> LinearInterpolator::CalculatePositionAndVelocity(float32 t,
-                                                                             const SShapeParameters& p,
-                                                                             float32 dist) const {
-    float32 pos = 0, vel = 0;
-    float32 T[] = {0,
-                   p.t1,
-                   p.t1 + p.t2,
-                   p.t1 + p.t2 + p.t3,
-                   p.t1 + p.t2 + p.t3 + p.t4,
-                   p.t1 + p.t2 + p.t3 + p.t4 + p.t5,
-                   p.t1 + p.t2 + p.t3 + p.t4 + p.t5 + p.t6,
-                   p.total_time};
-
-    if (t <= T[1]) {
-        vel = 0.5f * p.max_jerk * t * t;
-        pos = p.max_jerk * t * t * t / 6;
-    } else if (t <= T[2]) {
-        float32 tl = t - T[1];
-        vel = p.v1 + p.max_acc * tl;
-        pos = p.s1 + p.v1 * tl + 0.5f * p.max_acc * tl * tl;
-    } else if (t <= T[3]) {
-        float32 tl = t - T[2];
-        vel = p.v2 + p.max_acc * tl - 0.5f * p.max_jerk * tl * tl;
-        pos = p.s1 + p.s2 + p.v2 * tl + 0.5f * p.max_acc * tl * tl - p.max_jerk * tl * tl * tl / 6;
-    } else if (t <= T[4]) {
-        float32 tl = t - T[3];
-        vel = p.v3;
-        pos = p.s1 + p.s2 + p.s3 + p.v3 * tl;
-    } else if (t <= T[5]) {
-        float32 tl = t - T[4];
-        vel = p.v3 - 0.5f * p.max_jerk * tl * tl;
-        pos = p.s1 + p.s2 + p.s3 + p.s4 + p.v3 * tl - p.max_jerk * tl * tl * tl / 6;
-    } else if (t <= T[6]) {
-        float32 tl = t - T[5];
-        vel = p.v3 - p.max_acc * tl;
-        pos = p.s1 + p.s2 + p.s3 + p.s4 + p.s5 + p.v3 * tl - 0.5f * p.max_acc * tl * tl;
-    } else {
-        float32 tl = t - T[6];
-        vel = p.v1 - p.max_acc * tl + 0.5f * p.max_jerk * tl * tl;
-        pos = p.s1 + p.s2 + p.s3 + p.s4 + p.s5 + p.s6 + p.v1 * tl - 0.5f * p.max_acc * tl * tl +
-              p.max_jerk * tl * tl * tl / 6;
-    }
-
-    return {std::clamp(pos, 0.0f, dist), std::max(0.0f, vel)};
-}
-
 std::vector<float32> LinearInterpolator::LookAheadSpeedOptimization(const std::vector<MotionSegment>& segments,
                                                                     int32 look_ahead,
                                                                     float32 smoothing_radius) const {
@@ -297,4 +214,3 @@ std::vector<TrajectoryPoint> LinearInterpolator::SmoothTrajectory(const std::vec
 }
 
 }  // namespace Siligen::Domain::Motion
-

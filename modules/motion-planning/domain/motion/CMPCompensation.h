@@ -45,17 +45,6 @@ class CMPCompensation {
                                       float32 current_velocity,
                                       const CMPConfiguration& cmp_config) const;
 
-    /**
-     * @brief 动态触发参数调整
-     * @param current_accuracy 当前精度
-     * @param target_accuracy 目标精度
-     * @param cmp_config CMP配置
-     * @return 调整后的CMP配置
-     */
-    CMPConfiguration AdjustTriggerParameters(float32 current_accuracy,
-                                             float32 target_accuracy,
-                                             const CMPConfiguration& cmp_config) const;
-
    private:
 };
 

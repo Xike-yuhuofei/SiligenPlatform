@@ -28,40 +28,6 @@ class SevenSegmentSCurveProfile : public IVelocityProfilePort {
     VelocityProfileType GetProfileType() const noexcept override {
         return VelocityProfileType::S_CURVE_7_SEG;
     }
-
-   private:
-    struct SegmentTimes {
-        float32 t1 = 0;
-        float32 t2 = 0;
-        float32 t3 = 0;
-        float32 t4 = 0;
-        float32 t5 = 0;
-        float32 t6 = 0;
-        float32 t7 = 0;
-
-        float32 Total() const noexcept {
-            return t1 + t2 + t3 + t4 + t5 + t6 + t7;
-        }
-    };
-
-    SegmentTimes CalculateSegmentTimes(
-        float32 distance,
-        float32 v_max,
-        float32 a_max,
-        float32 j_max) const noexcept;
-
-    float32 CalculateVelocityAt(
-        float32 t,
-        const SegmentTimes& times,
-        float32 v_max,
-        float32 a_max,
-        float32 j_max) const noexcept;
-
-    float32 CalculateAccelerationAt(
-        float32 t,
-        const SegmentTimes& times,
-        float32 a_max,
-        float32 j_max) const noexcept;
 };
 
 }  // namespace Siligen::Domain::Motion::DomainServices

@@ -6,6 +6,7 @@ set(MOTION_PLANNING_UNIT_TEST_SOURCES
     unit/domain/trajectory/InterpolationProgramPlannerTest.cpp
     unit/domain/motion/CMPCoordinatedInterpolatorPrecisionTest.cpp
     unit/domain/motion/MotionPlannerOwnerPathTest.cpp
+    unit/domain/motion/SCurveProfileMathTest.cpp
     unit/application/usecases/motion/trajectory/DeterministicPathExecutionUseCaseTest.cpp
     unit/application/services/motion_planning/MotionPlanningPublicSurfaceContractTest.cpp
 )

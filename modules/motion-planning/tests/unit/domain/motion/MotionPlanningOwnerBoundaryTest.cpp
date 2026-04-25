@@ -1,5 +1,3 @@
-#include "domain/motion/BezierCalculator.h"
-#include "domain/motion/BSplineCalculator.h"
 #include "domain/motion/CMPCoordinatedInterpolator.h"
 #include "domain/motion/CMPCompensation.h"
 #include "domain/motion/CMPValidator.h"
@@ -75,8 +73,6 @@ TEST(MotionPlanningOwnerBoundaryTest, CanonicalPlanningHeadersUseProcessPathCont
                   decltype(static_cast<InterpolationProgramBuildSignature>(&InterpolationProgramPlanner::BuildProgram)),
                   InterpolationProgramBuildSignature>);
     static_assert(std::is_class_v<Siligen::Domain::Motion::TrajectoryPlanner>);
-    static_assert(std::is_class_v<Siligen::Domain::Motion::BezierCalculator>);
-    static_assert(std::is_class_v<Siligen::Domain::Motion::BSplineCalculator>);
     static_assert(std::is_class_v<Siligen::Domain::Motion::CircleCalculator>);
     static_assert(std::is_class_v<Siligen::Domain::Motion::CMPCompensation>);
     static_assert(std::is_class_v<Siligen::Domain::Motion::CMPValidator>);
@@ -358,7 +354,6 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningCompatibilityHeadersAreRem
         repo_root / "modules/workflow/domain/include/domain/motion/value-objects/TrajectoryTypes.h",
         repo_root / "modules/workflow/domain/include/domain/motion/domain-services/GeometryBlender.h",
         repo_root / "modules/workflow/domain/include/domain/motion/domain-services/MotionPlanner.h",
-        repo_root / "modules/workflow/domain/include/domain/motion/domain-services/SpeedPlanner.h",
         repo_root / "modules/workflow/domain/include/domain/motion/domain-services/TrajectoryPlanner.h",
         repo_root / "modules/workflow/domain/include/domain/motion/domain-services/TriggerCalculator.h",
         repo_root / "modules/workflow/domain/include/domain/motion/domain-services/interpolation/ArcGeometryMath.h",
@@ -389,7 +384,6 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowDormantPlanningShellHeadersAreRemo
         repo_root / "modules/workflow/domain/domain/motion/value-objects/TrajectoryAnalysisTypes.h",
         repo_root / "modules/workflow/domain/domain/motion/value-objects/TrajectoryTypes.h",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/GeometryBlender.h",
-        repo_root / "modules/workflow/domain/domain/motion/domain-services/SpeedPlanner.h",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/TrajectoryPlanner.h",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/TriggerCalculator.h",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/interpolation/ArcGeometryMath.h",
@@ -425,7 +419,6 @@ TEST(MotionPlanningOwnerBoundaryTest, WorkflowPlanningImplementationsAreRemoved)
         repo_root / "modules/workflow/domain/domain/motion/CMPValidator.cpp",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/GeometryBlender.cpp",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/SevenSegmentSCurveProfile.cpp",
-        repo_root / "modules/workflow/domain/domain/motion/domain-services/SpeedPlanner.cpp",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/TimeTrajectoryPlanner.cpp",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/TrajectoryPlanner.cpp",
         repo_root / "modules/workflow/domain/domain/motion/domain-services/TriggerCalculator.cpp",
