@@ -103,7 +103,6 @@ struct CommandLineConfig {
     bool optimize_path = true;
     double start_x = 0.0;
     double start_y = 0.0;
-    bool approximate_splines = false;
     int two_opt_iterations = 0;
     double spline_step_mm = 0.0;
     double spline_error_mm = 0.0;

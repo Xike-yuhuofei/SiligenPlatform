@@ -218,6 +218,7 @@ def test_dxf_preview_and_job_contract():
     assert "recipe_id" not in plan_prepare["paramsSchema"]["properties"]
     assert "version_id" not in plan_prepare["paramsSchema"]["properties"]
     assert "speed_mm_s" not in plan_prepare["paramsSchema"]["properties"]
+    assert "approximate_splines" not in plan_prepare["paramsSchema"]["properties"]
     assert not plan_prepare.get("compatibility", {}).get("requestAliases")
     plan_prepare_notes = "\n".join(plan_prepare.get("compatibility", {}).get("notes", []))
     assert "current production baseline" in plan_prepare_notes

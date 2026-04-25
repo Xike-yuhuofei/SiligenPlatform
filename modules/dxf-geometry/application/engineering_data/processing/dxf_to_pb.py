@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import dataclass, field
+import json
 import math
 from pathlib import Path
 import sys
@@ -12,6 +13,7 @@ from typing import Any, Iterable, cast
 
 import ezdxf
 
+from engineering_data.contracts.dxf_validation_report import build_validation_report
 from engineering_data.proto import dxf_primitives_pb2 as pb
 
 MIN_BEZIER_SEGMENTS = 4
@@ -32,7 +34,19 @@ READABLE_DXF_VERSIONS = {
 STANDARD_CORE_ENTITY_TYPES = {"LINE", "ARC", "CIRCLE", "LWPOLYLINE", "POLYLINE", "POINT"}
 STANDARD_HIGH_ORDER_ENTITY_TYPES = {"SPLINE", "ELLIPSE"}
 IGNORED_ENTITY_TYPES = {"TEXT", "MTEXT", "DIMENSION", "LEADER", "MLEADER"}
-REJECTED_ENTITY_TYPES = {"XLINE", "RAY", "IMAGE", "PDFUNDERLAY", "3DFACE", "REGION", "BODY", "SURFACE", "MESH", "PROXY"}
+REJECTED_ENTITY_TYPES = {
+    "XLINE",
+    "RAY",
+    "IMAGE",
+    "PDFUNDERLAY",
+    "HATCH",
+    "3DFACE",
+    "REGION",
+    "BODY",
+    "SURFACE",
+    "MESH",
+    "PROXY",
+}
 
 INSUNITS_TO_SCALE = {
     1: 25.4,
@@ -349,68 +363,6 @@ def add_contour(bundle, contour, meta_args):
     add_meta(bundle, *meta_args)
 
 
-def spline_points_from_geomdl(entity, max_step, samples):
-    try:
-        from geomdl import BSpline
-        from geomdl import NURBS
-
-        ctrlpts = list(entity.control_points)
-        if not ctrlpts:
-            ctrlpts = list(entity.fit_points)
-        if not ctrlpts:
-            return []
-
-        degree = int(getattr(entity.dxf, "degree", 3) or 3)
-        weights = list(getattr(entity, "weights", []))
-        knots = list(getattr(entity, "knots", []))
-
-        if weights:
-            curve = NURBS.Curve()
-            curve.weights = list(weights)
-        else:
-            curve = BSpline.Curve()
-        curve.degree = degree
-        curve.ctrlpts = [(float(p[0]), float(p[1])) for p in ctrlpts]
-        if knots:
-            curve.knotvector = list(knots)
-
-        if max_step > 0:
-            approx_len = 0.0
-            for i in range(1, len(curve.ctrlpts)):
-                approx_len += distance(curve.ctrlpts[i - 1], curve.ctrlpts[i])
-            sample_size = max(2, int(math.ceil(approx_len / max_step)) + 1)
-        else:
-            sample_size = max(2, int(samples))
-
-        curve.sample_size = sample_size
-        return [(float(p[0]), float(p[1])) for p in curve.evalpts]
-    except Exception:
-        return []
-
-
-def spline_points_from_ezdxf(entity, chordal, max_seg):
-    try:
-        from ezdxf.path import make_path
-    except Exception:
-        return []
-
-    try:
-        path = make_path(entity)
-        pts = [(float(p.x), float(p.y)) for p in path.flattening(chordal, segments=MIN_BEZIER_SEGMENTS)]
-        if max_seg > 0:
-            pts = densify(pts, max_seg)
-        return pts
-    except Exception:
-        return []
-
-
-def approximate_spline_points(entity, chordal, max_seg, max_step, samples):
-    pts = spline_points_from_geomdl(entity, max_step, samples)
-    if pts:
-        return pts
-    return spline_points_from_ezdxf(entity, chordal, max_seg)
-
-
 def process_polyline_entity(entity, entity_id, bundle, scale, snap_eps, layer, color, context: ImportContext):
     points = []
     bulges = []
@@ -493,68 +445,8 @@ def process_core_entity(entity, doc, entity_id, bundle, scale, opts, context: Im
     return False
 
 
-def process_high_order_entity(entity, doc, entity_id, bundle, scale, opts):
-    etype = entity.dxftype()
-    layer = entity.dxf.get("layer", "0")
-    color = resolve_color(entity, doc)
-    snap_eps = opts["snap"] if opts["snap_enabled"] else 0.0
-
-    if etype == "SPLINE":
-        closed = bool(getattr(entity, "closed", False))
-        if opts["approx_splines"]:
-            max_seg = opts["max_seg"] if opts["densify_enabled"] else 0.0
-            min_seg = opts["min_seg"] if opts["min_seg_enabled"] else 0.0
-            points = approximate_spline_points(
-                entity,
-                opts["chordal"],
-                max_seg,
-                opts["spline_max_step"],
-                opts["spline_samples"],
-            )
-            points = [transform_point(p, scale, snap_eps) for p in points]
-            if max_seg > 0:
-                points = densify(points, max_seg)
-            if min_seg > 0:
-                points = collapse_points(points, min_seg)
-            if points:
-                contour = build_polyline_contour(points, closed)
-                add_contour(bundle, contour, (entity_id, pb.DXF_ENTITY_SPLINE, 0, closed, layer, color))
-                return True
-        control_points = []
-        for p in entity.control_points:
-            control_points.append(transform_point((float(p[0]), float(p[1])), scale, snap_eps))
-        if not control_points:
-            for p in entity.fit_points:
-                control_points.append(transform_point((float(p[0]), float(p[1])), scale, snap_eps))
-        if control_points:
-            add_spline(bundle, control_points, closed, (entity_id, pb.DXF_ENTITY_SPLINE, 0, closed, layer, color))
-            return True
-        return False
-
-    if etype == "ELLIPSE":
-        center = transform_point((entity.dxf.center.x, entity.dxf.center.y), scale, snap_eps)
-        major_axis = transform_point((entity.dxf.major_axis.x, entity.dxf.major_axis.y), scale, snap_eps)
-        ratio = float(entity.dxf.ratio)
-        start_param = float(entity.dxf.start_param)
-        end_param = float(entity.dxf.end_param)
-        add_ellipse(
-            bundle,
-            center,
-            major_axis,
-            ratio,
-            start_param,
-            end_param,
-            (entity_id, pb.DXF_ENTITY_ELLIPSE, 0, False, layer, color),
-        )
-        return True
-
-    return False
-
-
 def process_entity(entity, doc, entity_id, bundle, scale, opts, context: ImportContext):
-    if process_core_entity(entity, doc, entity_id, bundle, scale, opts, context):
-        return True
-    return process_high_order_entity(entity, doc, entity_id, bundle, scale, opts)
+    return process_core_entity(entity, doc, entity_id, bundle, scale, opts, context)
 
 
 def classify_entity_type(entity) -> str:
@@ -576,11 +468,10 @@ def is_higher_than_standard(version: str) -> bool:
 def resolve_unit_scale(doc, normalize_units: bool, context: ImportContext) -> float | None:
     insunits = int(doc.header.get("$INSUNITS", 0) or 0)
     if insunits == 0:
-        context.resolved_units = "mm"
-        context.resolved_unit_scale = 1.0
-        context.add_warning("DXF_W_UNIT_ASSUMED_MM", "DXF unit missing; assumed mm for preview import.")
+        context.resolved_units = "unspecified"
+        context.resolved_unit_scale = 0.0
         context.add_error("DXF_E_UNIT_REQUIRED_FOR_PRODUCTION", "DXF unit missing; production import requires explicit unit.")
-        return 1.0 if normalize_units else 1.0
+        return None
 
     if insunits not in INSUNITS_TO_SCALE:
         context.resolved_units = f"insunits_{insunits}"
@@ -596,20 +487,9 @@ def resolve_unit_scale(doc, normalize_units: bool, context: ImportContext) -> fl
 def expand_entities(entity, context: ImportContext, depth: int = 0):
     etype = entity.dxftype()
     if etype == "INSERT":
-        if depth >= MAX_INSERT_DEPTH:
-            context.add_error("DXF_E_BLOCK_DEPTH_EXCEEDED", f"INSERT nesting depth exceeded {MAX_INSERT_DEPTH}.")
-            return []
-        try:
-            virtual_entities = list(entity.virtual_entities())
-        except Exception as exc:
-            context.add_error("DXF_E_BLOCK_EXPAND_FAILED", f"Failed to expand INSERT entity: {exc}")
-            return []
-        expanded = []
-        for child in virtual_entities:
-            expanded.extend(expand_entities(child, context, depth + 1))
-        if not expanded:
-            context.add_error("DXF_E_BLOCK_EXPAND_FAILED", "INSERT expanded to no valid geometry.")
-        return expanded
+        context.rejected_entity_types[etype] += 1
+        context.add_error("DXF_E_BLOCK_INSERT_NOT_EXPLODED", "DXF contains INSERT/BLOCK content; input governance rejects unexpanded blocks.")
+        return []
 
     if etype in IGNORED_ENTITY_TYPES:
         context.ignored_entity_types[etype] += 1
@@ -619,8 +499,23 @@ def expand_entities(entity, context: ImportContext, depth: int = 0):
 
     if etype in REJECTED_ENTITY_TYPES:
         context.rejected_entity_types[etype] += 1
-        specific_code = "DXF_E_3D_ENTITY_FOUND" if etype in {"3DFACE", "BODY", "SURFACE", "MESH"} else "DXF_E_UNSUPPORTED_ENTITY"
+        if etype in {"3DFACE", "BODY", "SURFACE", "MESH"}:
+            specific_code = "DXF_E_3D_ENTITY_FOUND"
+        elif etype == "HATCH":
+            specific_code = "DXF_E_HATCH_NOT_SUPPORTED"
+        else:
+            specific_code = "DXF_E_UNSUPPORTED_ENTITY"
         context.add_error(specific_code, f"Rejected DXF entity type: {etype}.")
+        return []
+
+    if etype == "SPLINE":
+        context.rejected_entity_types[etype] += 1
+        context.add_error("DXF_E_SPLINE_NOT_SUPPORTED", "SPLINE is not supported by DXF input governance v1.")
+        return []
+
+    if etype == "ELLIPSE":
+        context.rejected_entity_types[etype] += 1
+        context.add_error("DXF_E_ELLIPSE_NOT_SUPPORTED", "ELLIPSE is not supported by DXF input governance v1.")
         return []
 
     if classify_entity_type(entity) == "unsupported":
@@ -653,10 +548,9 @@ def finalize_import_diagnostics(bundle: pb.PathBundle, context: ImportContext):
     warning_codes = [issue.code for issue in context.warnings]
     error_codes = [issue.code for issue in context.errors]
     preview_ready = bool(bundle.primitives)
-    has_fatal_error = any(code in FATAL_IMPORT_ERROR_CODES for code in error_codes)
 
     if error_codes:
-        classification = pb.IMPORT_RESULT_PREVIEW_ONLY if preview_ready and not has_fatal_error else pb.IMPORT_RESULT_FAILED
+        classification = pb.IMPORT_RESULT_FAILED
     elif warning_codes:
         classification = pb.IMPORT_RESULT_SUCCESS_WITH_WARNINGS
     else:
@@ -709,13 +603,39 @@ def parse_args(argv):
     parser.add_argument("--angular", type=float, default=0.0)
     parser.add_argument("--min-seg", type=float, default=0.0)
     parser.add_argument("--normalize-units", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--approx-splines", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--snap-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--densify-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--min-seg-enabled", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--spline-samples", type=int, default=64)
-    parser.add_argument("--spline-max-step", type=float, default=0.0)
+    parser.add_argument("--validation-report", help="Optional DXFValidationReport.v1 JSON output path")
     return parser.parse_args(argv)
+
+
+def write_validation_report(path: str | None, source_path: Path, doc, context: ImportContext, *, dxf_version: str = "") -> None:
+    if not path:
+        return
+    modelspace_count = 0
+    layer_count = 0
+    if doc is not None:
+        try:
+            modelspace_count = len(list(doc.modelspace()))
+        except Exception:
+            modelspace_count = 0
+        try:
+            layer_count = len(list(doc.layers))
+        except Exception:
+            layer_count = 0
+    report = build_validation_report(
+        source_path=source_path,
+        dxf_version=dxf_version,
+        unit=context.resolved_units,
+        entity_count=modelspace_count,
+        layer_count=layer_count,
+        errors=[(issue.code, issue.message) for issue in context.errors],
+        warnings=[(issue.code, issue.message) for issue in context.warnings],
+    )
+    report_path = Path(path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main(argv=None):
@@ -723,12 +643,18 @@ def main(argv=None):
     input_path = Path(args.input)
     output_path = Path(args.output)
     if not input_path.exists():
+        context = ImportContext()
+        context.add_error("DXF_E_FILE_NOT_FOUND", f"DXF not found: {input_path}")
+        write_validation_report(args.validation_report, input_path, None, context)
         print(f"Error[DXF_E_FILE_NOT_FOUND]: DXF not found: {input_path}", file=sys.stderr)
         return 1
 
     try:
         doc = ezdxf.readfile(str(input_path))
     except Exception as exc:
+        context = ImportContext()
+        context.add_error("DXF_E_FILE_OPEN_FAILED", f"failed to parse DXF: {input_path}: {exc}")
+        write_validation_report(args.validation_report, input_path, None, context)
         print(f"Error[DXF_E_FILE_OPEN_FAILED]: failed to parse DXF: {input_path}: {exc}", file=sys.stderr)
         return 2
 
@@ -762,12 +688,9 @@ def main(argv=None):
         "snap": args.snap,
         "angular": args.angular,
         "min_seg": args.min_seg,
-        "approx_splines": args.approx_splines,
         "snap_enabled": args.snap_enabled,
         "densify_enabled": args.densify_enabled,
         "min_seg_enabled": args.min_seg_enabled,
-        "spline_samples": args.spline_samples,
-        "spline_max_step": args.spline_max_step,
     }
 
     if unit_scale is not None and not any(issue.code in FATAL_IMPORT_ERROR_CODES for issue in context.errors):
@@ -781,6 +704,7 @@ def main(argv=None):
                 entity_id += 1
 
     diagnostics = finalize_import_diagnostics(bundle, context)
+    write_validation_report(args.validation_report, input_path, doc, context, dxf_version=dxf_version)
     emit_diagnostics_to_stderr(diagnostics)
 
     if diagnostics.classification == pb.IMPORT_RESULT_FAILED:

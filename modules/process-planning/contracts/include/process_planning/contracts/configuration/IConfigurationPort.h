@@ -94,12 +94,9 @@ struct DispensingConfig {
  */
 struct DxfImportConfig {
     bool normalize_units = true;     ///< 是否按DXF单位归一化为mm
-    bool approx_splines = false;     ///< 是否将SPLINE近似为折线
     bool snap_enabled = false;       ///< 是否启用坐标吸附
     bool densify_enabled = false;    ///< 是否启用线段密化
     bool min_seg_enabled = false;    ///< 是否启用最小段长裁剪
-    int32 spline_samples = 64;       ///< SPLINE采样点数（geomdl）
-    float32 spline_max_step = 0.0f;  ///< SPLINE最大步长(mm, 0=自动)
     float32 chordal = 0.005f;        ///< 弦高容差(mm)
     float32 max_seg = 0.0f;          ///< 最大段长(mm, 0=不限制)
     float32 snap = 0.0f;             ///< 点吸附阈值(mm)

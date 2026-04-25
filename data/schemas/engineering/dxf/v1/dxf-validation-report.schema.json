@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siligen.local/schemas/engineering/dxf/v1/dxf-validation-report.schema.json",
+  "title": "DXFValidationReport.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "file",
+    "policy",
+    "stage",
+    "summary",
+    "entity_summary",
+    "layer_summary",
+    "geometry_summary",
+    "topology_summary",
+    "errors",
+    "warnings",
+    "recommended_actions"
+  ],
+  "properties": {
+    "schema_version": { "const": "DXFValidationReport.v1" },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file_name", "file_hash", "file_size_bytes", "dxf_version", "unit", "source_drawing_ref"],
+      "properties": {
+        "file_name": { "type": "string" },
+        "file_hash": { "type": "string" },
+        "file_size_bytes": { "type": "integer", "minimum": 0 },
+        "dxf_version": { "type": "string" },
+        "unit": { "type": "string" },
+        "source_drawing_ref": { "type": ["string", "null"] }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec_version", "policy_version", "tolerance_policy_version", "layer_semantic_policy_version"],
+      "properties": {
+        "spec_version": { "const": "DXFInputSpec.v1" },
+        "policy_version": { "const": "DXFValidationPolicy.v1" },
+        "tolerance_policy_version": { "const": "GeometryTolerancePolicy.v1" },
+        "layer_semantic_policy_version": { "const": "LayerSemanticPolicy.v1" }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage_id", "owner_module"],
+      "properties": {
+        "stage_id": { "enum": ["S1", "S2", "S3", "S4"] },
+        "owner_module": { "enum": ["M1", "M2", "M3"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_result", "error_count", "warning_count", "entity_count", "layer_count", "glue_contour_count", "bounds_mm"],
+      "properties": {
+        "gate_result": { "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"] },
+        "error_count": { "type": "integer", "minimum": 0 },
+        "warning_count": { "type": "integer", "minimum": 0 },
+        "entity_count": { "type": "integer", "minimum": 0 },
+        "layer_count": { "type": "integer", "minimum": 0 },
+        "glue_contour_count": { "type": "integer", "minimum": 0 },
+        "bounds_mm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min_x", "min_y", "max_x", "max_y"],
+          "properties": {
+            "min_x": { "type": "number" },
+            "min_y": { "type": "number" },
+            "max_x": { "type": "number" },
+            "max_y": { "type": "number" }
+          }
+        }
+      }
+    },
+    "entity_summary": { "type": "array" },
+    "layer_summary": { "type": "array" },
+    "geometry_summary": { "type": "object" },
+    "topology_summary": { "type": "object" },
+    "errors": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "warnings": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "recommended_actions": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error_code",
+        "severity",
+        "message",
+        "operator_message",
+        "stage_id",
+        "owner_module",
+        "layer",
+        "entity_id",
+        "entity_type",
+        "source_handle",
+        "location_mm",
+        "related_entities",
+        "suggested_fix",
+        "is_blocking"
+      ],
+      "properties": {
+        "error_code": { "type": "string", "pattern": "^(DXF|GEOM|TOPOLOGY|FEATURE|PROCESS|GATE|TRACE)_[A-Z0-9_]+$" },
+        "severity": { "enum": ["INFO", "WARNING", "ERROR", "FATAL"] },
+        "message": { "type": "string" },
+        "operator_message": { "type": "string", "minLength": 1 },
+        "stage_id": { "enum": ["S1", "S2", "S3", "S4"] },
+        "owner_module": { "enum": ["M1", "M2", "M3"] },
+        "layer": { "type": "string" },
+        "entity_id": { "type": "string" },
+        "entity_type": { "type": "string" },
+        "source_handle": { "type": "string" },
+        "location_mm": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "related_entities": { "type": "array", "items": { "type": "string" } },
+        "suggested_fix": { "type": "string" },
+        "is_blocking": { "type": "boolean" }
+      }
+    }
+  }
+}

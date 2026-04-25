@@ -557,7 +557,6 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     ProcessPathBuildRequest process_path_request;
     process_path_request.primitives = std::move(primitives);
     process_path_request.metadata = std::move(metadata);
-    process_path_request.normalization.approximate_splines = request.approximate_splines;
     process_path_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
     process_path_request.normalization.spline_max_error_mm = request.spline_max_error_mm;
     if (request.continuity_tolerance_mm > kEpsilon) {
@@ -901,7 +900,6 @@ std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& reque
         << request.optimize_path << '|'
         << request.start_x << '|'
         << request.start_y << '|'
-        << request.approximate_splines << '|'
         << request.two_opt_iterations << '|'
         << request.spline_max_step_mm << '|'
         << request.spline_max_error_mm << '|'

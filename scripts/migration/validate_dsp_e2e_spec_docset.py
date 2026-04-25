@@ -30,6 +30,11 @@ REQUIRED_DOCS = {
     "S09": "dsp-e2e-spec-s09-test-matrix-acceptance-baseline.md",
     "S10": "dsp-e2e-spec-s10-frozen-directory-index.md",
 }
+REQUIRED_SUPPLEMENTAL_DOCS = {
+    "project-chain-standard-v1.md": "冻结项目内正式对象链、live 控制链与支撑链的统一定义与分类边界",
+    "internal_execution_contract_v_1.md": "冻结内部执行契约与执行语义边界",
+    "dxf-input-governance-standard-v1.md": "冻结 DXF 输入治理、验证报告、错误码、policy、fixture 与门禁收敛标准",
+}
 DOC_MIN_WAVES = {
     "S01": "Wave 0",
     "S02": "Wave 0",
@@ -381,6 +386,26 @@ def _findings_for_s10(path: Path, content: str, active_axes: tuple[str, ...]) ->
     ]
 
 
+def _findings_for_readme(path: Path, content: str) -> list[Finding]:
+    findings: list[Finding] = []
+    for filename, purpose in REQUIRED_SUPPLEMENTAL_DOCS.items():
+        if filename not in content:
+            findings.append(Finding(
+                rule_id="supplemental-doc-index-missing",
+                file=_relative(path),
+                min_wave=None,
+                message=f"README 未注册冻结补充标准: {filename}",
+            ))
+        if purpose not in content:
+            findings.append(Finding(
+                rule_id="supplemental-doc-purpose-missing",
+                file=_relative(path),
+                min_wave=None,
+                message=f"README 未注册冻结补充标准用途: {purpose}",
+            ))
+    return findings
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate dsp-e2e-spec docset coverage and acceptance baseline.")
     parser.add_argument("--report-dir", help="Optional report directory for markdown/json output.")
@@ -416,6 +441,27 @@ def main() -> int:
 
     files_payload: dict[str, dict[str, object]] = {}
     findings: list[Finding] = []
+
+    readme_path = formal_docset_root / "README.md"
+    if not readme_path.exists():
+        findings.append(Finding(
+            rule_id="formal-docset-readme-missing",
+            file=_relative(readme_path),
+            min_wave=None,
+            message="正式冻结文档集 README 不存在",
+        ))
+    else:
+        findings.extend(_findings_for_readme(readme_path, _read_text(readme_path)))
+
+    for filename in REQUIRED_SUPPLEMENTAL_DOCS:
+        supplemental_path = formal_docset_root / filename
+        if not supplemental_path.exists():
+            findings.append(Finding(
+                rule_id="supplemental-doc-missing",
+                file=_relative(supplemental_path),
+                min_wave=None,
+                message=f"冻结补充标准文件不存在: {filename}",
+            ))
 
     for axis, filename in REQUIRED_DOCS.items():
         path = formal_docset_root / filename

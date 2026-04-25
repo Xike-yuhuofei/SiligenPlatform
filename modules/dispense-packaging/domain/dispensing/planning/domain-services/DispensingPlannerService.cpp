@@ -1369,7 +1369,6 @@ ProcessPathMotionRequest BuildProcessPathMotionRequest(const DispensingPlanReque
     plan_request.shaping.corner_smoothing_radius = 0.0f;
     plan_request.shaping.corner_max_deviation_mm = 0.0f;
 
-    plan_request.normalization.approximate_splines = request.approximate_splines;
     plan_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
     plan_request.normalization.spline_max_error_mm = request.spline_max_error_mm;
     if (request.continuity_tolerance_mm > kEpsilon) {

@@ -259,6 +259,7 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert "estimated_time_s" not in prepare_operation["resultSchema"]["required"]
     assert "speed_mm_s" not in prepare_operation["paramsSchema"]["properties"]
     assert "use_hardware_trigger" not in prepare_operation["paramsSchema"]["properties"]
+    assert "approximate_splines" not in prepare_operation["paramsSchema"]["properties"]
     assert not prepare_operation.get("compatibility", {}).get("requestAliases")
     assert "requested_execution_strategy" in prepare_operation["paramsSchema"]["properties"]
     notes = "\n".join(prepare_operation.get("compatibility", {}).get("notes", []))
