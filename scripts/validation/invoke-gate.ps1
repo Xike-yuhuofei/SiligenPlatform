@@ -786,19 +786,23 @@ foreach ($step in $manifestSteps) {
     }
 }
 
-$gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
-    Expand-TemplateValue -Value $_ -Context @{
-        workspaceRoot = $workspaceRoot
-        gateReportDir = $gateReportDir
-        stepReportDir = $gateReportDir
-    }
-})
-$missingGateArtifacts = @($gateArtifactResults | Where-Object { -not $_.exists } | ForEach-Object { $_.pattern })
-if (@($missingGateArtifacts).Count -gt 0) {
-    $gateFailed = $true
-    $failures += [pscustomobject]@{
-        step_id = "__gate__"
-        reason = "required gate artifacts missing: $($missingGateArtifacts -join ', ')"
+$gateArtifactResults = @()
+$missingGateArtifacts = @()
+if (-not $gateFailed) {
+    $gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
+        Expand-TemplateValue -Value $_ -Context @{
+            workspaceRoot = $workspaceRoot
+            gateReportDir = $gateReportDir
+            stepReportDir = $gateReportDir
+        }
+    })
+    $missingGateArtifacts = @($gateArtifactResults | Where-Object { -not $_.exists } | ForEach-Object { $_.pattern })
+    if (@($missingGateArtifacts).Count -gt 0) {
+        $gateFailed = $true
+        $failures += [pscustomobject]@{
+            step_id = "__gate__"
+            reason = "required gate artifacts missing: $($missingGateArtifacts -join ', ')"
+        }
     }
 }
 

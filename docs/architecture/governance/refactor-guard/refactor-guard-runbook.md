@@ -27,7 +27,7 @@
 ```
 
 ```powershell
-.\scripts\validation\invoke-dependency-graph-export.ps1 -ReportDir tests\reports\dependency-graphs -SoftFail
+.\scripts\validation\invoke-dependency-graph-export.ps1 -ReportDir tests\reports\dependency-graphs
 ```
 
 ```powershell
@@ -85,18 +85,21 @@
 `ci.ps1` 当前顺序：
 
 1. `legacy-exit-check.ps1`
-2. `scripts/validation/invoke-semgrep.ps1`
-3. `scripts/validation/invoke-import-linter.ps1`
-4. `build.ps1`
-5. `test.ps1`
-6. `scripts/validation/invoke-cppcheck.ps1`
-7. `scripts/validation/invoke-dependency-graph-export.ps1`
-8. `scripts/validation/run-local-validation-gate.ps1`
+2. `scripts/validation/install-python-deps.ps1`
+3. `tool-readiness`
+4. `scripts/validation/invoke-semgrep.ps1`
+5. `scripts/validation/invoke-import-linter.ps1`
+6. `build.ps1`
+7. `test.ps1`
+8. `scripts/validation/invoke-cppcheck.ps1 -FailOnIssues`
+9. `scripts/validation/invoke-dependency-graph-export.ps1`
+10. `scripts/validation/run-local-validation-gate.ps1`
 
 失败原则：
 
 - `legacy-exit` / `Semgrep` / Import Linter hard contracts：默认失败即终止
-- `Cppcheck` / dependency graph / coverage 阈值：当前为 report-only
+- `tool-readiness` / `Cppcheck` / dependency graph：在 `full-offline` / `native` 中为 blocking
+- coverage 阈值：当前为 report-only
 
 ## 4. 报告目录
 
@@ -123,19 +126,20 @@ Dependency graph 关键文件：
 - `legacy-exit-check.ps1`
 - `invoke-semgrep.ps1`
 - Import Linter hard contracts
+- `tool-readiness`
+- `invoke-cppcheck.ps1 -FailOnIssues`
+- `invoke-dependency-graph-export.ps1`（在正式 gate 中）
 
 ### Report-only
 
 - Import Linter advisory contracts
 - Python coverage 阈值
 - C/C++ coverage 阈值
-- Cppcheck
-- dependency graph export
+- 独立执行且未启用阻断参数的 `Cppcheck`
 
 ## 6. 已知限制
 
 - Windows 默认不再直接执行本机 `semgrep-core`；`invoke-semgrep.ps1` 会改走 `scripts/validation/run_refactor_guard_fallback.py`，复用同一 `arch-rules.yml` 与报告出口。
-- `cppcheck` 当前环境未安装，因此只能输出 `tool-missing` 报告。
 - C/C++ coverage 已完成开关与汇总脚本，但当前尚未采集 `.profraw`，因此报告为 `not-collected`。
 - `legacy-exit` 仍保留 8 条 `controlled-exception`，根因是模块内 canonical `tests/integration` 文本命中 legacy regex。
 
@@ -144,4 +148,4 @@ Dependency graph 关键文件：
 1. 将 `legacy-exit` 的 retired-root regex 从“路径片段命中”收敛到“仓库根引用命中”，移除现有 controlled exception。
 2. 收敛 `hmi_application -> hmi_client.client.*` 与 `hmi_client.ui -> hmi_application`，再把 advisory contracts 升级为 hard。
 3. 在一次 `build.ps1 -EnableCppCoverage` + `test.ps1 -EnableCppCoverage` 后补齐 `.profraw` 采集闭环。
-4. 安装 `cppcheck` 后根据真实噪声水平决定首批 blocking 等级。
+4. 继续压低 `cppcheck` 噪声，保持 `full-offline` / `native` blocking 可持续。

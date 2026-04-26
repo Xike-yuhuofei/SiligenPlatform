@@ -81,6 +81,7 @@ self-hosted build runner 必须满足：
   - `X64`
   - `build`
 - 具备本仓 native 构建、测试和验证所需的固定工具链。
+- 其 baseline checks 必须覆盖 `git`、PowerShell、Python、CMake、CTest、MSBuild 以及 `cppcheck`，并与 `Strict Native Gate` 的 `tool-readiness` 真值保持一致。
 - runner workspace 必须从 GitHub 远程提交 checkout 后构建，不得复用开发者本地构建目录作为通过依据。
 - active runner 根目录固定为短路径 `D:\r`。
 - active checkout workspace 固定为 `D:\r\_work\SiligenPlatform\SiligenPlatform`，workspace 根路径长度不得超过 45 个字符。
@@ -107,6 +108,8 @@ Native 执行入口固定为当前正式 full-offline CI gate：
   -Gate native `
   -ReportRoot tests\reports\github-actions\strict-native-gate
 ```
+
+该 gate 必须在 build/test 前先完成 blocking `tool-readiness`。`cppcheck` 缺失、`pydeps` 缺失或其他 runner baseline 工具缺失，均必须在该 step 直接失败，不允许晚到 build/test 之后才暴露。
 
 禁止使用：
 

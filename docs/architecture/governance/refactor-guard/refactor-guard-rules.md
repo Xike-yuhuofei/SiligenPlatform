@@ -11,8 +11,8 @@
 | Import Linter | `scripts/validation/invoke-import-linter.ps1` + `.importlinter` | hard-fail on hard contracts；advisory on advisory contracts | `tests/reports/import-linter/` |
 | Python Coverage | `scripts/validation/invoke-python-coverage.ps1` | report-only | `tests/reports/coverage/python/` |
 | C/C++ Coverage | `scripts/validation/invoke-cpp-coverage.ps1` | report-only | `tests/reports/coverage/cpp/` |
-| Cppcheck | `scripts/validation/invoke-cppcheck.ps1` | report-only | `tests/reports/static-analysis/cppcheck/` |
-| Dependency Graph | `scripts/validation/invoke-dependency-graph-export.ps1` | report-only | `tests/reports/dependency-graphs/` |
+| Cppcheck | `scripts/validation/invoke-cppcheck.ps1` | `full-offline` / `native` hard-fail；单独执行默认观察，传 `-FailOnIssues` 时阻断 | `tests/reports/static-analysis/cppcheck/` |
+| Dependency Graph | `scripts/validation/invoke-dependency-graph-export.ps1` | `full-offline` / `native` hard-fail | `tests/reports/dependency-graphs/` |
 
 ## 2. Semgrep 规则
 
@@ -134,7 +134,8 @@
   - `style`
   - `performance`
   - `portability`
-- 当前环境缺 `cppcheck`，已保留 CI 接线与报告位。
+- 正式门禁真值：`full-offline` / `native` 通过 `invoke-gate.ps1` 以 blocking step 执行，并显式传入 `-FailOnIssues`。
+- runner 或执行环境缺 `cppcheck` 时，必须由 `tool-readiness` 或 `invoke-cppcheck.ps1 -FailOnIssues` 直接失败，不允许保留“缺工具但继续放行”的并行语义。
 
 ### 5.4 Dependency Graph
 
@@ -149,11 +150,12 @@
 - `legacy-exit-check.ps1`
 - `invoke-semgrep.ps1`
 - `invoke-import-linter.ps1` 中的 hard contracts
+- `invoke-cppcheck.ps1 -FailOnIssues` 在 `full-offline` / `native` gate 中
+- `invoke-dependency-graph-export.ps1` 在 `full-offline` / `native` gate 中
 
 ### Report-only
 
 - Import Linter advisory contracts
 - Python coverage 阈值
 - C/C++ coverage 阈值 / not-collected
-- Cppcheck
-- Dependency graph export
+- 独立执行且未启用阻断参数的 `Cppcheck`

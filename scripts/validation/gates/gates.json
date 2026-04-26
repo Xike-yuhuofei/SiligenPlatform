@@ -153,6 +153,21 @@
           "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/install-python-deps.ps1" ]
         },
         {
+          "id": "tool-readiness",
+          "name": "Validate native gate tools",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiresTool": [
+            { "id": "python", "names": [ "python" ] },
+            { "id": "semgrep", "names": [ "pysemgrep", "semgrep" ] },
+            { "id": "import-linter", "names": [ "lint-imports", "import-linter" ] },
+            { "id": "pydeps", "names": [ "pydeps" ] },
+            { "id": "cppcheck", "names": [ "cppcheck" ] }
+          ],
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "Write-Output 'tool readiness passed'" ]
+        },
+        {
           "id": "hmi-formal-gateway-contract",
           "name": "Validate HMI formal gateway launch contract",
           "blocking": true,
@@ -227,8 +242,7 @@
       ],
       "requiredArtifacts": [
         "{gateReportDir}/workspace-validation.md",
-        "{gateReportDir}/dsp-e2e-spec-docset",
-        "{gateReportDir}/local-validation-gate/*/local-validation-gate-summary.json"
+        "{gateReportDir}/dsp-e2e-spec-docset"
       ]
     },
     "native": {

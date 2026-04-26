@@ -25,6 +25,7 @@
 - 改动 HIL、设备适配、运动控制、机台配置或 HMI operator/production/runtime/gateway/TCP 链路时，按分类规则触发或手动补跑 `hil`。
 - 新增门禁项必须进入 `gates.json`，并补契约测试；不得只改 workflow 或只改本地 hook。
 - `blocking=false` 必须是显式设计，且只能用于观察项；不得以“report-only”口径隐式放行架构、契约、native、HIL 或发布必要证据。
+- `full-offline` / `native` 必须在 build/test 前完成 blocking `tool-readiness`；self-hosted runner 缺工具时要前置失败，不允许跑完长链路后再暴露环境缺口。
 - 使用 `-SkipStep` 必须提供 `-SkipJustification`，并在 PR / release 记录中说明原因和补跑计划。
 - 报告目录、`gate-summary.json`、`gate-summary.md` 和 `logs/<step-id>.log` 是门禁证据的一部分，不得删除后声称 gate 已通过。
 
@@ -77,8 +78,8 @@
 |---|---|---|---|
 | `pre-push` | 本地推送前快速反馈 | `tests/reports/pre-push-gate` | 不默认跑 native full build、HIL、performance。 |
 | `pr` | GitHub hosted PR 基线 | `tests/reports/github-actions/strict-pr-gate` | 架构、契约、静态边界检查；不承接 native build。 |
-| `full-offline` | 完整离线 CI | `tests/reports/ci` | build/test/local validation/cppcheck/dependency graphs。 |
-| `native` | GitHub self-hosted native gate | `tests/reports/github-actions/strict-native-gate` | `full-offline` 的别名，使用 native 证据目录。 |
+| `full-offline` | 完整离线 CI | `tests/reports/ci` | install deps、tool readiness、build/test、cppcheck、dependency graphs、local validation。 |
+| `native` | GitHub self-hosted native gate | `tests/reports/github-actions/strict-native-gate` | `full-offline` 的别名，使用 native 证据目录，并以前置 tool readiness 作为 runner baseline 阻断。 |
 | `hil` | 受控 HIL | `tests/reports/github-actions/strict-hil-gate` | 先跑离线前置，再跑 controlled HIL。 |
 | `nightly` | 夜间性能与覆盖率 | `tests/reports/nightly` | 包含 full-offline、performance、coverage 观察项。 |
 | `release` | 发布 Go/No-Go 包装 | `tests/reports/releases/orchestrated` | 暂时包装 `release-check.ps1`，保留发布专用逻辑。 |
@@ -111,6 +112,8 @@
 - `tests/reports/github-actions/strict-native-gate/cppcheck/`
 - `tests/reports/github-actions/strict-hil-gate/controlled-hil/`
 
+`local-validation-gate` 的总结文件由 step 级 `requiredArtifacts` 独占声明。gate 级 `requiredArtifacts` 不重复声明同一证据，避免一份缺失被重复计为两个失败原因。
+
 ## 5. 失败语义
 
 以下情况会使 gate 失败：
@@ -118,8 +121,8 @@
 - blocking step 退出码非零。
 - blocking step 超时。
 - blocking step 的 required artifact 缺失。
-- required tool 缺失。
-- gate 级 required artifact 缺失。
+- required tool 缺失；对于 `full-offline` / `native`，该失败应在 `tool-readiness` step 前置暴露。
+- gate 级 required artifact 缺失。该检查只在前置 blocking steps 全部通过后执行，避免把派生性缺证据噪声叠加到首个真实失败之上。
 - `SkipStep` 不带 `SkipJustification`。
 
 非阻断 step 失败会记录在 summary 中，但不会改变 gate 总体通过状态。当前只有 nightly coverage 类观察项使用 `blocking=false`。

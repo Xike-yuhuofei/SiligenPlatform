@@ -49,6 +49,7 @@ pwsh -NoProfile -Command '$PSVersionTable.PSVersion'
 python --version
 cmake --version
 ctest --version
+cppcheck --version
 & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
   -latest `
   -products * `
@@ -56,7 +57,7 @@ ctest --version
   -property installationPath
 ```
 
-验证失败时，`Strict Native Gate` 必须保持失败或 pending，不允许静默降级。
+验证失败时，`Strict Native Gate` 必须保持失败或 pending，不允许静默降级。`cppcheck`、`pydeps`、`semgrep`、`import-linter` 等 native/full-offline 所需工具缺失，必须由 gate 前置 `tool-readiness` step 直接阻断。
 
 ## 5. Path Budget
 
@@ -76,6 +77,7 @@ D:\r\_work\SiligenPlatform\SiligenPlatform
 - runner busy 且超过 SLA。
 - checkout 失败。
 - GitHub DNS / TLS / Git fetch 失败。
+- `tool-readiness` 失败，包括 `cppcheck` 缺失。
 - native build/test 失败。
 - `tests\reports\github-actions\strict-native-gate` 缺失。
 - artifact 上传失败。

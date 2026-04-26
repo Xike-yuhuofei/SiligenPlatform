@@ -56,6 +56,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("gate-summary.md", orchestrator)
         self.assertIn('"logs"', orchestrator)
         self.assertIn('"$stepId.log"', orchestrator)
+        self.assertIn("if (-not $gateFailed)", orchestrator)
 
         for gate_id in self.gates:
             gate = self._resolved_gate(gate_id)
@@ -98,6 +99,26 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("-FailOnIssues", steps["cppcheck"]["command"])
         self.assertTrue(steps["dependency-graphs"]["blocking"])
         self.assertNotIn("-SoftFail", steps["dependency-graphs"]["command"])
+
+    def test_full_offline_front_loads_tool_readiness_and_avoids_duplicate_local_validation_artifacts(self) -> None:
+        full_offline = self._resolved_gate("full-offline")
+        step_ids = [step["id"] for step in full_offline["steps"]]
+        tool_readiness = next(step for step in full_offline["steps"] if step["id"] == "tool-readiness")
+
+        self.assertLess(step_ids.index("tool-readiness"), step_ids.index("build-ci"))
+        self.assertLess(step_ids.index("tool-readiness"), step_ids.index("test-ci"))
+        self.assertTrue(tool_readiness["blocking"])
+
+        required_tools = {tool["id"]: tool for tool in tool_readiness["requiresTool"]}
+        self.assertTrue(required_tools["cppcheck"].get("required", True))
+        self.assertIn("cppcheck", required_tools)
+        self.assertIn("pydeps", required_tools)
+
+        gate_required_artifacts = full_offline.get("requiredArtifacts", [])
+        self.assertNotIn(
+            "{gateReportDir}/local-validation-gate/*/local-validation-gate-summary.json",
+            gate_required_artifacts,
+        )
 
     def test_classification_rules_are_configured_once_outside_workflows(self) -> None:
         self.assertIn("native-sensitive", self.classification["native"]["labels"])
