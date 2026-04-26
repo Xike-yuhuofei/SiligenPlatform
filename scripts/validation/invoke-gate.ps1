@@ -590,7 +590,11 @@ function Get-ChangedScopeFromGitRange {
         [Parameter(Mandatory = $true)][string]$FailureMessage
     )
 
-    $gitOutput = @(& git diff --name-only $RangeBaseSha $RangeHeadSha 2>&1)
+    Ensure-GitCommitAvailable -Revision $RangeBaseSha -FailureMessage $FailureMessage
+    Ensure-GitCommitAvailable -Revision $RangeHeadSha -FailureMessage $FailureMessage
+
+    $gitBaseArgs = @("-c", "safe.directory=$workspaceRoot")
+    $gitOutput = @(& git @gitBaseArgs diff --name-only $RangeBaseSha $RangeHeadSha 2>&1)
     $gitExitCode = $LASTEXITCODE
     if ($gitExitCode -ne 0) {
         $gitMessage = ($gitOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "; "
@@ -602,6 +606,37 @@ function Get-ChangedScopeFromGitRange {
 
     $global:LASTEXITCODE = 0
     return @($gitOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Ensure-GitCommitAvailable {
+    param(
+        [Parameter(Mandatory = $true)][string]$Revision,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+
+    $gitBaseArgs = @("-c", "safe.directory=$workspaceRoot")
+
+    & git @gitBaseArgs cat-file -e "$Revision^{commit}" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $global:LASTEXITCODE = 0
+        return
+    }
+
+    $fetchOutput = @(& git @gitBaseArgs fetch --no-tags --no-recurse-submodules origin $Revision 2>&1)
+    $fetchExitCode = $LASTEXITCODE
+    if ($fetchExitCode -ne 0) {
+        $fetchMessage = ($fetchOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "; "
+        if ([string]::IsNullOrWhiteSpace($fetchMessage)) {
+            $fetchMessage = "git fetch exited with $fetchExitCode"
+        }
+        throw "${FailureMessage}: unable to fetch missing commit '$Revision': $fetchMessage"
+    }
+
+    & git @gitBaseArgs cat-file -e "$Revision^{commit}" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "${FailureMessage}: commit '$Revision' is not available after fetch."
+    }
+    $global:LASTEXITCODE = 0
 }
 
 if (-not (Test-Path -LiteralPath $configPath)) {
