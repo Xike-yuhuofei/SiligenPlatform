@@ -15,7 +15,7 @@ $resolvedReportDir = Ensure-WorkspaceDirectory -Path (Resolve-WorkspaceReportPat
 $resolvedConfigPath = Resolve-WorkspaceReportPath -WorkspaceRoot $workspaceRoot -ReportPath $ConfigPath
 
 if (-not (Test-Path $resolvedConfigPath)) {
-    throw "未找到 Semgrep 规则文件: $resolvedConfigPath"
+    throw "Semgrep rule file not found: $resolvedConfigPath"
 }
 
 $fallbackScannerPath = Join-Path $PSScriptRoot "run_refactor_guard_fallback.py"
@@ -200,7 +200,7 @@ if ($fallbackUsed) {
 if ($toolExecutionFailed) {
     $summaryLines += '- status: `tool-error`'
     $summaryLines += ''
-    $summaryLines += '- detail: Semgrep 引擎未能成功完成扫描，请检查 `semgrep-tool-output.txt`。'
+    $summaryLines += '- detail: Semgrep engine did not complete successfully; inspect `semgrep-tool-output.txt`.'
 }
 elseif ($results.Count -eq 0) {
     $summaryLines += '- status: `passed`'
@@ -256,7 +256,7 @@ if ($results.Count -gt 0) {
 if ($toolExecutionFailed) {
     Write-Output "semgrep execution failed; inspect $toolOutputPath"
     if ($SoftFail) {
-        Write-Warning "Semgrep 工具执行失败，当前按 soft-fail 继续（exit=$semgrepExitCode）。"
+        Write-Warning "Semgrep tool execution failed; continuing under soft-fail mode (exit=$semgrepExitCode)."
         exit 0
     }
     exit $semgrepExitCode

@@ -56,20 +56,15 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $classificationPath = "tests\reports\github-actions\strict-hil-gate\classification\classification.json"
-          $classificationArgs = @(
-            "-Mode",
-            "hil",
-            "-OutputPath",
-            $classificationPath,
-            "-BaseSha",
-            $env:BASE_SHA,
-            "-HeadSha",
-            $env:HEAD_SHA,
-            "-EventName",
-            $env:EVENT_NAME
-          )
+          $classificationArgs = @{
+            Mode = "hil"
+            OutputPath = $classificationPath
+            BaseSha = $env:BASE_SHA
+            HeadSha = $env:HEAD_SHA
+            EventName = $env:EVENT_NAME
+          }
           if ($env:FORCE_HIL -eq "true") {
-            $classificationArgs += "-ForceHil"
+            $classificationArgs["ForceHil"] = $true
           }
           .\scripts\validation\classify-change.ps1 @classificationArgs
 

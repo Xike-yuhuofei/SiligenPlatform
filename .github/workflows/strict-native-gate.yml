@@ -56,20 +56,15 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $classificationPath = "tests\reports\github-actions\strict-native-gate\classification\classification.json"
-          $classificationArgs = @(
-            "-Mode",
-            "native",
-            "-OutputPath",
-            $classificationPath,
-            "-BaseSha",
-            $env:BASE_SHA,
-            "-HeadSha",
-            $env:HEAD_SHA,
-            "-EventName",
-            $env:EVENT_NAME
-          )
+          $classificationArgs = @{
+            Mode = "native"
+            OutputPath = $classificationPath
+            BaseSha = $env:BASE_SHA
+            HeadSha = $env:HEAD_SHA
+            EventName = $env:EVENT_NAME
+          }
           if ($env:FORCE_NATIVE -eq "true") {
-            $classificationArgs += "-ForceNative"
+            $classificationArgs["ForceNative"] = $true
           }
           .\scripts\validation\classify-change.ps1 @classificationArgs
 
