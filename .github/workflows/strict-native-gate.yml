@@ -125,14 +125,12 @@ jobs:
         env:
           FORCE_NATIVE: ${{ inputs.force_native || 'false' }}
         run: |
-          $gateArgs = @(
-            "-Gate",
-            "native",
-            "-ReportRoot",
-            "tests\reports\github-actions\strict-native-gate"
-          )
+          $gateArgs = @{
+            Gate = "native"
+            ReportRoot = "tests\reports\github-actions\strict-native-gate"
+          }
           if ($env:FORCE_NATIVE -eq "true") {
-            $gateArgs += "-ForceNative"
+            $gateArgs["ForceNative"] = $true
           }
           .\scripts\validation\invoke-gate.ps1 @gateArgs
 

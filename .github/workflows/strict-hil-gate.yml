@@ -125,14 +125,12 @@ jobs:
         env:
           FORCE_HIL: ${{ inputs.force_hil || 'false' }}
         run: |
-          $gateArgs = @(
-            "-Gate",
-            "hil",
-            "-ReportRoot",
-            "tests\reports\github-actions\strict-hil-gate"
-          )
+          $gateArgs = @{
+            Gate = "hil"
+            ReportRoot = "tests\reports\github-actions\strict-hil-gate"
+          }
           if ($env:FORCE_HIL -eq "true") {
-            $gateArgs += "-ForceHil"
+            $gateArgs["ForceHil"] = $true
           }
           .\scripts\validation\invoke-gate.ps1 @gateArgs
 
