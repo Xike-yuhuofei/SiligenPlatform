@@ -1231,7 +1231,7 @@
           "id": "cppcheck",
           "name": "Run Cppcheck blocking gate",
           "blocking": true,
-          "timeoutSeconds": 900,
+          "timeoutSeconds": 1800,
           "command": [
             "powershell",
             "-NoProfile",

@@ -37,6 +37,7 @@ $buildRoot = Get-ControlAppsBuildRoot -WorkspaceRoot $workspaceRoot
 $compileCommandsPath = Join-Path $buildRoot "compile_commands.json"
 $arguments = @(
     "--enable=warning,style,performance,portability",
+    "--quiet",
     "--xml",
     "--xml-version=2",
     "--inline-suppr",
