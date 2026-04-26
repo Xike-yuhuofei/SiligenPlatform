@@ -310,6 +310,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
 
         self.assertTrue(steps["cppcheck"]["blocking"])
         self.assertIn("-FailOnIssues", steps["cppcheck"]["command"])
+        self.assertGreaterEqual(steps["cppcheck"]["timeoutSeconds"], 900)
         self.assertTrue(steps["dependency-graphs"]["blocking"])
         self.assertNotIn("-SoftFail", steps["dependency-graphs"]["command"])
 
