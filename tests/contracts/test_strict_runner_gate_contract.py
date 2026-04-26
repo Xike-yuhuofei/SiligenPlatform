@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STRICT_HIL_WORKFLOW = ROOT / ".github" / "workflows" / "strict-hil-gate.yml"
 STRICT_NATIVE_WORKFLOW = ROOT / ".github" / "workflows" / "strict-native-gate.yml"
 STRICT_PR_WORKFLOW = ROOT / ".github" / "workflows" / "strict-pr-gate.yml"
+STRICT_NATIVE_CACHE_SCRIPT = ROOT / "scripts" / "validation" / "prepare-strict-native-build-cache.ps1"
 TCP_PRECONDITION_MATRIX = ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_precondition_matrix.py"
 
 
@@ -76,6 +77,13 @@ class StrictRunnerGateContractTest(unittest.TestCase):
         self.assertIn("clean: false", workflow)
         self.assertIn("Prepare strict native build cache", workflow)
         self.assertIn(".\\scripts\\validation\\prepare-strict-native-build-cache.ps1", workflow)
+
+    def test_strict_native_cache_guard_uses_scoped_safe_directory_for_runner_ownership(self) -> None:
+        script = _read(STRICT_NATIVE_CACHE_SCRIPT)
+
+        self.assertIn("safe.directory=$resolvedWorkspaceRoot", script)
+        self.assertIn("git @gitBaseArgs status --porcelain --untracked-files=no", script)
+        self.assertIn("git @gitBaseArgs status --porcelain --untracked-files=all", script)
 
     def test_strict_pr_gate_parallelizes_sub_gates_and_keeps_required_summary_name(self) -> None:
         workflow = _read(STRICT_PR_WORKFLOW)

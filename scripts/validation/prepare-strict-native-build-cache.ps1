@@ -21,7 +21,9 @@ if ($resolvedBuildRoot -ne $canonicalBuildRoot) {
     throw "Strict native build cache only supports canonical build root '$canonicalBuildRoot'; actual '$resolvedBuildRoot'."
 }
 
-$trackedStatus = @(& git -C $resolvedWorkspaceRoot status --porcelain --untracked-files=no)
+$gitBaseArgs = @("-c", "safe.directory=$resolvedWorkspaceRoot", "-C", $resolvedWorkspaceRoot)
+
+$trackedStatus = @(& git @gitBaseArgs status --porcelain --untracked-files=no)
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to inspect strict native workspace tracked-file status."
 }
@@ -29,7 +31,7 @@ if ($trackedStatus.Count -gt 0) {
     throw "Strict native workspace has tracked-file residue before validation: $($trackedStatus -join '; ')"
 }
 
-$untrackedStatus = @(& git -C $resolvedWorkspaceRoot status --porcelain --untracked-files=all)
+$untrackedStatus = @(& git @gitBaseArgs status --porcelain --untracked-files=all)
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to inspect strict native workspace untracked-file status."
 }
