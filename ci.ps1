@@ -47,58 +47,8 @@ function Resolve-LanePolicy {
             return @{ GateDecision = "blocking"; DefaultFailPolicy = "manual-signoff-required"; TimeoutBudgetSeconds = 1800; RetryBudget = 0; FailFastCaseLimit = 1 }
         }
         default {
-            throw "Unsupported lane policy request: $LaneId"
+            return @{ GateDecision = "blocking"; DefaultFailPolicy = "auto"; TimeoutBudgetSeconds = 0; RetryBudget = 0; FailFastCaseLimit = 0 }
         }
-    }
-}
-
-function Invoke-LaneStep {
-    param(
-        [string]$StepName,
-        [hashtable]$LanePolicy,
-        [scriptblock]$Action
-    )
-
-    & $Action
-    $stepSucceeded = $?
-    $exitCode = $LASTEXITCODE
-    if ($null -eq $exitCode) {
-        $exitCode = 0
-    }
-    if (-not $stepSucceeded -and $exitCode -eq 0) {
-        $exitCode = 1
-    }
-    if ($exitCode -eq 0) {
-        return
-    }
-
-    if ($LanePolicy.GateDecision -eq "advisory") {
-        Write-Warning "$StepName failed under advisory lane policy (exit=$exitCode); continue and rely on published evidence."
-        $global:LASTEXITCODE = 0
-        return
-    }
-
-    exit $exitCode
-}
-
-function Invoke-ReportOnlyStep {
-    param(
-        [string]$StepName,
-        [scriptblock]$Action
-    )
-
-    & $Action
-    $stepSucceeded = $?
-    $exitCode = $LASTEXITCODE
-    if ($null -eq $exitCode) {
-        $exitCode = 0
-    }
-    if (-not $stepSucceeded -and $exitCode -eq 0) {
-        $exitCode = 1
-    }
-    if ($exitCode -ne 0) {
-        Write-Warning "$StepName exited with $exitCode; current policy is report-only."
-        $global:LASTEXITCODE = 0
     }
 }
 
@@ -107,7 +57,6 @@ if ($SkipLayer.Count -gt 0 -and [string]::IsNullOrWhiteSpace($SkipJustification)
 }
 
 $resolvedReportDir = Resolve-OutputPath -PathValue $ReportDir
-$localGateDir = Join-Path $resolvedReportDir "local-validation-gate"
 $lanePolicy = Resolve-LanePolicy -LaneId $Lane
 Write-Output (
     "ci lane policy: lane={0} gate_decision={1} fail_policy={2} timeout_budget_seconds={3} retry_budget={4} fail_fast_case_limit={5}" -f
@@ -119,143 +68,44 @@ Write-Output (
     $lanePolicy.FailFastCaseLimit
 )
 
-$requireHmiFormalGatewayContract = ($Suite -contains "all") -or ($Suite -contains "apps") -or ($Suite -contains "contracts") -or ($Suite -contains "integration") -or ($Suite -contains "e2e")
-if ($requireHmiFormalGatewayContract) {
-    $formalGatewayContractGuard = Join-Path $PSScriptRoot "scripts\\validation\\assert-hmi-formal-gateway-launch-contract.ps1"
-    if (-not (Test-Path $formalGatewayContractGuard)) {
-        throw "HMI formal gateway contract guard not found: $formalGatewayContractGuard"
-    }
-
-    Write-Output "hmi formal gateway contract gate: powershell -NoProfile -ExecutionPolicy Bypass -File $formalGatewayContractGuard"
-    & $formalGatewayContractGuard -WorkspaceRoot $PSScriptRoot
+$gateRunner = Join-Path $PSScriptRoot "scripts\validation\invoke-gate.ps1"
+if (-not (Test-Path -LiteralPath $gateRunner)) {
+    throw "Gate orchestrator not found: $gateRunner"
 }
 
-function Resolve-RootRunner {
-    param(
-        [string]$CanonicalRelativePath,
-        [string]$EntryName
-    )
+$legacyExitContractRunner = Join-Path $PSScriptRoot "scripts\migration\legacy-exit-checks.py"
+if (-not (Test-Path -LiteralPath $legacyExitContractRunner)) {
+    throw "legacy-exit contract runner not found: $legacyExitContractRunner"
+}
+Write-Output "ci orchestrator: legacy-exit-checks.py is executed by the full-offline legacy-exit gate step."
+Write-Output "ci orchestrator: dsp-e2e-spec-docset is required by the full-offline gate artifact contract."
 
-    $canonicalPath = Join-Path $PSScriptRoot $CanonicalRelativePath
-    if (Test-Path $canonicalPath) {
-        return $canonicalPath
-    }
-
-    throw "未找到根级 $EntryName 入口。已检查: $canonicalPath"
+$gateArgs = @{
+    Gate = "full-offline"
+    ReportRoot = $resolvedReportDir
+    Suite = $Suite
+    Lane = $Lane
+    RiskProfile = $RiskProfile
+    DesiredDepth = $DesiredDepth
+    ChangedScope = $ChangedScope
+    SkipLayer = $SkipLayer
+    SkipJustification = $SkipJustification
+}
+if ($IncludeHardwareSmoke) {
+    $gateArgs["IncludeHardwareSmoke"] = $true
+}
+if ($IncludeHilClosedLoop) {
+    $gateArgs["IncludeHilClosedLoop"] = $true
+}
+if ($IncludeHilCaseMatrix) {
+    $gateArgs["IncludeHilCaseMatrix"] = $true
+}
+if ($EnablePythonCoverage) {
+    $gateArgs["EnablePythonCoverage"] = $true
+}
+if ($EnableCppCoverage) {
+    $gateArgs["EnableCppCoverage"] = $true
 }
 
-$legacyExitRunner = Resolve-RootRunner `
-    -CanonicalRelativePath "scripts\\migration\\legacy-exit-checks.py" `
-    -EntryName "legacy-exit"
-
-$legacyExitReportDir = Join-Path $resolvedReportDir "legacy-exit"
-$resolvedLegacyExitReportDir = $legacyExitReportDir
-New-Item -ItemType Directory -Force -Path $resolvedLegacyExitReportDir | Out-Null
-Invoke-LaneStep -StepName "legacy-exit-check.ps1" -LanePolicy $lanePolicy -Action {
-    & (Join-Path $PSScriptRoot "legacy-exit-check.ps1") `
-        -Profile CI `
-        -ReportDir $resolvedLegacyExitReportDir
-}
-
-Invoke-LaneStep -StepName "semgrep" -LanePolicy $lanePolicy -Action {
-    & (Join-Path $PSScriptRoot "scripts\validation\invoke-semgrep.ps1") `
-        -ReportDir (Join-Path $resolvedReportDir "semgrep")
-}
-
-Invoke-LaneStep -StepName "import-linter" -LanePolicy $lanePolicy -Action {
-    & (Join-Path $PSScriptRoot "scripts\validation\invoke-import-linter.ps1") `
-        -ReportDir (Join-Path $resolvedReportDir "import-linter")
-}
-
-Invoke-LaneStep -StepName "build.ps1" -LanePolicy $lanePolicy -Action {
-    & (Join-Path $PSScriptRoot "build.ps1") `
-        -Profile CI `
-        -Suite $Suite `
-        -Lane $Lane `
-        -RiskProfile $RiskProfile `
-        -DesiredDepth $DesiredDepth `
-        -ChangedScope $ChangedScope `
-        -SkipLayer $SkipLayer `
-        -SkipJustification $SkipJustification `
-        -EnableCppCoverage:$EnableCppCoverage
-}
-Invoke-LaneStep -StepName "test.ps1" -LanePolicy $lanePolicy -Action {
-    & (Join-Path $PSScriptRoot "test.ps1") `
-        -Profile CI `
-        -Suite $Suite `
-        -ReportDir $resolvedReportDir `
-        -Lane $Lane `
-        -RiskProfile $RiskProfile `
-        -DesiredDepth $DesiredDepth `
-        -ChangedScope $ChangedScope `
-        -SkipLayer $SkipLayer `
-        -SkipJustification $SkipJustification `
-        -FailOnKnownFailure `
-        -IncludeHardwareSmoke:$IncludeHardwareSmoke `
-        -IncludeHilClosedLoop:$IncludeHilClosedLoop `
-        -IncludeHilCaseMatrix:$IncludeHilCaseMatrix `
-        -EnablePythonCoverage:$EnablePythonCoverage `
-        -EnableCppCoverage:$EnableCppCoverage
-}
-
-Invoke-ReportOnlyStep -StepName "cppcheck" -Action {
-    & (Join-Path $PSScriptRoot "scripts\validation\invoke-cppcheck.ps1") `
-        -ReportDir (Join-Path $resolvedReportDir "static-analysis\cppcheck")
-}
-
-Invoke-ReportOnlyStep -StepName "dependency-graphs" -Action {
-    & (Join-Path $PSScriptRoot "scripts\validation\invoke-dependency-graph-export.ps1") `
-        -ReportDir (Join-Path $resolvedReportDir "dependency-graphs") `
-        -SoftFail
-}
-
-Invoke-LaneStep -StepName "run-local-validation-gate.ps1" -LanePolicy $lanePolicy -Action {
-    $gateScript = Join-Path $PSScriptRoot "scripts\\validation\\run-local-validation-gate.ps1"
-    $gateArgs = @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        $gateScript,
-        "-ReportRoot",
-        $localGateDir,
-        "-Lane",
-        $Lane,
-        "-RiskProfile",
-        $RiskProfile,
-        "-DesiredDepth",
-        $DesiredDepth
-    )
-
-    foreach ($scopeName in $ChangedScope) {
-        if (-not [string]::IsNullOrWhiteSpace($scopeName)) {
-            $gateArgs += @("-ChangedScope", $scopeName)
-        }
-    }
-    foreach ($layerName in $SkipLayer) {
-        if (-not [string]::IsNullOrWhiteSpace($layerName)) {
-            $gateArgs += @("-SkipLayer", $layerName)
-        }
-    }
-    if (-not [string]::IsNullOrWhiteSpace($SkipJustification)) {
-        $gateArgs += @("-SkipJustification", $SkipJustification)
-    }
-    if ($IncludeHilClosedLoop) {
-        $gateArgs += "-IncludeHilClosedLoop"
-    }
-    if ($IncludeHilCaseMatrix) {
-        $gateArgs += "-IncludeHilCaseMatrix"
-    }
-
-    & powershell @gateArgs
-}
-
-if (-not (Test-Path (Join-Path $resolvedReportDir "workspace-validation.md"))) {
-    throw "CI 报告缺失 workspace-validation.md: $resolvedReportDir"
-}
-if (-not (Test-Path (Join-Path $resolvedReportDir "dsp-e2e-spec-docset"))) {
-    throw "CI 报告缺失 dsp-e2e-spec-docset 目录: $resolvedReportDir"
-}
-if (-not (Get-ChildItem $localGateDir -Directory -ErrorAction SilentlyContinue | Select-Object -First 1)) {
-    throw "CI 报告缺失 local-validation-gate 运行目录: $localGateDir"
-}
+Write-Output "ci orchestrator: powershell -NoProfile -ExecutionPolicy Bypass -File $gateRunner -Gate full-offline -ReportRoot $resolvedReportDir"
+& $gateRunner @gateArgs

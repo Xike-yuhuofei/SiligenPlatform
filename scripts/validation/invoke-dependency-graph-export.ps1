@@ -129,7 +129,7 @@ function Write-TargetSubsetGraph {
 $summaryLines = @(
     '# Dependency Graph Export',
     '',
-    '- failure_policy: `report-only when graph tooling is missing; hard-fail only on unexpected script errors`',
+    ('- failure_policy: `{0}`' -f $(if ($SoftFail) { 'soft-fail on graph tooling gaps' } else { 'blocking on graph tooling gaps and export failures' })),
     '- cmake_report_dir: `tests/reports/dependency-graphs/cmake`',
     '- python_report_dir: `tests/reports/dependency-graphs/python`',
     ''
@@ -139,8 +139,13 @@ $cmakeStatus = "skipped"
 $cmakeDetail = ""
 $cmakeCommand = Get-Command cmake -ErrorAction SilentlyContinue
 if ($null -eq $cmakeCommand) {
-    $cmakeStatus = "tool-missing"
-    $cmakeDetail = "cmake command not found"
+    if ($SoftFail) {
+        $cmakeStatus = "tool-missing"
+        $cmakeDetail = "cmake command not found"
+    }
+    else {
+        throw "CMake command not found; dependency graph export is a blocking gate."
+    }
 }
 else {
     $totalDotPath = Join-Path $cmakeReportDir "workspace-targets.dot"
@@ -167,8 +172,13 @@ else {
         }
     }
     elseif (-not (Test-Path $totalDotPath)) {
-        $cmakeStatus = "soft-failed"
-        $cmakeDetail = "cmake graphviz dot file was not created"
+        if ($SoftFail) {
+            $cmakeStatus = "soft-failed"
+            $cmakeDetail = "cmake graphviz dot file was not created"
+        }
+        else {
+            throw "CMake graphviz dot file was not created: $totalDotPath"
+        }
     }
     else {
         $cmakeStatus = "passed"
@@ -198,8 +208,13 @@ $dotCommand = Resolve-WorkspaceToolPath -ToolNames @("dot")
 $pythonStatus = "skipped"
 $pythonDetail = ""
 if ([string]::IsNullOrWhiteSpace($pydepsCommand)) {
-    $pythonStatus = "tool-missing"
-    $pythonDetail = "pydeps not found"
+    if ($SoftFail) {
+        $pythonStatus = "tool-missing"
+        $pythonDetail = "pydeps not found"
+    }
+    else {
+        throw "pydeps not found; dependency graph export is a blocking gate. Run .\scripts\validation\install-python-deps.ps1."
+    }
 }
 else {
     $existingPythonPath = $env:PYTHONPATH
@@ -254,9 +269,14 @@ else {
             & $pydepsCommand @args
             $pydepsExitCode = $LASTEXITCODE
             if ($pydepsExitCode -ne 0) {
-                $pythonStatus = "soft-failed"
-                $pythonDetail = "pydeps export failed for $packageName with exit=$pydepsExitCode"
-                break
+                if ($SoftFail) {
+                    $pythonStatus = "soft-failed"
+                    $pythonDetail = "pydeps export failed for $packageName with exit=$pydepsExitCode"
+                    break
+                }
+                else {
+                    throw "pydeps export failed for $packageName with exit=$pydepsExitCode"
+                }
             }
 
             if (-not [string]::IsNullOrWhiteSpace($dotCommand) -and (Test-Path $dotPath)) {

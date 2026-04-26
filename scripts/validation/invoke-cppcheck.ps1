@@ -20,13 +20,16 @@ if ([string]::IsNullOrWhiteSpace($cppcheckCommand)) {
         '# Cppcheck',
         '',
         '- status: `tool-missing`',
-        '- gate: `report-only`',
-        '- failure_condition: `only when Cppcheck is available, issues are classified as blocking, and FailOnIssues is enabled`',
+        ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+        '- failure_condition: `tool missing or non-zero cppcheck exit when FailOnIssues is enabled`',
         '- report_dir: `tests/reports/static-analysis/cppcheck`',
-        '- detail: 当前环境未安装 `cppcheck`，已保留 CI 入口与报告目录，等待工具就绪后启用真实扫描。'
+        '- detail: 当前环境未安装 `cppcheck`。强制门禁模式下必须安装 cppcheck 后再放行。'
     )
     Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
-    Write-Output "cppcheck tool missing; report-only summary written to $mdReportPath"
+    Write-Output "cppcheck tool missing; summary written to $mdReportPath"
+    if ($FailOnIssues) {
+        exit 1
+    }
     exit 0
 }
 

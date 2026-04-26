@@ -12,6 +12,8 @@
 
 验证体系的正式真值优先看：
 
+- `docs/validation/gate-orchestrator.md`
+- `scripts/validation/gates/gates.json`
 - `docs/architecture/build-and-test.md`
 - `docs/architecture/validation/layered-test-system-v2.md`
 - `docs/architecture/validation/test-coverage-matrix-v1.md`
@@ -31,6 +33,7 @@
 
 以下内容默认属于正式区：
 
+- `gate-orchestrator.md`
 - `layered-test-matrix.md`
 - `online-test-matrix-v1.md`
 - `pr-gate-and-hil-gate-policy.md`
@@ -50,6 +53,19 @@
 1. 长期有效的 checklist、matrix、template、acceptance 文档保留在正式区
 2. 单次执行记录、incident closeout、阶段性 review/summary/closeout 一律下沉到 `history/`
 3. 文件名带日期不自动等于历史，是否承担当前真值职责才是最高判定标准
+
+## 2.1 门禁与自动化测试权威入口
+
+门禁与自动化测试的当前权威入口是：
+
+- 执行入口：`scripts/validation/invoke-gate.ps1`
+- Gate 定义：`scripts/validation/gates/gates.json`
+- 变更分类：`scripts/validation/classify-change.ps1`
+- 分类规则：`scripts/validation/gates/change-classification.json`
+- 开发者遵守文档：`docs/validation/gate-orchestrator.md`
+- PR / Native / HIL 合并策略：`docs/validation/pr-gate-and-hil-gate-policy.md`
+
+后续新增或调整门禁时，必须同步更新 gate 配置、契约测试和 `gate-orchestrator.md`。不得在 GitHub workflow、本地 hook 或临时脚本中维护独立测试清单。
 
 ## 3. 历史文档区
 

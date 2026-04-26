@@ -55,76 +55,25 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           $ErrorActionPreference = "Stop"
-          $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
-          $labels = @()
-          if ($null -ne $event.pull_request -and $null -ne $event.pull_request.labels) {
-            $labels = @($event.pull_request.labels | ForEach-Object { $_.name })
-          }
-
-          $changedFiles = @()
-          $classificationReliable = $true
-          try {
-            if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
-              $changedFiles = @(gh pr diff $event.pull_request.number --repo $env:GITHUB_REPOSITORY --name-only)
-            } elseif (-not [string]::IsNullOrWhiteSpace($env:BASE_SHA)) {
-              $changedFiles = @(git diff --name-only $env:BASE_SHA $env:HEAD_SHA)
-            } else {
-              $changedFiles = @(git diff --name-only "HEAD~1" "HEAD")
-            }
-          } catch {
-            $classificationReliable = $false
-          }
-
-          $nativePatterns = @(
-            '^\.github/workflows/(strict-pr-gate|strict-native-gate)\.yml$',
-            '^CMakeLists\.txt$',
-            '^cmake/',
-            '^build\.ps1$',
-            '^ci\.ps1$',
-            '^test\.ps1$',
-            '^scripts/build/',
-            '^scripts/validation/',
-            '^apps/runtime-service/',
-            '^apps/runtime-gateway/',
-            '^apps/planner-cli/',
-            '^modules/runtime-execution/',
-            '^modules/motion-planning/',
-            '^modules/.*/adapters/(device|vendor)/',
-            '^shared/(contracts|kernel|runtime|testing)/',
-            '^tests/(contracts|integration|e2e)/',
-            '^config/.*(runtime|gateway|machine|motion|device|adapter|hardware)'
+          $classificationPath = "tests\reports\github-actions\strict-native-gate\classification\classification.json"
+          $classificationArgs = @(
+            "-Mode",
+            "native",
+            "-OutputPath",
+            $classificationPath,
+            "-BaseSha",
+            $env:BASE_SHA,
+            "-HeadSha",
+            $env:HEAD_SHA,
+            "-EventName",
+            $env:EVENT_NAME
           )
-
-          $requiresNative = $false
-          $reasons = New-Object System.Collections.Generic.List[string]
-
           if ($env:FORCE_NATIVE -eq "true") {
-            $requiresNative = $true
-            $reasons.Add("workflow_dispatch force_native=true")
+            $classificationArgs += "-ForceNative"
           }
-          if ($labels -contains "native-sensitive") {
-            $requiresNative = $true
-            $reasons.Add("label native-sensitive")
-          }
-          if (-not $classificationReliable) {
-            $requiresNative = $true
-            $reasons.Add("changed-file classification unavailable; default native-required")
-          }
+          .\scripts\validation\classify-change.ps1 @classificationArgs
 
-          foreach ($file in $changedFiles) {
-            $normalized = $file -replace '\\', '/'
-            foreach ($pattern in $nativePatterns) {
-              if ($normalized -match $pattern) {
-                $requiresNative = $true
-                $reasons.Add("path $normalized matches $pattern")
-                break
-              }
-            }
-          }
-
-          $requiresNativeText = if ($requiresNative) { "true" } else { "false" }
-          $reasonText = if ($reasons.Count -gt 0) { ($reasons | Select-Object -Unique) -join "; " } else { "not native-sensitive" }
-
+          $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
           $trustedNativeRunner = $false
           $trustReason = ""
           if ($env:EVENT_NAME -eq "pull_request") {
@@ -149,21 +98,19 @@ jobs:
           }
           $trustedNativeRunnerText = if ($trustedNativeRunner) { "true" } else { "false" }
 
-          "requires_native=$requiresNativeText" >> $env:GITHUB_OUTPUT
-          "reason=$reasonText" >> $env:GITHUB_OUTPUT
           "trusted_native_runner=$trustedNativeRunnerText" >> $env:GITHUB_OUTPUT
           "trust_reason=$trustReason" >> $env:GITHUB_OUTPUT
 
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Native classification"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_native: ``$requiresNativeText``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$reasonText``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_native_runner: ``$trustedNativeRunnerText``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$trustReason``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Changed files"
-          foreach ($file in $changedFiles) {
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- ``$file``"
-          }
+
+      - name: Upload native classification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-native-classification
+          path: tests/reports/github-actions/strict-native-gate/classification
+          if-no-files-found: error
 
   run-native:
     name: Run Native Build And Test
@@ -177,28 +124,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          clean: false
-
-      - name: Prepare strict native build cache
-        shell: pwsh
-        run: |
-          .\scripts\validation\prepare-strict-native-build-cache.ps1
-
-      - name: Install validation dependencies
-        shell: pwsh
-        run: |
-          .\scripts\validation\install-python-deps.ps1
 
       - name: Run full offline native gate
         shell: pwsh
+        env:
+          FORCE_NATIVE: ${{ inputs.force_native || 'false' }}
         run: |
-          .\ci.ps1 `
-            -Suite all `
-            -ReportDir tests\reports\github-actions\strict-native-gate `
-            -Lane full-offline-gate `
-            -RiskProfile high `
-            -DesiredDepth full-offline
+          $gateArgs = @(
+            "-Gate",
+            "native",
+            "-ReportRoot",
+            "tests\reports\github-actions\strict-native-gate"
+          )
+          if ($env:FORCE_NATIVE -eq "true") {
+            $gateArgs += "-ForceNative"
+          }
+          .\scripts\validation\invoke-gate.ps1 @gateArgs
 
       - name: Upload strict native evidence
         if: always()
