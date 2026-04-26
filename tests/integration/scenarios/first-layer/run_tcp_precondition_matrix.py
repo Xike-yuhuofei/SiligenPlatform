@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -50,6 +51,7 @@ DEFAULT_WORKSPACE_MARKER = ROOT / "WORKSPACE.md"
 DEFAULT_LAYOUT_FILE = ROOT / "cmake" / "workspace-layout.env"
 DEFAULT_AGENTS_FILE = ROOT / "AGENTS.md"
 DEFAULT_GATEWAY_READINESS_TIMEOUT_SECONDS = 120.0
+DEFAULT_RUNTIME_WORKSPACES_ROOT = ROOT / "build" / "runtime-workspaces" / "tcp-precondition-matrix"
 
 KNOWN_FAILURE_PATTERNS = (
     "IDiagnosticsPort 未注册",
@@ -218,8 +220,14 @@ def _read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:
     return stdout or "", stderr or ""
 
 
+def _default_isolated_workspace(report_dir: Path) -> Path:
+    report_identity = str(report_dir.resolve())
+    run_id = hashlib.sha1(report_identity.encode("utf-8")).hexdigest()[:12]
+    return DEFAULT_RUNTIME_WORKSPACES_ROOT / run_id
+
+
 def _prepare_isolated_workspace(report_dir: Path) -> Path:
-    isolated_root = report_dir / "isolated-precondition-workspace"
+    isolated_root = _default_isolated_workspace(report_dir)
     if isolated_root.exists():
         shutil.rmtree(isolated_root)
 

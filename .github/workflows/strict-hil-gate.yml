@@ -4,6 +4,13 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
   merge_group:
     branches:
       - main
@@ -29,6 +36,8 @@ jobs:
     outputs:
       requires_hil: ${{ steps.classify.outputs.requires_hil }}
       reason: ${{ steps.classify.outputs.reason }}
+      trusted_hil_runner: ${{ steps.classify.outputs.trusted_hil_runner }}
+      trust_reason: ${{ steps.classify.outputs.trust_reason }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +52,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           FORCE_HIL: ${{ inputs.force_hil || 'false' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           $ErrorActionPreference = "Stop"
           $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
@@ -102,12 +112,40 @@ jobs:
           $requiresHilText = if ($requiresHil) { "true" } else { "false" }
           $reasonText = if ($reasons.Count -gt 0) { ($reasons | Select-Object -Unique) -join "; " } else { "not hardware-sensitive" }
 
+          $trustedHilRunner = $false
+          $trustReason = ""
+          if ($env:EVENT_NAME -eq "pull_request") {
+            $headRepository = ""
+            if ($null -ne $event.pull_request -and $null -ne $event.pull_request.head -and $null -ne $event.pull_request.head.repo) {
+              $headRepository = [string]$event.pull_request.head.repo.full_name
+            }
+            if ($headRepository -eq $env:GITHUB_REPOSITORY) {
+              $trustedHilRunner = $true
+              $trustReason = "same-repository pull request"
+            } else {
+              $trustReason = "forked pull request cannot run self-hosted HIL"
+            }
+          } elseif ($env:EVENT_NAME -eq "merge_group") {
+            $trustedHilRunner = $true
+            $trustReason = "merge_group queue"
+          } elseif ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $trustedHilRunner = $true
+            $trustReason = "maintainer-controlled workflow_dispatch"
+          } else {
+            $trustReason = "unsupported event for self-hosted HIL"
+          }
+          $trustedHilRunnerText = if ($trustedHilRunner) { "true" } else { "false" }
+
           "requires_hil=$requiresHilText" >> $env:GITHUB_OUTPUT
           "reason=$reasonText" >> $env:GITHUB_OUTPUT
+          "trusted_hil_runner=$trustedHilRunnerText" >> $env:GITHUB_OUTPUT
+          "trust_reason=$trustReason" >> $env:GITHUB_OUTPUT
 
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## HIL classification"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_hil: ``$requiresHilText``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$reasonText``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_hil_runner: ``$trustedHilRunnerText``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$trustReason``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Changed files"
           foreach ($file in $changedFiles) {
@@ -117,7 +155,7 @@ jobs:
   run-hil:
     name: Run Controlled HIL
     needs: classify-hil-requirement
-    if: needs.classify-hil-requirement.outputs.requires_hil == 'true'
+    if: needs.classify-hil-requirement.outputs.requires_hil == 'true' && needs.classify-hil-requirement.outputs.trusted_hil_runner == 'true'
     runs-on: [self-hosted, windows, hil]
     timeout-minutes: 120
     concurrency:
@@ -185,6 +223,8 @@ jobs:
           CLASSIFY_RESULT: ${{ needs.classify-hil-requirement.result }}
           REQUIRES_HIL: ${{ needs.classify-hil-requirement.outputs.requires_hil }}
           CLASSIFICATION_REASON: ${{ needs.classify-hil-requirement.outputs.reason }}
+          TRUSTED_HIL_RUNNER: ${{ needs.classify-hil-requirement.outputs.trusted_hil_runner }}
+          TRUST_REASON: ${{ needs.classify-hil-requirement.outputs.trust_reason }}
           HIL_RESULT: ${{ needs.run-hil.result }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -192,6 +232,8 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- classify_result: ``$env:CLASSIFY_RESULT``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_hil: ``$env:REQUIRES_HIL``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$env:CLASSIFICATION_REASON``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_hil_runner: ``$env:TRUSTED_HIL_RUNNER``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$env:TRUST_REASON``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- run_hil_result: ``$env:HIL_RESULT``"
 
           if ($env:CLASSIFY_RESULT -ne "success") {
@@ -205,6 +247,10 @@ jobs:
           if ($env:REQUIRES_HIL -ne "true") {
             Write-Output "Strict HIL Gate not required for this PR."
             exit 0
+          }
+
+          if ($env:TRUSTED_HIL_RUNNER -ne "true") {
+            throw "Strict HIL Gate required but self-hosted HIL runner is not trusted for this event: $env:TRUST_REASON."
           }
 
           if ($env:HIL_RESULT -ne "success") {

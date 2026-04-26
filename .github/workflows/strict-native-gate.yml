@@ -4,6 +4,13 @@ on:
   pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
   merge_group:
     branches:
       - main
@@ -29,6 +36,8 @@ jobs:
     outputs:
       requires_native: ${{ steps.classify.outputs.requires_native }}
       reason: ${{ steps.classify.outputs.reason }}
+      trusted_native_runner: ${{ steps.classify.outputs.trusted_native_runner }}
+      trust_reason: ${{ steps.classify.outputs.trust_reason }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +52,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           FORCE_NATIVE: ${{ inputs.force_native || 'false' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           $ErrorActionPreference = "Stop"
           $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
@@ -115,12 +125,40 @@ jobs:
           $requiresNativeText = if ($requiresNative) { "true" } else { "false" }
           $reasonText = if ($reasons.Count -gt 0) { ($reasons | Select-Object -Unique) -join "; " } else { "not native-sensitive" }
 
+          $trustedNativeRunner = $false
+          $trustReason = ""
+          if ($env:EVENT_NAME -eq "pull_request") {
+            $headRepository = ""
+            if ($null -ne $event.pull_request -and $null -ne $event.pull_request.head -and $null -ne $event.pull_request.head.repo) {
+              $headRepository = [string]$event.pull_request.head.repo.full_name
+            }
+            if ($headRepository -eq $env:GITHUB_REPOSITORY) {
+              $trustedNativeRunner = $true
+              $trustReason = "same-repository pull request"
+            } else {
+              $trustReason = "forked pull request cannot run self-hosted native build"
+            }
+          } elseif ($env:EVENT_NAME -eq "merge_group") {
+            $trustedNativeRunner = $true
+            $trustReason = "merge_group queue"
+          } elseif ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $trustedNativeRunner = $true
+            $trustReason = "maintainer-controlled workflow_dispatch"
+          } else {
+            $trustReason = "unsupported event for self-hosted native build"
+          }
+          $trustedNativeRunnerText = if ($trustedNativeRunner) { "true" } else { "false" }
+
           "requires_native=$requiresNativeText" >> $env:GITHUB_OUTPUT
           "reason=$reasonText" >> $env:GITHUB_OUTPUT
+          "trusted_native_runner=$trustedNativeRunnerText" >> $env:GITHUB_OUTPUT
+          "trust_reason=$trustReason" >> $env:GITHUB_OUTPUT
 
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Native classification"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_native: ``$requiresNativeText``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$reasonText``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_native_runner: ``$trustedNativeRunnerText``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$trustReason``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Changed files"
           foreach ($file in $changedFiles) {
@@ -130,7 +168,7 @@ jobs:
   run-native:
     name: Run Native Build And Test
     needs: classify-native-requirement
-    if: needs.classify-native-requirement.outputs.requires_native == 'true'
+    if: needs.classify-native-requirement.outputs.requires_native == 'true' && needs.classify-native-requirement.outputs.trusted_native_runner == 'true'
     runs-on: [self-hosted, windows, build]
     timeout-minutes: 120
     concurrency:
@@ -177,6 +215,8 @@ jobs:
           CLASSIFY_RESULT: ${{ needs.classify-native-requirement.result }}
           REQUIRES_NATIVE: ${{ needs.classify-native-requirement.outputs.requires_native }}
           CLASSIFICATION_REASON: ${{ needs.classify-native-requirement.outputs.reason }}
+          TRUSTED_NATIVE_RUNNER: ${{ needs.classify-native-requirement.outputs.trusted_native_runner }}
+          TRUST_REASON: ${{ needs.classify-native-requirement.outputs.trust_reason }}
           NATIVE_RESULT: ${{ needs.run-native.result }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -184,6 +224,8 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- classify_result: ``$env:CLASSIFY_RESULT``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_native: ``$env:REQUIRES_NATIVE``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$env:CLASSIFICATION_REASON``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_native_runner: ``$env:TRUSTED_NATIVE_RUNNER``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$env:TRUST_REASON``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- run_native_result: ``$env:NATIVE_RESULT``"
 
           if ($env:CLASSIFY_RESULT -ne "success") {
@@ -197,6 +239,10 @@ jobs:
           if ($env:REQUIRES_NATIVE -ne "true") {
             Write-Output "Strict Native Gate not required for this PR."
             exit 0
+          }
+
+          if ($env:TRUSTED_NATIVE_RUNNER -ne "true") {
+            throw "Strict Native Gate required but self-hosted native build runner is not trusted for this event: $env:TRUST_REASON."
           }
 
           if ($env:NATIVE_RESULT -ne "success") {
