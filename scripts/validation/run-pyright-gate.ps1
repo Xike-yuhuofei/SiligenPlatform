@@ -27,6 +27,11 @@ function Resolve-PyrightCommand {
         $pyright = Get-Command pyright -ErrorAction Stop
         return @($pyright.Source)
     } catch {
+        $npxCmd = Get-Command npx.cmd -ErrorAction SilentlyContinue
+        if ($null -ne $npxCmd -and -not [string]::IsNullOrWhiteSpace($npxCmd.Source)) {
+            return @($npxCmd.Source, "--yes", "pyright")
+        }
+
         return @("npx", "--yes", "pyright")
     }
 }
