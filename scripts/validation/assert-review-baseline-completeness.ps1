@@ -104,7 +104,7 @@ foreach ($expectation in $supplementExpectations) {
         continue
     }
 
-    $content = Get-Content -Raw -LiteralPath $fullPath
+    $content = Get-Content -Raw -Encoding UTF8 -LiteralPath $fullPath
     foreach ($pattern in $expectation.patterns) {
         if ($content -notmatch [regex]::Escape($pattern)) {
             $findings.Add([pscustomobject]@{

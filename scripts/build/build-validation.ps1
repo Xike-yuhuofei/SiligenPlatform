@@ -30,7 +30,7 @@ Write-Output "third-party bootstrap: powershell -NoProfile -ExecutionPolicy Bypa
 
 $layoutScript = Join-Path $workspaceRoot "scripts\validation\get-workspace-layout.ps1"
 if (-not (Test-Path $layoutScript)) {
-    throw "未找到 workspace layout 解析脚本: $layoutScript"
+    throw "workspace layout parser script not found: $layoutScript"
 }
 $layout = & $layoutScript -WorkspaceRoot $workspaceRoot
 $workspaceSourceRoot = [System.IO.Path]::GetFullPath($workspaceRoot)
@@ -47,13 +47,13 @@ function Assert-FileContainsAll {
     )
 
     if (-not (Test-Path $Path)) {
-        throw "$Label 缺失: $Path"
+        throw "$Label missing: $Path"
     }
 
     $content = Get-Content -Raw -Path $Path
     foreach ($snippet in $RequiredSnippets) {
         if ($content -notlike "*$snippet*") {
-            throw "$Label 缺少必需片段 '$snippet': $Path"
+            throw "$Label missing required snippet '$snippet': $Path"
         }
     }
 }
@@ -66,12 +66,12 @@ function Assert-LayoutEntryEquals {
 
     $property = $layout.Entries.PSObject.Properties[$Key]
     if (-not $property) {
-        throw "workspace layout 缺少键: $Key"
+        throw "workspace layout missing key: $Key"
     }
 
     $actual = [string]$property.Value.Relative
     if ($actual -ne $ExpectedRelative) {
-        throw "workspace layout 键 '$Key' 必须为 '$ExpectedRelative'，当前为 '$actual'"
+        throw "workspace layout key '$Key' must be '$ExpectedRelative'; actual '$actual'"
     }
 }
 
@@ -83,7 +83,7 @@ function Assert-LayoutEntryAbsent {
     $property = $layout.Entries.PSObject.Properties[$Key]
     if ($property) {
         $actual = [string]$property.Value.Relative
-        throw "workspace layout 键 '$Key' 必须移除（single-track），当前为 '$actual'"
+        throw "workspace layout key '$Key' must be removed for single-track; actual '$actual'"
     }
 }
 
@@ -92,7 +92,7 @@ function Assert-DirectoryAbsent {
 
     $target = Join-Path $workspaceRoot $RelativePath
     if (Test-Path $target) {
-        throw "旧根必须物理删除: $RelativePath"
+        throw "legacy root must be physically removed: $RelativePath"
     }
 }
 
@@ -110,7 +110,7 @@ function Assert-CanonicalGraphAndLegacyExitContracts {
     )
     $missing = @($requiredPaths | Where-Object { -not (Test-Path $_) })
     if ($missing.Count -gt 0) {
-        throw "canonical graph / legacy exit 合同缺失路径: $($missing -join ', ')"
+        throw "canonical graph / legacy exit contract missing paths: $($missing -join ', ')"
     }
 
     Assert-FileContainsAll `
@@ -119,7 +119,7 @@ function Assert-CanonicalGraphAndLegacyExitContracts {
             "LoadWorkspaceLayout.cmake",
             "workspace root must be canonical superbuild source root"
         ) `
-        -Label "根级 CMake canonical graph 断言"
+        -Label "root CMake canonical graph assertion"
 
     Assert-FileContainsAll `
         -Path (Join-Path $workspaceRoot "tests\CMakeLists.txt") `
@@ -127,7 +127,7 @@ function Assert-CanonicalGraphAndLegacyExitContracts {
             "LoadWorkspaceLayout.cmake",
             "tests root must resolve to canonical superbuild source root"
         ) `
-        -Label "tests CMake canonical graph 断言"
+        -Label "tests CMake canonical graph assertion"
 
     Assert-LayoutEntryEquals -Key "SILIGEN_APPS_ROOT" -ExpectedRelative "apps"
     Assert-LayoutEntryEquals -Key "SILIGEN_MODULES_ROOT" -ExpectedRelative "modules"
@@ -211,7 +211,7 @@ function Assert-ControlAppsBinary {
 
     $resolved = Resolve-FirstExistingPath -Candidates (Get-ControlAppsBinaryCandidates -FileName $FileName)
     if (-not $resolved) {
-        throw "control-apps build 已完成，但未找到目标 '$TargetName' 的 canonical 产物 '$FileName'。请检查 '$controlAppsBuild' 的输出目录。"
+        throw "control-apps build completed but target '$TargetName' did not publish canonical artifact '$FileName'. Check output directory '$controlAppsBuild'."
     }
 
     Write-Output "artifact: $TargetName -> $resolved"
@@ -280,11 +280,11 @@ function Invoke-ControlAppsBuild {
     )
     & cmake @controlAppsConfigureArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "control-apps cmake configure 失败，退出码: $LASTEXITCODE"
+        throw "control-apps cmake configure failed with exit code: $LASTEXITCODE"
     }
     & cmake --build $controlAppsBuild --config Debug --target $resolvedTargets --parallel $parallelBuildJobs
     if ($LASTEXITCODE -ne 0) {
-        throw "control-apps cmake build 失败，退出码: $LASTEXITCODE"
+        throw "control-apps cmake build failed with exit code: $LASTEXITCODE"
     }
 }
 
