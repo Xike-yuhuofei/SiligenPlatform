@@ -266,7 +266,7 @@
           "name": "Run HIL offline prerequisites",
           "blocking": true,
           "timeoutSeconds": 2700,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "-Suite", "contracts", "integration", "e2e", "protocol-compatibility", "-ReportDir", "{stepReportDir}", "-Lane", "full-offline-gate", "-RiskProfile", "hardware-sensitive", "-DesiredDepth", "full-offline", "-FailOnKnownFailure" ],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "-Suite", "all", "-ReportDir", "{stepReportDir}", "-Lane", "full-offline-gate", "-RiskProfile", "hardware-sensitive", "-DesiredDepth", "full-offline", "-FailOnKnownFailure" ],
           "requiredArtifacts": [ "{stepReportDir}/workspace-validation.json", "{stepReportDir}/workspace-validation.md" ]
         },
         {

@@ -146,6 +146,14 @@ class GateOrchestratorContractTest(unittest.TestCase):
             controlled_hil_command,
         )
 
+    def test_hil_offline_prerequisite_uses_single_suite_token(self) -> None:
+        hil_steps = {step["id"]: step for step in self._resolved_gate("hil")["steps"]}
+        offline_command = hil_steps["offline-prerequisite"]["command"]
+        suite_index = offline_command.index("-Suite")
+
+        self.assertEqual(offline_command[suite_index + 1], "all")
+        self.assertEqual(offline_command.count("-Suite"), 1)
+
     def test_gate_orchestrator_is_published_as_authoritative_developer_doc(self) -> None:
         doc = _read(GATE_ORCHESTRATOR_DOC)
         self.assertIn("权威文档", doc)
