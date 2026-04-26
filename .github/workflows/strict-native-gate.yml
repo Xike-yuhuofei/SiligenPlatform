@@ -177,6 +177,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Prepare strict native build cache
+        shell: pwsh
+        run: |
+          .\scripts\validation\prepare-strict-native-build-cache.ps1
 
       - name: Install validation dependencies
         shell: pwsh

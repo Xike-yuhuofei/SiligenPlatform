@@ -690,6 +690,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reuse-existing-gateway", action="store_true")
     parser.add_argument("--offline-prereq-report", default="")
     parser.add_argument("--operator-override-reason", default="")
+    parser.add_argument("--expected-offline-head-sha", default=os.getenv("GITHUB_SHA", "").strip())
+    parser.add_argument("--expected-offline-lane", default="full-offline-gate")
     return parser.parse_args()
 
 
@@ -727,6 +729,8 @@ def main() -> int:
     admission = _evaluate_offline_admission(
         offline_prereq_report=args.offline_prereq_report,
         operator_override_reason=args.operator_override_reason,
+        expected_offline_head_sha=args.expected_offline_head_sha,
+        expected_offline_lane=args.expected_offline_lane,
     )
 
     gateway_exe = Path(args.gateway_exe)

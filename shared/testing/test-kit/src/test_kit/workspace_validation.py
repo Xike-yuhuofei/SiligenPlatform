@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -212,6 +213,41 @@ def _workspace_validation_metadata(control_apps_readiness: ControlAppsBuildReadi
         if key in WORKSPACE_LAYOUT:
             metadata[key.lower()] = str(_layout_absolute_path(key))
     return metadata
+
+
+def _git_head_sha() -> str:
+    env_sha = os.getenv("GITHUB_SHA", "").strip() or os.getenv("HEAD_SHA", "").strip()
+    if env_sha:
+        return env_sha
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(WORKSPACE_ROOT),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except OSError:
+        return ""
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout.strip()
+
+
+def _validation_provenance(*, lane_ref: str, suites: list[str]) -> dict[str, str]:
+    return {
+        "report_schema_version": "workspace-validation.v1",
+        "head_sha": _git_head_sha(),
+        "base_sha": os.getenv("GITHUB_BASE_SHA", "").strip() or os.getenv("BASE_SHA", "").strip(),
+        "workflow_run_id": os.getenv("GITHUB_RUN_ID", "").strip(),
+        "workflow_run_attempt": os.getenv("GITHUB_RUN_ATTEMPT", "").strip(),
+        "github_event_name": os.getenv("GITHUB_EVENT_NAME", "").strip(),
+        "github_ref": os.getenv("GITHUB_REF", "").strip(),
+        "github_repository": os.getenv("GITHUB_REPOSITORY", "").strip(),
+        "lane": lane_ref,
+        "suite_set": ",".join(suites),
+    }
 
 
 def _required_control_apps_artifacts(cases: list[ValidationCase]) -> tuple[str, ...]:
@@ -1308,6 +1344,10 @@ def main() -> int:
     metadata["baseline_unused_issue_count"] = len(baseline_governance["unused_baseline_paths"])
     metadata["baseline_stale_issue_count"] = len(baseline_governance["stale_baseline_ids"])
     metadata.update(routed_request.to_metadata())
+    metadata["validation_provenance"] = _validation_provenance(
+        lane_ref=routed_request.selected_lane_ref,
+        suites=suites,
+    )
     report = ValidationReport(
         generated_at=datetime.now(timezone.utc).isoformat(),
         workspace_root=str(WORKSPACE_ROOT),

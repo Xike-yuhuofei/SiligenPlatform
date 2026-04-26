@@ -129,6 +129,8 @@ def _evaluate_offline_admission(
     *,
     offline_prereq_report: str,
     operator_override_reason: str,
+    expected_offline_head_sha: str = "",
+    expected_offline_lane: str = "full-offline-gate",
 ) -> dict[str, Any]:
     trimmed_reason = operator_override_reason.strip()
     trimmed_report = offline_prereq_report.strip()
@@ -141,6 +143,8 @@ def _evaluate_offline_admission(
         "offline_prerequisites_passed": False,
         "operator_override_used": False,
         "operator_override_reason": trimmed_reason,
+        "expected_offline_head_sha": expected_offline_head_sha.strip(),
+        "expected_offline_lane": expected_offline_lane.strip(),
         "admission_decision": "blocked",
         "checks": checks,
     }
@@ -203,6 +207,66 @@ def _evaluate_offline_admission(
         return payload
 
     prereq_payload = _load_json(report_path)
+    metadata = prereq_payload.get("metadata", {})
+    provenance = metadata.get("validation_provenance", {}) if isinstance(metadata, dict) else {}
+    provenance_ok = isinstance(provenance, dict)
+    required_provenance_fields = (
+        "report_schema_version",
+        "head_sha",
+        "base_sha",
+        "workflow_run_id",
+        "workflow_run_attempt",
+        "github_event_name",
+        "github_ref",
+        "github_repository",
+        "lane",
+        "suite_set",
+    )
+    missing_provenance = [
+        field_name
+        for field_name in required_provenance_fields
+        if not provenance_ok or field_name not in provenance
+    ]
+    checks.append(
+        _build_admission_check(
+            name="offline-prereq-provenance-schema",
+            status="passed" if not missing_provenance else "failed",
+            expected="validation_provenance contains workspace-validation.v1 fields",
+            actual="all present" if not missing_provenance else "missing=" + ",".join(missing_provenance),
+        )
+    )
+    provenance_schema_version = str(provenance.get("report_schema_version", "")) if provenance_ok else ""
+    checks.append(
+        _build_admission_check(
+            name="offline-prereq-provenance-version",
+            status="passed" if provenance_schema_version == "workspace-validation.v1" else "failed",
+            expected="workspace-validation.v1",
+            actual=provenance_schema_version or "missing",
+        )
+    )
+    actual_head_sha = str(provenance.get("head_sha", "")).strip() if provenance_ok else ""
+    expected_head_sha = expected_offline_head_sha.strip()
+    if expected_head_sha:
+        checks.append(
+            _build_admission_check(
+                name="offline-prereq-head-sha",
+                status="passed" if actual_head_sha == expected_head_sha else "failed",
+                expected=expected_head_sha,
+                actual=actual_head_sha or "missing",
+            )
+        )
+    actual_lane = str(provenance.get("lane", "")).strip() if provenance_ok else ""
+    expected_lane = expected_offline_lane.strip()
+    if expected_lane:
+        checks.append(
+            _build_admission_check(
+                name="offline-prereq-lane",
+                status="passed" if actual_lane == expected_lane else "failed",
+                expected=expected_lane,
+                actual=actual_lane or "missing",
+            )
+        )
+
     counts = prereq_payload.get("counts", {})
     failed = int(counts.get("failed", 0))
     known_failure = int(counts.get("known_failure", 0))
@@ -240,7 +304,13 @@ def _evaluate_offline_admission(
         )
     )
 
-    payload["offline_prerequisites_passed"] = counts_ok and cases_ok
+    provenance_checks_ok = all(
+        check["status"] == "passed"
+        for check in checks
+        if check["name"].startswith("offline-prereq-provenance")
+        or check["name"] in {"offline-prereq-head-sha", "offline-prereq-lane"}
+    )
+    payload["offline_prerequisites_passed"] = counts_ok and cases_ok and provenance_checks_ok
     if payload["offline_prerequisites_passed"]:
         payload["admission_decision"] = "admitted"
         payload["failure_classification"] = default_failure_classification(status="passed")
@@ -261,7 +331,7 @@ def _evaluate_offline_admission(
         "category": "prerequisite",
         "code": "operator_override_required",
         "blocking": True,
-        "message": "limited-hil requires an explicit operator override when offline prerequisites are not fully passed",
+        "message": "limited-hil requires current full-offline prerequisite evidence with matching provenance",
     }
     return payload
 
@@ -1122,6 +1192,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reuse-existing-gateway", action="store_true")
     parser.add_argument("--offline-prereq-report", default="")
     parser.add_argument("--operator-override-reason", default="")
+    parser.add_argument("--expected-offline-head-sha", default=os.getenv("GITHUB_SHA", "").strip())
+    parser.add_argument("--expected-offline-lane", default="full-offline-gate")
     return parser.parse_args()
 
 
@@ -1146,6 +1218,8 @@ def main() -> int:
     admission = _evaluate_offline_admission(
         offline_prereq_report=args.offline_prereq_report,
         operator_override_reason=args.operator_override_reason,
+        expected_offline_head_sha=args.expected_offline_head_sha,
+        expected_offline_lane=args.expected_offline_lane,
     )
     started: float | None = None
 

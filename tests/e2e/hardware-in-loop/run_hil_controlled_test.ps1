@@ -106,6 +106,22 @@ function Convert-StrictBooleanArgument {
     throw "$ArgumentName 必须显式为 true 或 false；当前值为 '$ArgumentValue'。"
 }
 
+function Resolve-ExpectedHeadSha {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WorkspaceRoot
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_SHA)) {
+        return $env:GITHUB_SHA.Trim()
+    }
+    $gitHead = (& git -C $WorkspaceRoot rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($gitHead)) {
+        throw "Unable to resolve expected offline head SHA for HIL admission."
+    }
+    return ([string]$gitHead).Trim()
+}
+
 $workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $buildScript = Join-Path $workspaceRoot "build.ps1"
 $testScript = Join-Path $workspaceRoot "test.ps1"
@@ -159,6 +175,7 @@ $gateSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.m
 $releaseSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-release-summary.md"
 $resolvedOfflinePrereqReport = if ([string]::IsNullOrWhiteSpace($OfflinePrereqReport)) { "" } else { Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $OfflinePrereqReport }
 $publishLatestOnPassEnabled = Convert-StrictBooleanArgument -ArgumentName "PublishLatestOnPass" -ArgumentValue $PublishLatestOnPass
+$expectedOfflineHeadSha = Resolve-ExpectedHeadSha -WorkspaceRoot $workspaceRoot
 
 New-Item -ItemType Directory -Path $resolvedReportDir -Force | Out-Null
 
@@ -271,6 +288,8 @@ $hilClosedLoopArgs = @(
     "--dispenser-duration-ms", $HilDispenserDurationMs,
     "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
     "--offline-prereq-report", $offlinePrereqJsonPath,
+    "--expected-offline-head-sha", $expectedOfflineHeadSha,
+    "--expected-offline-lane", "full-offline-gate",
     "--reuse-existing-gateway"
 )
 if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
@@ -297,6 +316,8 @@ if ($IncludeHilCaseMatrix) {
         "--dispenser-duration-ms", $HilDispenserDurationMs,
         "--state-wait-timeout-seconds", $HilStateWaitTimeoutSeconds,
         "--offline-prereq-report", $offlinePrereqJsonPath,
+        "--expected-offline-head-sha", $expectedOfflineHeadSha,
+        "--expected-offline-lane", "full-offline-gate",
         "--reuse-existing-gateway"
     )
     if (-not [string]::IsNullOrWhiteSpace($OperatorOverrideReason)) {
@@ -314,6 +335,8 @@ $gateArgs = @(
     $gateScript,
     "--report-dir", $resolvedReportDir,
     "--offline-prereq-json", $offlinePrereqJsonPath,
+    "--expected-offline-head-sha", $expectedOfflineHeadSha,
+    "--expected-offline-lane", "full-offline-gate",
     "--hardware-smoke-summary-json", $hardwareSmokeSummaryJsonPath,
     "--hil-closed-loop-summary-json", $hilSummaryJsonPath,
     "--hil-evidence-bundle-json", $hilBundleJsonPath

@@ -152,10 +152,49 @@ jobs:
             Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- ``$file``"
           }
 
-  run-hil:
-    name: Run Controlled HIL
+  offline-prereq:
+    name: Run HIL Offline Prerequisites
     needs: classify-hil-requirement
     if: needs.classify-hil-requirement.outputs.requires_hil == 'true' && needs.classify-hil-requirement.outputs.trusted_hil_runner == 'true'
+    runs-on: [self-hosted, windows, build]
+    timeout-minutes: 90
+    concurrency:
+      group: strict-native-runner
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        shell: pwsh
+        run: |
+          .\scripts\validation\install-python-deps.ps1
+
+      - name: Run full offline prerequisites
+        shell: pwsh
+        run: |
+          .\test.ps1 `
+            -Profile Local `
+            -Suite @("contracts", "integration", "e2e", "protocol-compatibility") `
+            -ReportDir tests\reports\github-actions\strict-hil-gate\offline-prereq `
+            -Lane full-offline-gate `
+            -DesiredDepth full-offline `
+            -FailOnKnownFailure
+
+      - name: Upload HIL offline prerequisite evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-hil-offline-prereq-evidence
+          path: tests/reports/github-actions/strict-hil-gate/offline-prereq
+          if-no-files-found: error
+
+  run-hil:
+    name: Run Controlled HIL
+    needs:
+      - classify-hil-requirement
+      - offline-prereq
+    if: needs.classify-hil-requirement.outputs.requires_hil == 'true' && needs.classify-hil-requirement.outputs.trusted_hil_runner == 'true' && needs.offline-prereq.result == 'success'
     runs-on: [self-hosted, windows, hil]
     timeout-minutes: 120
     concurrency:
@@ -170,6 +209,12 @@ jobs:
         run: |
           .\scripts\validation\install-python-deps.ps1
 
+      - name: Download HIL offline prerequisite evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: strict-hil-offline-prereq-evidence
+          path: _strict-hil-offline-prereq
+
       - name: Run controlled HIL quick gate
         shell: pwsh
         run: |
@@ -177,6 +222,7 @@ jobs:
             -Profile Local `
             -ReportDir tests\reports\github-actions\strict-hil-gate `
             -UseTimestampedReportDir `
+            -OfflinePrereqReport _strict-hil-offline-prereq\workspace-validation.json `
             -PublishLatestOnPass:$false
 
       - name: Assert HIL evidence
@@ -213,6 +259,7 @@ jobs:
     name: Strict HIL Gate
     needs:
       - classify-hil-requirement
+      - offline-prereq
       - run-hil
     if: always()
     runs-on: windows-latest
@@ -225,6 +272,7 @@ jobs:
           CLASSIFICATION_REASON: ${{ needs.classify-hil-requirement.outputs.reason }}
           TRUSTED_HIL_RUNNER: ${{ needs.classify-hil-requirement.outputs.trusted_hil_runner }}
           TRUST_REASON: ${{ needs.classify-hil-requirement.outputs.trust_reason }}
+          OFFLINE_PREREQ_RESULT: ${{ needs.offline-prereq.result }}
           HIL_RESULT: ${{ needs.run-hil.result }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -234,6 +282,7 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$env:CLASSIFICATION_REASON``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_hil_runner: ``$env:TRUSTED_HIL_RUNNER``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$env:TRUST_REASON``"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- offline_prereq_result: ``$env:OFFLINE_PREREQ_RESULT``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- run_hil_result: ``$env:HIL_RESULT``"
 
           if ($env:CLASSIFY_RESULT -ne "success") {
@@ -251,6 +300,10 @@ jobs:
 
           if ($env:TRUSTED_HIL_RUNNER -ne "true") {
             throw "Strict HIL Gate required but self-hosted HIL runner is not trusted for this event: $env:TRUST_REASON."
+          }
+
+          if ($env:OFFLINE_PREREQ_RESULT -ne "success") {
+            throw "Strict HIL Gate required but offline prerequisites result was '$env:OFFLINE_PREREQ_RESULT'."
           }
 
           if ($env:HIL_RESULT -ne "success") {
