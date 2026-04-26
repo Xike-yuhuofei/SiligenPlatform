@@ -39,6 +39,15 @@ class StrictRunnerGateContractTest(unittest.TestCase):
         self.assertIn("- unlabeled", workflow)
         self.assertIn("native-sensitive", classification["native"]["labels"])
 
+    def test_strict_native_and_hil_gates_cancel_superseded_pr_runs(self) -> None:
+        native_workflow = _read(STRICT_NATIVE_WORKFLOW)
+        hil_workflow = _read(STRICT_HIL_WORKFLOW)
+
+        for workflow in (native_workflow, hil_workflow):
+            self.assertIn("concurrency:", workflow)
+            self.assertIn("${{ github.event.pull_request.number || github.ref }}", workflow)
+            self.assertIn("cancel-in-progress: true", workflow)
+
     def test_strict_hil_gate_fail_closed_before_self_hosted_runner_for_untrusted_pr(self) -> None:
         workflow = _read(STRICT_HIL_WORKFLOW)
 
