@@ -105,6 +105,7 @@ class StrictRunnerGateContractTest(unittest.TestCase):
 
         self.assertIn("BASE_SHA:", workflow)
         self.assertIn("HEAD_SHA:", workflow)
+        self.assertIn("clean: false\n          fetch-depth: 0", workflow)
         self.assertIn("-BaseSha $env:BASE_SHA", workflow)
         self.assertIn("-HeadSha $env:HEAD_SHA", workflow)
 
