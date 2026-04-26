@@ -206,7 +206,10 @@ function Expand-CommandTemplate {
                 continue
             }
             "{changedScopeArgs}" {
-                $expanded += Get-NamedValueArguments -Name "-ChangedScope" -Values $Runtime.ChangedScope
+                $changedScopes = @($Runtime.ChangedScope | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                if ($changedScopes.Count -gt 0) {
+                    $expanded += @("-ChangedScope", ($changedScopes -join ","))
+                }
                 continue
             }
             "{changedFileArgs}" {

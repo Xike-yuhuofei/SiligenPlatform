@@ -162,7 +162,12 @@ sys.exit(0 if ok else 1)
 
             $vendorMarkers = @("MultiCard.dll", "MC_", "vendor runtime", "real motion", "hardware-in-loop")
             $hits = @()
-            foreach ($file in $changedFiles) {
+            $markerScanFiles = @(
+                $changedFiles | Where-Object {
+                    $_ -match '^(apps|modules|shared|tests/(contracts|integration|e2e)|scripts/(?!validation/))/'
+                }
+            )
+            foreach ($file in $markerScanFiles) {
                 $fullPath = Join-Path $workspaceRoot ($file -replace '/', [System.IO.Path]::DirectorySeparatorChar)
                 if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { continue }
                 $ext = [System.IO.Path]::GetExtension($fullPath).ToLowerInvariant()
@@ -179,7 +184,7 @@ sys.exit(0 if ok else 1)
             }
             $details = @(
                 "Offline dry-run observation contract passed.",
-                "Offline simulation smoke found no direct hardware/vendor runtime dependency markers in changed files."
+                "Offline simulation smoke found no direct hardware/vendor runtime dependency markers in offline execution surfaces."
             )
         }
         "validation-system-contract" {

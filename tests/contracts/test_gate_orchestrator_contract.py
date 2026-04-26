@@ -72,6 +72,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn('"logs"', orchestrator)
         self.assertIn('"$stepId.log"', orchestrator)
         self.assertIn('($changedFiles -join ",")', orchestrator)
+        self.assertIn('($changedScopes -join ",")', orchestrator)
         self.assertIn("Get-ChangedScopeFromGitRange", orchestrator)
         self.assertIn("Ensure-GitCommitAvailable", orchestrator)
         self.assertIn('safe.directory=$workspaceRoot', orchestrator)
@@ -158,6 +159,11 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("-BaseSha", workflow)
         self.assertIn("-HeadSha", workflow)
         self.assertIn("fetch-depth: 0", workflow)
+
+        quick_check = _read(ROOT / "scripts" / "validation" / "invoke-pre-push-quick-check.ps1")
+        self.assertIn("$markerScanFiles", quick_check)
+        self.assertIn("offline execution surfaces", quick_check)
+        self.assertIn("scripts/(?!validation/)", quick_check)
 
     def test_pre_push_default_wrapper_uses_quick_semantics(self) -> None:
         wrapper = _read(INVOKE_PRE_PUSH_GATE)
