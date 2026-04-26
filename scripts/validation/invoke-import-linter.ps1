@@ -15,7 +15,7 @@ $logsDir = Ensure-WorkspaceDirectory -Path (Join-Path $resolvedReportDir "logs")
 $resolvedConfigPath = Resolve-WorkspaceReportPath -WorkspaceRoot $workspaceRoot -ReportPath $ConfigPath
 
 if (-not (Test-Path $resolvedConfigPath)) {
-    throw "未找到 Import Linter 配置文件: $resolvedConfigPath"
+    throw "Import Linter config file not found: $resolvedConfigPath"
 }
 
 $lintImportsCommand = Resolve-WorkspaceToolPath -ToolNames @("lint-imports", "import-linter") -Required
@@ -29,11 +29,11 @@ $existingPythonPath = $env:PYTHONPATH
 $env:PYTHONPATH = (($pathEntries + @($existingPythonPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [IO.Path]::PathSeparator)
 
 $contracts = @(
-    @{ Id = "production-no-test-kit"; Name = "生产代码不得依赖 test_kit"; Severity = "hard" },
-    @{ Id = "hmi-ui-no-direct-tools"; Name = "UI 不得直接依赖 fake/mock tool 模块"; Severity = "hard" },
-    @{ Id = "hmi-ui-no-direct-runtime-session-internals"; Name = "UI 不得直接依赖 backend_manager/tcp_client/gateway_launch internals"; Severity = "hard" },
-    @{ Id = "canonical-hmi-application-no-compat-shell"; Name = "canonical hmi_application 不得依赖 hmi_client compat shell"; Severity = "advisory" },
-    @{ Id = "hmi-ui-no-owner-direct-import"; Name = "UI 不应直接 import hmi_application owner"; Severity = "advisory" }
+    @{ Id = "production-no-test-kit"; Name = "Production code must not depend on test_kit"; Severity = "hard" },
+    @{ Id = "hmi-ui-no-direct-tools"; Name = "UI must not depend directly on fake or mock tool modules"; Severity = "hard" },
+    @{ Id = "hmi-ui-no-direct-runtime-session-internals"; Name = "UI must not depend directly on backend_manager, tcp_client, or gateway_launch internals"; Severity = "hard" },
+    @{ Id = "canonical-hmi-application-no-compat-shell"; Name = "canonical hmi_application must not depend on hmi_client compat shell"; Severity = "advisory" },
+    @{ Id = "hmi-ui-no-owner-direct-import"; Name = "UI should not import hmi_application owner directly"; Severity = "advisory" }
 )
 
 $results = @()

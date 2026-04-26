@@ -55,63 +55,20 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           $ErrorActionPreference = "Stop"
-          $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
-          $labels = @()
-          if ($null -ne $event.pull_request -and $null -ne $event.pull_request.labels) {
-            $labels = @($event.pull_request.labels | ForEach-Object { $_.name })
+          $classificationPath = "tests\reports\github-actions\strict-hil-gate\classification\classification.json"
+          $classificationArgs = @{
+            Mode = "hil"
+            OutputPath = $classificationPath
+            BaseSha = $env:BASE_SHA
+            HeadSha = $env:HEAD_SHA
+            EventName = $env:EVENT_NAME
           }
-
-          $changedFiles = @()
-          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
-            $changedFiles = @(gh pr diff $event.pull_request.number --repo $env:GITHUB_REPOSITORY --name-only)
-          } elseif (-not [string]::IsNullOrWhiteSpace($env:BASE_SHA)) {
-            $changedFiles = @(git diff --name-only $env:BASE_SHA $env:HEAD_SHA)
-          } else {
-            $changedFiles = @(git diff --name-only "HEAD~1" "HEAD")
-          }
-
-          $hardwarePatterns = @(
-            '^\.github/workflows/strict-hil-gate\.yml$',
-            '^apps/runtime-service/',
-            '^apps/runtime-gateway/',
-            '^modules/runtime-execution/',
-            '^modules/motion-planning/',
-            '^modules/.*/adapters/device/',
-            '^tests/e2e/hardware-in-loop/',
-            '^tests/integration/.*/hil',
-            '^tests/integration/.*/hmi_operator',
-            '^config/.*(hil|hardware|machine|motion|device|gateway)',
-            '^shared/contracts/engineering/fixtures/dxf-truth-matrix\.json',
-            '^apps/hmi-app/.*(operator|production|gateway|runtime|tcp)',
-            '^modules/hmi-application/.*(operator|production|gateway|runtime|tcp)'
-          )
-
-          $requiresHil = $false
-          $reasons = New-Object System.Collections.Generic.List[string]
-
           if ($env:FORCE_HIL -eq "true") {
-            $requiresHil = $true
-            $reasons.Add("workflow_dispatch force_hil=true")
+            $classificationArgs["ForceHil"] = $true
           }
-          if ($labels -contains "hardware-sensitive") {
-            $requiresHil = $true
-            $reasons.Add("label hardware-sensitive")
-          }
+          .\scripts\validation\classify-change.ps1 @classificationArgs
 
-          foreach ($file in $changedFiles) {
-            $normalized = $file -replace '\\', '/'
-            foreach ($pattern in $hardwarePatterns) {
-              if ($normalized -match $pattern) {
-                $requiresHil = $true
-                $reasons.Add("path $normalized matches $pattern")
-                break
-              }
-            }
-          }
-
-          $requiresHilText = if ($requiresHil) { "true" } else { "false" }
-          $reasonText = if ($reasons.Count -gt 0) { ($reasons | Select-Object -Unique) -join "; " } else { "not hardware-sensitive" }
-
+          $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
           $trustedHilRunner = $false
           $trustReason = ""
           if ($env:EVENT_NAME -eq "pull_request") {
@@ -136,65 +93,24 @@ jobs:
           }
           $trustedHilRunnerText = if ($trustedHilRunner) { "true" } else { "false" }
 
-          "requires_hil=$requiresHilText" >> $env:GITHUB_OUTPUT
-          "reason=$reasonText" >> $env:GITHUB_OUTPUT
           "trusted_hil_runner=$trustedHilRunnerText" >> $env:GITHUB_OUTPUT
           "trust_reason=$trustReason" >> $env:GITHUB_OUTPUT
 
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## HIL classification"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- requires_hil: ``$requiresHilText``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$reasonText``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_hil_runner: ``$trustedHilRunnerText``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$trustReason``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Changed files"
-          foreach ($file in $changedFiles) {
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- ``$file``"
-          }
 
-  offline-prereq:
-    name: Run HIL Offline Prerequisites
-    needs: classify-hil-requirement
-    if: needs.classify-hil-requirement.outputs.requires_hil == 'true' && needs.classify-hil-requirement.outputs.trusted_hil_runner == 'true'
-    runs-on: [self-hosted, windows, build]
-    timeout-minutes: 90
-    concurrency:
-      group: strict-native-runner
-      cancel-in-progress: false
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install validation dependencies
-        shell: pwsh
-        run: |
-          .\scripts\validation\install-python-deps.ps1
-
-      - name: Run full offline prerequisites
-        shell: pwsh
-        run: |
-          .\test.ps1 `
-            -Profile Local `
-            -Suite @("contracts", "integration", "e2e", "protocol-compatibility") `
-            -ReportDir tests\reports\github-actions\strict-hil-gate\offline-prereq `
-            -Lane full-offline-gate `
-            -DesiredDepth full-offline `
-            -FailOnKnownFailure
-
-      - name: Upload HIL offline prerequisite evidence
+      - name: Upload HIL classification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: strict-hil-offline-prereq-evidence
-          path: tests/reports/github-actions/strict-hil-gate/offline-prereq
+          name: strict-hil-classification
+          path: tests/reports/github-actions/strict-hil-gate/classification
           if-no-files-found: error
 
   run-hil:
     name: Run Controlled HIL
-    needs:
-      - classify-hil-requirement
-      - offline-prereq
-    if: needs.classify-hil-requirement.outputs.requires_hil == 'true' && needs.classify-hil-requirement.outputs.trusted_hil_runner == 'true' && needs.offline-prereq.result == 'success'
+    needs: classify-hil-requirement
+    if: needs.classify-hil-requirement.outputs.requires_hil == 'true' && needs.classify-hil-requirement.outputs.trusted_hil_runner == 'true'
     runs-on: [self-hosted, windows, hil]
     timeout-minutes: 120
     concurrency:
@@ -204,48 +120,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install validation dependencies
+      - name: Run controlled HIL gate
         shell: pwsh
+        env:
+          FORCE_HIL: ${{ inputs.force_hil || 'false' }}
         run: |
-          .\scripts\validation\install-python-deps.ps1
-
-      - name: Download HIL offline prerequisite evidence
-        uses: actions/download-artifact@v4
-        with:
-          name: strict-hil-offline-prereq-evidence
-          path: _strict-hil-offline-prereq
-
-      - name: Run controlled HIL quick gate
-        shell: pwsh
-        run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop\run_hil_controlled_test.ps1 `
-            -Profile Local `
-            -ReportDir tests\reports\github-actions\strict-hil-gate `
-            -UseTimestampedReportDir `
-            -OfflinePrereqReport _strict-hil-offline-prereq\workspace-validation.json `
-            -PublishLatestOnPass:$false
-
-      - name: Assert HIL evidence
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $reportRoot = "tests\reports\github-actions\strict-hil-gate"
-          $gateSummary = Get-ChildItem -Path $reportRoot -Recurse -Filter "hil-controlled-gate-summary.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          $releaseSummary = Get-ChildItem -Path $reportRoot -Recurse -Filter "hil-controlled-release-summary.md" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          $caseMatrix = Get-ChildItem -Path $reportRoot -Recurse -Filter "case-matrix-summary.json" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($null -eq $gateSummary) {
-            throw "Strict HIL Gate missing hil-controlled-gate-summary.json under $reportRoot"
+          $gateArgs = @{
+            Gate = "hil"
+            ReportRoot = "tests\reports\github-actions\strict-hil-gate"
           }
-          if ($null -eq $releaseSummary) {
-            throw "Strict HIL Gate missing hil-controlled-release-summary.md under $reportRoot"
+          if ($env:FORCE_HIL -eq "true") {
+            $gateArgs["ForceHil"] = $true
           }
-          if ($null -eq $caseMatrix) {
-            throw "Strict HIL Gate missing hil-case-matrix/case-matrix-summary.json under $reportRoot"
-          }
-          Write-Output "HIL evidence present:"
-          Write-Output "  gate_summary=$($gateSummary.FullName)"
-          Write-Output "  release_summary=$($releaseSummary.FullName)"
-          Write-Output "  case_matrix=$($caseMatrix.FullName)"
+          .\scripts\validation\invoke-gate.ps1 @gateArgs
 
       - name: Upload strict HIL evidence
         if: always()
@@ -259,7 +146,6 @@ jobs:
     name: Strict HIL Gate
     needs:
       - classify-hil-requirement
-      - offline-prereq
       - run-hil
     if: always()
     runs-on: windows-latest
@@ -272,7 +158,6 @@ jobs:
           CLASSIFICATION_REASON: ${{ needs.classify-hil-requirement.outputs.reason }}
           TRUSTED_HIL_RUNNER: ${{ needs.classify-hil-requirement.outputs.trusted_hil_runner }}
           TRUST_REASON: ${{ needs.classify-hil-requirement.outputs.trust_reason }}
-          OFFLINE_PREREQ_RESULT: ${{ needs.offline-prereq.result }}
           HIL_RESULT: ${{ needs.run-hil.result }}
         run: |
           $ErrorActionPreference = "Stop"
@@ -282,7 +167,6 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- reason: ``$env:CLASSIFICATION_REASON``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trusted_hil_runner: ``$env:TRUSTED_HIL_RUNNER``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- trust_reason: ``$env:TRUST_REASON``"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- offline_prereq_result: ``$env:OFFLINE_PREREQ_RESULT``"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- run_hil_result: ``$env:HIL_RESULT``"
 
           if ($env:CLASSIFY_RESULT -ne "success") {
@@ -300,10 +184,6 @@ jobs:
 
           if ($env:TRUSTED_HIL_RUNNER -ne "true") {
             throw "Strict HIL Gate required but self-hosted HIL runner is not trusted for this event: $env:TRUST_REASON."
-          }
-
-          if ($env:OFFLINE_PREREQ_RESULT -ne "success") {
-            throw "Strict HIL Gate required but offline prerequisites result was '$env:OFFLINE_PREREQ_RESULT'."
           }
 
           if ($env:HIL_RESULT -ne "success") {

@@ -22,17 +22,23 @@
 
 ```powershell
 .\scripts\validation\install-python-deps.ps1
+.\scripts\validation\invoke-gate.ps1 -Gate pre-push
+.\scripts\validation\invoke-gate.ps1 -Gate pr
+.\scripts\validation\invoke-gate.ps1 -Gate full-offline
 .\build.ps1
 .\test.ps1
 .\ci.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-local-validation-gate.ps1
 ```
 
+门禁与自动化测试的权威入口是 `docs/validation/gate-orchestrator.md`。`ci.ps1` 保留为兼容包装，新的门禁编排应进入 `scripts/validation/gates/gates.json`，不要在 workflow 或临时脚本中复制测试清单。
+
 ## 先看哪里
 
 - 工作区边界：`WORKSPACE.md`
 - 冻结基线：`docs/architecture/workspace-baseline.md`
 - 9 轴冻结文档：`docs/architecture/dsp-e2e-spec/`
+- 门禁/自动化测试权威口径：`docs/validation/gate-orchestrator.md`
 - build/test/CI 口径：`docs/architecture/build-and-test.md`
 - 路径分类：`docs/architecture/canonical-paths.md`
 - 部署与交付：`docs/runtime/deployment.md`

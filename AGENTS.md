@@ -7,12 +7,17 @@
 Run everything from the repository root.
 
 - `.\scripts\validation\install-python-deps.ps1`: install Python 3.11 test dependencies.
+- `.\scripts\validation\invoke-gate.ps1 -Gate pre-push`: canonical fast local gate.
+- `.\scripts\validation\invoke-gate.ps1 -Gate pr`: canonical hosted PR baseline gate.
+- `.\scripts\validation\invoke-gate.ps1 -Gate full-offline`: canonical full offline/native-quality gate.
 - `.\build.ps1`: canonical workspace build entry.
 - `.\test.ps1 -Profile Local -Suite all`: local validation entry; writes reports to `tests/reports/`.
-- `.\ci.ps1 -Suite all`: CI-grade build, test, freeze-doc, and gate run.
+- `.\ci.ps1 -Suite all`: compatibility wrapper for `invoke-gate.ps1 -Gate full-offline`.
 - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-local-validation-gate.ps1`: publish local gate evidence.
 - `python -m pytest .\apps\hmi-app\tests\unit -q`: targeted Python/HMI regression.
 - `ctest --test-dir .\build -C Debug --output-on-failure`: targeted C++ regression after a successful build.
+
+Gate authority lives in `docs/validation/gate-orchestrator.md` and `scripts/validation/gates/gates.json`. Do not duplicate gate step lists in workflows, hooks, or temporary scripts.
 
 ## Coding Style & Naming Conventions
 Follow existing module boundaries: `apps/` wires, `modules/` owns business semantics, `shared/` stays generic. C++ uses PascalCase file names and `*Test.cpp` tests; Python uses `snake_case` modules and `test_*.py`. Match the surrounding file’s formatting; most repository code uses 4-space indentation. Keep new paths canonical and descriptive, using lowercase kebab-case for folders when creating new docs or scripts.

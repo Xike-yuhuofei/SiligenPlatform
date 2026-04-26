@@ -1,0 +1,335 @@
+{
+  "schemaVersion": 1,
+  "gates": {
+    "pre-push": {
+      "description": "Fast local pre-push gate.",
+      "defaultReportRoot": "tests/reports/pre-push-gate",
+      "steps": [
+        {
+          "id": "tool-readiness",
+          "name": "Validate local gate tools",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiresTool": [
+            { "id": "python", "names": [ "python" ] },
+            { "id": "semgrep", "names": [ "pysemgrep", "semgrep" ] },
+            { "id": "import-linter", "names": [ "lint-imports", "import-linter" ] },
+            { "id": "pydeps", "names": [ "pydeps" ] },
+            { "id": "cppcheck", "names": [ "cppcheck" ], "required": false }
+          ],
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "Write-Output 'tool readiness passed'" ]
+        },
+        {
+          "id": "hmi-formal-gateway-contract",
+          "name": "Validate HMI formal gateway launch contract",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1", "-WorkspaceRoot", "{workspaceRoot}" ]
+        },
+        {
+          "id": "legacy-exit",
+          "name": "Validate legacy exit",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/legacy-exit-check.ps1", "-Profile", "Local", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/legacy-exit-checks.json", "{stepReportDir}/legacy-exit-checks.md" ]
+        },
+        {
+          "id": "semgrep",
+          "name": "Run Semgrep architecture gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/semgrep-results.json", "{stepReportDir}/semgrep-summary.md" ]
+        },
+        {
+          "id": "import-linter",
+          "name": "Run Import Linter gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/import-linter-report.json", "{stepReportDir}/import-linter-report.md" ]
+        },
+        {
+          "id": "module-boundary-bridges",
+          "name": "Validate module boundary bridges",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-module-boundary-bridges.ps1", "-WorkspaceRoot", "{workspaceRoot}", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/module-boundary-bridges.json", "{stepReportDir}/module-boundary-bridges.md" ]
+        },
+        {
+          "id": "pyright-static",
+          "name": "Run Pyright static gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/run-pyright-gate.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/pyright-report.json", "{stepReportDir}/pyright-report.md" ]
+        },
+        {
+          "id": "contracts-quick",
+          "name": "Run quick contracts subset",
+          "blocking": true,
+          "timeoutSeconds": 900,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "Local", "-Suite", "contracts", "-ReportDir", "{stepReportDir}", "-Lane", "quick-gate", "-RiskProfile", "medium", "-DesiredDepth", "quick" ],
+          "requiredArtifacts": [ "{stepReportDir}/workspace-validation.json", "{stepReportDir}/workspace-validation.md" ]
+        }
+      ]
+    },
+    "pr": {
+      "description": "Hosted PR baseline gate.",
+      "defaultReportRoot": "tests/reports/github-actions/strict-pr-gate",
+      "steps": [
+        {
+          "id": "install-python-deps",
+          "name": "Install validation Python dependencies",
+          "blocking": true,
+          "timeoutSeconds": 600,
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/install-python-deps.ps1" ]
+        },
+        {
+          "id": "hmi-formal-gateway-contract",
+          "name": "Validate HMI formal gateway launch contract",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1", "-WorkspaceRoot", "{workspaceRoot}" ]
+        },
+        {
+          "id": "legacy-exit",
+          "name": "Validate legacy exit",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/legacy-exit-check.ps1", "-Profile", "CI", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/legacy-exit-checks.json", "{stepReportDir}/legacy-exit-checks.md" ]
+        },
+        {
+          "id": "semgrep",
+          "name": "Run Semgrep architecture gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/semgrep-results.json", "{stepReportDir}/semgrep-summary.md" ]
+        },
+        {
+          "id": "import-linter",
+          "name": "Run Import Linter gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/import-linter-report.json", "{stepReportDir}/import-linter-report.md" ]
+        },
+        {
+          "id": "module-boundary-bridges",
+          "name": "Validate module boundary bridges",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-module-boundary-bridges.ps1", "-WorkspaceRoot", "{workspaceRoot}", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/module-boundary-bridges.json", "{stepReportDir}/module-boundary-bridges.md" ]
+        },
+        {
+          "id": "pyright-static",
+          "name": "Run Pyright static gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/run-pyright-gate.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/pyright-report.json", "{stepReportDir}/pyright-report.md" ]
+        }
+      ]
+    },
+    "full-offline": {
+      "description": "Full offline native build and test gate.",
+      "defaultReportRoot": "tests/reports/ci",
+      "steps": [
+        {
+          "id": "install-python-deps",
+          "name": "Install validation Python dependencies",
+          "blocking": true,
+          "timeoutSeconds": 600,
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/install-python-deps.ps1" ]
+        },
+        {
+          "id": "tool-readiness",
+          "name": "Validate native gate tools",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiresTool": [
+            { "id": "python", "names": [ "python" ] },
+            { "id": "semgrep", "names": [ "pysemgrep", "semgrep" ] },
+            { "id": "import-linter", "names": [ "lint-imports", "import-linter" ] },
+            { "id": "pydeps", "names": [ "pydeps" ] },
+            { "id": "cppcheck", "names": [ "cppcheck" ] }
+          ],
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "Write-Output 'tool readiness passed'" ]
+        },
+        {
+          "id": "hmi-formal-gateway-contract",
+          "name": "Validate HMI formal gateway launch contract",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1", "-WorkspaceRoot", "{workspaceRoot}" ]
+        },
+        {
+          "id": "legacy-exit",
+          "name": "Validate legacy exit",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/legacy-exit-check.ps1", "-Profile", "CI", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/legacy-exit-checks.json", "{stepReportDir}/legacy-exit-checks.md" ]
+        },
+        {
+          "id": "semgrep",
+          "name": "Run Semgrep architecture gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/semgrep-results.json", "{stepReportDir}/semgrep-summary.md" ]
+        },
+        {
+          "id": "import-linter",
+          "name": "Run Import Linter gate",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/import-linter-report.json", "{stepReportDir}/import-linter-report.md" ]
+        },
+        {
+          "id": "build-ci",
+          "name": "Build workspace",
+          "blocking": true,
+          "timeoutSeconds": 2700,
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/build.ps1", "-Profile", "CI", "{suiteArgs}", "{laneArgs}", "{riskProfileArgs}", "{desiredDepthArgs}", "{changedScopeArgs}", "{skipLayerArgs}", "{cppCoverageArgs}" ]
+        },
+        {
+          "id": "test-ci",
+          "name": "Run workspace tests",
+          "blocking": true,
+          "timeoutSeconds": 2700,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "{suiteArgs}", "-ReportDir", "{gateReportDir}", "{laneArgs}", "{riskProfileArgs}", "{desiredDepthArgs}", "{changedScopeArgs}", "{skipLayerArgs}", "-FailOnKnownFailure", "{includeHilArgs}", "{pythonCoverageArgs}", "{cppCoverageArgs}" ],
+          "requiredArtifacts": [ "{gateReportDir}/workspace-validation.json", "{gateReportDir}/workspace-validation.md" ]
+        },
+        {
+          "id": "cppcheck",
+          "name": "Run Cppcheck blocking gate",
+          "blocking": true,
+          "timeoutSeconds": 600,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-cppcheck.ps1", "-ReportDir", "{stepReportDir}", "-FailOnIssues" ],
+          "requiredArtifacts": [ "{stepReportDir}/cppcheck-summary.md" ]
+        },
+        {
+          "id": "dependency-graphs",
+          "name": "Export dependency graphs",
+          "blocking": true,
+          "timeoutSeconds": 900,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-dependency-graph-export.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/dependency-graphs-summary.md" ]
+        },
+        {
+          "id": "local-validation-gate",
+          "name": "Run local validation evidence gate",
+          "blocking": true,
+          "timeoutSeconds": 2700,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/run-local-validation-gate.ps1", "-ReportRoot", "{stepReportDir}", "{laneArgs}", "{riskProfileArgs}", "{desiredDepthArgs}", "{changedScopeArgs}", "{skipLayerArgs}", "{includeHilArgs}" ],
+          "requiredArtifacts": [ "{stepReportDir}/*/local-validation-gate-summary.json", "{stepReportDir}/*/local-validation-gate-summary.md" ]
+        }
+      ],
+      "requiredArtifacts": [
+        "{gateReportDir}/workspace-validation.md",
+        "{gateReportDir}/dsp-e2e-spec-docset"
+      ]
+    },
+    "native": {
+      "aliasOf": "full-offline",
+      "defaultReportRoot": "tests/reports/github-actions/strict-native-gate"
+    },
+    "hil": {
+      "description": "Controlled hardware-in-loop gate.",
+      "defaultReportRoot": "tests/reports/github-actions/strict-hil-gate",
+      "steps": [
+        {
+          "id": "install-python-deps",
+          "name": "Install validation Python dependencies",
+          "blocking": true,
+          "timeoutSeconds": 600,
+          "requiredArtifacts": [],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/install-python-deps.ps1" ]
+        },
+        {
+          "id": "offline-prerequisite",
+          "name": "Run HIL offline prerequisites",
+          "blocking": true,
+          "timeoutSeconds": 2700,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "-Suite", "all", "-ReportDir", "{stepReportDir}", "-Lane", "full-offline-gate", "-RiskProfile", "hardware-sensitive", "-DesiredDepth", "full-offline", "-FailOnKnownFailure" ],
+          "requiredArtifacts": [ "{stepReportDir}/workspace-validation.json", "{stepReportDir}/workspace-validation.md" ]
+        },
+        {
+          "id": "controlled-hil",
+          "name": "Run controlled HIL quick gate",
+          "blocking": true,
+          "timeoutSeconds": 7200,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1", "-Profile", "Local", "-ReportDir", "{gateReportDir}", "-UseTimestampedReportDir", "-OfflinePrereqReport", "{gateReportDir}/offline-prerequisite/workspace-validation.json", "-PublishLatestOnPass:$false" ],
+          "requiredArtifacts": [ "{gateReportDir}/**/hil-controlled-gate-summary.json", "{gateReportDir}/**/hil-controlled-release-summary.md", "{gateReportDir}/**/case-matrix-summary.json" ]
+        }
+      ]
+    },
+    "nightly": {
+      "description": "Nightly performance and coverage gate.",
+      "defaultReportRoot": "tests/reports/nightly",
+      "steps": [
+        {
+          "id": "native-full-offline",
+          "name": "Run full offline gate",
+          "blocking": true,
+          "timeoutSeconds": 3600,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-gate.ps1", "-Gate", "full-offline", "-ReportRoot", "{gateReportDir}/full-offline" ],
+          "requiredArtifacts": [ "{gateReportDir}/full-offline/gate-summary.json" ]
+        },
+        {
+          "id": "performance",
+          "name": "Run nightly performance suite",
+          "blocking": true,
+          "timeoutSeconds": 3600,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "-Suite", "performance", "-ReportDir", "{stepReportDir}", "-Lane", "nightly-performance", "-RiskProfile", "high", "-DesiredDepth", "nightly", "-FailOnKnownFailure" ],
+          "requiredArtifacts": [ "{stepReportDir}/workspace-validation.json", "{stepReportDir}/workspace-validation.md" ]
+        },
+        {
+          "id": "python-coverage",
+          "name": "Collect Python coverage",
+          "blocking": false,
+          "timeoutSeconds": 1800,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-python-coverage.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/coverage-summary.md" ]
+        },
+        {
+          "id": "cpp-coverage",
+          "name": "Collect C++ coverage",
+          "blocking": false,
+          "timeoutSeconds": 1800,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-cpp-coverage.ps1", "-ReportDir", "{stepReportDir}" ],
+          "requiredArtifacts": [ "{stepReportDir}/coverage-summary.md" ]
+        }
+      ]
+    },
+    "release": {
+      "description": "Release Go/No-Go wrapper. Set SILIGEN_RELEASE_VERSION before running.",
+      "defaultReportRoot": "tests/reports/releases/orchestrated",
+      "steps": [
+        {
+          "id": "release-check",
+          "name": "Run release check",
+          "blocking": true,
+          "timeoutSeconds": 7200,
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "if ([string]::IsNullOrWhiteSpace($env:SILIGEN_RELEASE_VERSION)) { throw 'SILIGEN_RELEASE_VERSION is required for release gate.' }; & '{workspaceRoot}/release-check.ps1' -Version $env:SILIGEN_RELEASE_VERSION -ReportDir '{gateReportDir}'" ],
+          "requiredArtifacts": [ "{gateReportDir}/release-manifest.txt" ]
+        }
+      ]
+    }
+  }
+}

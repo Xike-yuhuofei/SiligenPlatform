@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "native": {
+    "labels": [ "native-sensitive" ],
+    "forceInput": "force_native",
+    "defaultRequiredOnClassificationFailure": true,
+    "patterns": [
+      "^\\.github/workflows/(strict-pr-gate|strict-native-gate)\\.yml$",
+      "^CMakeLists\\.txt$",
+      "^cmake/",
+      "^build\\.ps1$",
+      "^ci\\.ps1$",
+      "^test\\.ps1$",
+      "^scripts/build/",
+      "^scripts/validation/",
+      "^apps/runtime-service/",
+      "^apps/runtime-gateway/",
+      "^apps/planner-cli/",
+      "^modules/runtime-execution/",
+      "^modules/motion-planning/",
+      "^modules/.*/adapters/(device|vendor)/",
+      "^shared/(contracts|kernel|runtime|testing)/",
+      "^tests/(contracts|integration|e2e)/",
+      "^config/.*(runtime|gateway|machine|motion|device|adapter|hardware)"
+    ]
+  },
+  "hil": {
+    "labels": [ "hardware-sensitive" ],
+    "forceInput": "force_hil",
+    "defaultRequiredOnClassificationFailure": true,
+    "patterns": [
+      "^\\.github/workflows/strict-hil-gate\\.yml$",
+      "^apps/runtime-service/",
+      "^apps/runtime-gateway/",
+      "^modules/runtime-execution/",
+      "^modules/motion-planning/",
+      "^modules/.*/adapters/device/",
+      "^tests/e2e/hardware-in-loop/",
+      "^tests/integration/.*/hil",
+      "^tests/integration/.*/hmi_operator",
+      "^config/.*(hil|hardware|machine|motion|device|gateway)",
+      "^shared/contracts/engineering/fixtures/dxf-truth-matrix\\.json",
+      "^apps/hmi-app/.*(operator|production|gateway|runtime|tcp)",
+      "^modules/hmi-application/.*(operator|production|gateway|runtime|tcp)"
+    ]
+  }
+}
