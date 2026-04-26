@@ -590,6 +590,13 @@ $ChangedScope = Expand-CommaSeparatedValues -Values $ChangedScope
 $SelectedStep = Expand-CommaSeparatedValues -Values $SelectedStep
 $SkipStep = Expand-CommaSeparatedValues -Values $SkipStep
 $SkipLayer = Expand-CommaSeparatedValues -Values $SkipLayer
+if ($ChangedScope.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($BaseSha) -and -not [string]::IsNullOrWhiteSpace($HeadSha)) {
+    try {
+        $ChangedScope = @(& git diff --name-only $BaseSha $HeadSha | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    } catch {
+        throw "Unable to derive changed scope from BaseSha/HeadSha: $BaseSha..$HeadSha"
+    }
+}
 if ($SkipStep.Count -gt 0 -and [string]::IsNullOrWhiteSpace($SkipJustification)) {
     throw "SkipJustification is required when SkipStep is not empty."
 }

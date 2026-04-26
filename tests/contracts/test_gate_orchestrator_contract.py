@@ -310,9 +310,12 @@ class GateOrchestratorContractTest(unittest.TestCase):
 
         self.assertTrue(steps["cppcheck"]["blocking"])
         self.assertIn("-FailOnIssues", steps["cppcheck"]["command"])
+        self.assertIn("{changedFileArgs}", steps["cppcheck"]["command"])
         self.assertGreaterEqual(steps["cppcheck"]["timeoutSeconds"], 1800)
         cppcheck_runner = _read(INVOKE_CPPCHECK)
         self.assertIn('"--quiet"', cppcheck_runner)
+        self.assertIn("[string[]]$ChangedFile", cppcheck_runner)
+        self.assertIn("no changed C/C++ source files", cppcheck_runner)
         self.assertTrue(steps["dependency-graphs"]["blocking"])
         self.assertNotIn("-SoftFail", steps["dependency-graphs"]["command"])
 

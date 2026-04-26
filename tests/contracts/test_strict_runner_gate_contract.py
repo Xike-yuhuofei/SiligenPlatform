@@ -100,6 +100,14 @@ class StrictRunnerGateContractTest(unittest.TestCase):
         self.assertIn("git @gitBaseArgs status --porcelain --untracked-files=no", script)
         self.assertIn("git @gitBaseArgs status --porcelain --untracked-files=all", script)
 
+    def test_strict_native_gate_passes_pr_range_to_orchestrator(self) -> None:
+        workflow = _read(STRICT_NATIVE_WORKFLOW)
+
+        self.assertIn("BASE_SHA:", workflow)
+        self.assertIn("HEAD_SHA:", workflow)
+        self.assertIn("-BaseSha $env:BASE_SHA", workflow)
+        self.assertIn("-HeadSha $env:HEAD_SHA", workflow)
+
     def test_strict_pr_gate_delegates_execution_to_orchestrator(self) -> None:
         workflow = _read(STRICT_PR_WORKFLOW)
 

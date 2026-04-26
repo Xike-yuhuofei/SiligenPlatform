@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ReportDir = "tests\reports\static-analysis\cppcheck",
+    [string[]]$ChangedFile = @(),
     [switch]$FailOnIssues
 )
 
@@ -35,6 +36,42 @@ if ([string]::IsNullOrWhiteSpace($cppcheckCommand)) {
 
 $buildRoot = Get-ControlAppsBuildRoot -WorkspaceRoot $workspaceRoot
 $compileCommandsPath = Join-Path $buildRoot "compile_commands.json"
+$sourceExtensions = @(".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx")
+$changedCppFiles = @(
+    $ChangedFile |
+        ForEach-Object { ([string]$_).Trim() } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Where-Object { $sourceExtensions -contains [System.IO.Path]::GetExtension($_).ToLowerInvariant() } |
+        ForEach-Object {
+            if ([System.IO.Path]::IsPathRooted($_)) {
+                [System.IO.Path]::GetFullPath($_)
+            } else {
+                [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $_))
+            }
+        } |
+        Where-Object { Test-Path -LiteralPath $_ } |
+        Select-Object -Unique
+)
+
+if ($ChangedFile.Count -gt 0 -and $changedCppFiles.Count -eq 0) {
+    $lines = @(
+        '# Cppcheck',
+        '',
+        '- status: `passed`',
+        '- exit_code: `0`',
+        ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+        '- scope: `changed-files`',
+        '- cpp_files: `0`',
+        '- failure_condition: `FailOnIssues + non-zero cppcheck exit`',
+        '- detail: no changed C/C++ source files were present in the supplied change scope.'
+    )
+    Set-Content -LiteralPath $xmlReportPath -Value "" -Encoding UTF8
+    Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
+    Write-Output "cppcheck skipped: no changed C/C++ source files in supplied scope"
+    Write-Output "cppcheck report md:  $mdReportPath"
+    exit 0
+}
+
 $arguments = @(
     "--enable=warning,style,performance,portability",
     "--quiet",
@@ -46,6 +83,9 @@ $arguments = @(
 )
 if (Test-Path $compileCommandsPath) {
     $arguments += "--project=$compileCommandsPath"
+}
+elseif ($changedCppFiles.Count -gt 0) {
+    $arguments += @($changedCppFiles)
 }
 else {
     $arguments += @(

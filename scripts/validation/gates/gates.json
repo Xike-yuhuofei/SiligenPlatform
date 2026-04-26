@@ -1241,6 +1241,7 @@
             "{workspaceRoot}/scripts/validation/invoke-cppcheck.ps1",
             "-ReportDir",
             "{stepReportDir}",
+            "{changedFileArgs}",
             "-FailOnIssues"
           ],
           "requiredArtifacts": [

@@ -139,17 +139,23 @@ jobs:
       - name: Run full offline native gate
         shell: pwsh
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           FORCE_NATIVE: ${{ inputs.force_native || 'false' }}
         run: |
           if ($env:FORCE_NATIVE -eq "true") {
             .\scripts\validation\invoke-gate.ps1 `
               -Gate native `
               -ReportRoot tests\reports\github-actions\strict-native-gate `
+              -BaseSha $env:BASE_SHA `
+              -HeadSha $env:HEAD_SHA `
               -ForceNative
           } else {
             .\scripts\validation\invoke-gate.ps1 `
               -Gate native `
-              -ReportRoot tests\reports\github-actions\strict-native-gate
+              -ReportRoot tests\reports\github-actions\strict-native-gate `
+              -BaseSha $env:BASE_SHA `
+              -HeadSha $env:HEAD_SHA
           }
 
       - name: Upload strict native evidence
