@@ -82,6 +82,12 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("Unable to derive changed scope from BaseSha/HeadSha", orchestrator)
         self.assertIn("$global:LASTEXITCODE = 0", orchestrator)
 
+        classifier = _read(CLASSIFY_CHANGE)
+        self.assertIn("$ghExitCode = $LASTEXITCODE", classifier)
+        self.assertIn("gh pr diff exited with $ghExitCode", classifier)
+        self.assertIn('$result.source = "git-diff-base-head"', classifier)
+        self.assertIn("$global:LASTEXITCODE = 0", classifier)
+
         for gate_id in self.gates:
             gate = self._resolved_gate(gate_id)
             for step in gate["steps"]:

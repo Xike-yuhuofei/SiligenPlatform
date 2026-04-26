@@ -78,9 +78,34 @@ function Get-ChangedFiles {
         if ($null -ne $Event -and $EventNameValue -eq "pull_request" -and $null -ne $Event.pull_request) {
             $prNumber = [string]$Event.pull_request.number
             if (-not [string]::IsNullOrWhiteSpace($prNumber) -and -not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
-                $result.files = @(gh pr diff $prNumber --repo $env:GITHUB_REPOSITORY --name-only)
-                $result.source = "gh-pr-diff"
-                return [pscustomobject]$result
+                $previousNativeCommandPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+                $previousErrorActionPreference = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                if ($null -ne $previousNativeCommandPreference) {
+                    $PSNativeCommandUseErrorActionPreference = $false
+                }
+                try {
+                    $ghOutput = @(gh pr diff $prNumber --repo $env:GITHUB_REPOSITORY --name-only 2>&1)
+                    $ghExitCode = $LASTEXITCODE
+                } finally {
+                    if ($null -ne $previousNativeCommandPreference) {
+                        $PSNativeCommandUseErrorActionPreference = [bool]$previousNativeCommandPreference.Value
+                    }
+                    $ErrorActionPreference = $previousErrorActionPreference
+                }
+                if ($ghExitCode -eq 0) {
+                    $result.files = @($ghOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                    $result.source = "gh-pr-diff"
+                    $global:LASTEXITCODE = 0
+                    return [pscustomobject]$result
+                }
+                if ([string]::IsNullOrWhiteSpace($Base) -or [string]::IsNullOrWhiteSpace($Head)) {
+                    $ghMessage = ($ghOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "; "
+                    if ([string]::IsNullOrWhiteSpace($ghMessage)) {
+                        $ghMessage = "gh pr diff exited with $ghExitCode"
+                    }
+                    throw $ghMessage
+                }
             }
         }
         if (-not [string]::IsNullOrWhiteSpace($Base) -and -not [string]::IsNullOrWhiteSpace($Head)) {
