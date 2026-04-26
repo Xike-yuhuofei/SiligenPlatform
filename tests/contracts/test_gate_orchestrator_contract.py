@@ -395,23 +395,6 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("待 push commit", doc)
 
     def test_simulated_hook_stdin_records_pre_push_hook_range_source(self) -> None:
-        report_root = ROOT / "tests" / "reports" / "tmp" / "pre-push-hook-contract"
-        if report_root.exists():
-            shutil.rmtree(report_root)
-        report_root.parent.mkdir(parents=True, exist_ok=True)
-
-        dirty_files = set(_git_lines("diff", "--name-only", "--ignore-cr-at-eol"))
-        commits = _git_lines("rev-list", "--max-count=40", "HEAD")
-        base_sha = ""
-        head_sha = ""
-        for newer, older in zip(commits, commits[1:]):
-            changed = set(_git_lines("diff", "--name-only", older, newer))
-            if changed and dirty_files.isdisjoint(changed):
-                base_sha = older
-                head_sha = newer
-                break
-        self.assertTrue(base_sha and head_sha, msg="could not find a clean historical hook range for contract smoke")
-        hook_line = f"refs/heads/contract-smoke {head_sha} refs/heads/contract-smoke {base_sha}\n"
         skip_steps = ",".join(
             [
                 "git-hygiene",
@@ -428,39 +411,69 @@ class GateOrchestratorContractTest(unittest.TestCase):
             ]
         )
 
-        completed = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(INVOKE_PRE_PUSH_GATE),
-                "-RemoteName",
-                "origin",
-                "-ReportRoot",
-                "tests\\reports\\tmp\\pre-push-hook-contract",
-                "-SkipStep",
-                skip_steps,
-                "-SkipJustification",
-                "contract smoke verifies hook range metadata only",
-            ],
-            cwd=str(ROOT),
-            input=hook_line,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
-        manifests = sorted(report_root.glob("*/pre-push-gate-manifest.json"))
-        self.assertTrue(manifests, msg=completed.stdout + completed.stderr)
-        manifest = json.loads(manifests[-1].read_text(encoding="utf-8-sig"))
+        with tempfile.TemporaryDirectory(prefix="pre-push-hook-contract-") as temp_dir:
+            temp_root = Path(temp_dir)
+            worktree = temp_root / "worktree"
+            report_root = worktree / "tests" / "reports" / "tmp" / "pre-push-hook-contract"
+            subprocess.run(["git", "worktree", "add", "--detach", str(worktree), "HEAD"], cwd=str(ROOT), check=True)
+            try:
+                base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(worktree), text=True).strip()
+                smoke_file = worktree / "docs" / "validation" / "pre-push-contract-smoke.md"
+                smoke_file.write_text("# pre-push contract smoke\n", encoding="utf-8")
+                subprocess.run(["git", "add", "docs/validation/pre-push-contract-smoke.md"], cwd=str(worktree), check=True)
+                subprocess.run(
+                    [
+                        "git",
+                        "-c",
+                        "user.name=Contract Smoke",
+                        "-c",
+                        "user.email=contract-smoke@example.invalid",
+                        "commit",
+                        "-m",
+                        "test: synthesize pre-push hook range",
+                    ],
+                    cwd=str(worktree),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(worktree), text=True).strip()
+                hook_line = f"refs/heads/contract-smoke {head_sha} refs/heads/contract-smoke {base_sha}\n"
 
-        self.assertEqual(manifest["range_source"], "pre-push-hook")
-        self.assertEqual(manifest["base_sha"], base_sha)
-        self.assertEqual(manifest["head_sha"], head_sha)
-        self.assertTrue(manifest["changed_files"])
+                completed = subprocess.run(
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(worktree / "scripts" / "validation" / "invoke-pre-push-gate.ps1"),
+                        "-RemoteName",
+                        "origin",
+                        "-ReportRoot",
+                        "tests\\reports\\tmp\\pre-push-hook-contract",
+                        "-SkipStep",
+                        skip_steps,
+                        "-SkipJustification",
+                        "contract smoke verifies hook range metadata only",
+                    ],
+                    cwd=str(worktree),
+                    input=hook_line,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
+                manifests = sorted(report_root.glob("*/pre-push-gate-manifest.json"))
+                self.assertTrue(manifests, msg=completed.stdout + completed.stderr)
+                manifest = json.loads(manifests[-1].read_text(encoding="utf-8-sig"))
 
-        shutil.rmtree(report_root, ignore_errors=True)
+                self.assertEqual(manifest["range_source"], "pre-push-hook")
+                self.assertEqual(manifest["base_sha"], base_sha)
+                self.assertEqual(manifest["head_sha"], head_sha)
+                self.assertEqual(manifest["changed_files"], ["docs/validation/pre-push-contract-smoke.md"])
+            finally:
+                shutil.rmtree(report_root, ignore_errors=True)
+                subprocess.run(["git", "worktree", "remove", str(worktree)], cwd=str(ROOT), check=False)
 
     def test_new_remote_branch_hook_uses_main_merge_base(self) -> None:
         wrapper = _read(INVOKE_PRE_PUSH_GATE)

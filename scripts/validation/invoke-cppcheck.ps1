@@ -55,19 +55,28 @@ else {
 }
 
 Write-Output "cppcheck: $cppcheckCommand $($arguments -join ' ')"
-$stderrLines = & $cppcheckCommand @arguments 2>&1
-$exitCode = $LASTEXITCODE
-Set-Content -LiteralPath $xmlReportPath -Value (($stderrLines | Out-String).Trim()) -Encoding UTF8
+$stderrPath = Join-Path $resolvedReportDir "cppcheck.stderr.tmp"
+if (Test-Path $stderrPath) {
+    Remove-Item -LiteralPath $stderrPath -Force
+}
+& $cppcheckCommand @arguments 2> $stderrPath
+$exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+$stderrText = if (Test-Path $stderrPath) { (Get-Content -Raw -LiteralPath $stderrPath) } else { "" }
+Set-Content -LiteralPath $xmlReportPath -Value $stderrText.Trim() -Encoding UTF8
+if (Test-Path $stderrPath) {
+    Remove-Item -LiteralPath $stderrPath -Force
+}
 
-$status = if ($exitCode -eq 0) { "passed" } else { "reported" }
+$status = if ($exitCode -eq 0) { "passed" } elseif ($FailOnIssues) { "failed" } else { "reported" }
 $lines = @(
     '# Cppcheck',
     '',
     ('- status: `{0}`' -f $status),
-    '- gate: `report-only by default`',
-    '- failure_condition: `FailOnIssues + non-zero exit`',
+    ('- exit_code: `{0}`' -f $exitCode),
+    ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+    '- failure_condition: `FailOnIssues + non-zero cppcheck exit`',
     '- xml_report: `tests/reports/static-analysis/cppcheck/cppcheck.xml`',
-    '- detail: this first version focuses on high-signal baseline rules; historical noise is reported without blocking.'
+    '- detail: cppcheck XML is captured from stderr; FailOnIssues makes a non-zero cppcheck exit blocking.'
 )
 Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
 
