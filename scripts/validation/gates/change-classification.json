@@ -27,7 +27,7 @@
   "hil": {
     "labels": [ "hardware-sensitive" ],
     "forceInput": "force_hil",
-    "defaultRequiredOnClassificationFailure": false,
+    "defaultRequiredOnClassificationFailure": true,
     "patterns": [
       "^\\.github/workflows/strict-hil-gate\\.yml$",
       "^apps/runtime-service/",

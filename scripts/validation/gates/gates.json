@@ -274,7 +274,7 @@
           "name": "Run controlled HIL quick gate",
           "blocking": true,
           "timeoutSeconds": 7200,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1", "-Profile", "Local", "-ReportDir", "{gateReportDir}", "-UseTimestampedReportDir", "-PublishLatestOnPass:$false" ],
+          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1", "-Profile", "Local", "-ReportDir", "{gateReportDir}", "-UseTimestampedReportDir", "-OfflinePrereqReport", "{gateReportDir}/offline-prerequisite/workspace-validation.json", "-PublishLatestOnPass:$false" ],
           "requiredArtifacts": [ "{gateReportDir}/**/hil-controlled-gate-summary.json", "{gateReportDir}/**/hil-controlled-release-summary.md", "{gateReportDir}/**/case-matrix-summary.json" ]
         }
       ]

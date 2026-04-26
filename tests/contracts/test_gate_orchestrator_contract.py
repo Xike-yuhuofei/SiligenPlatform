@@ -123,6 +123,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
     def test_classification_rules_are_configured_once_outside_workflows(self) -> None:
         self.assertIn("native-sensitive", self.classification["native"]["labels"])
         self.assertIn("hardware-sensitive", self.classification["hil"]["labels"])
+        self.assertTrue(self.classification["hil"]["defaultRequiredOnClassificationFailure"])
         self.assertTrue(self.classification["native"]["patterns"])
         self.assertTrue(self.classification["hil"]["patterns"])
 
@@ -134,6 +135,16 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertNotIn("$hardwarePatterns", hil_workflow)
         self.assertNotIn("path $normalized matches", native_workflow)
         self.assertNotIn("path $normalized matches", hil_workflow)
+
+    def test_hil_gate_reuses_offline_prerequisite_report(self) -> None:
+        hil_steps = {step["id"]: step for step in self._resolved_gate("hil")["steps"]}
+        controlled_hil_command = hil_steps["controlled-hil"]["command"]
+
+        self.assertIn("-OfflinePrereqReport", controlled_hil_command)
+        self.assertIn(
+            "{gateReportDir}/offline-prerequisite/workspace-validation.json",
+            controlled_hil_command,
+        )
 
     def test_gate_orchestrator_is_published_as_authoritative_developer_doc(self) -> None:
         doc = _read(GATE_ORCHESTRATOR_DOC)

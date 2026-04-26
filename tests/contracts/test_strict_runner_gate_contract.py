@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STRICT_HIL_WORKFLOW = ROOT / ".github" / "workflows" / "strict-hil-gate.yml"
 STRICT_NATIVE_WORKFLOW = ROOT / ".github" / "workflows" / "strict-native-gate.yml"
 CHANGE_CLASSIFICATION = ROOT / "scripts" / "validation" / "gates" / "change-classification.json"
+CLASSIFY_CHANGE = ROOT / "scripts" / "validation" / "classify-change.ps1"
 TCP_PRECONDITION_MATRIX = ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_precondition_matrix.py"
 
 
@@ -36,6 +37,42 @@ class StrictRunnerGateContractTest(unittest.TestCase):
         self.assertIn("- labeled", workflow)
         self.assertIn("- unlabeled", workflow)
         self.assertIn("native-sensitive", classification["native"]["labels"])
+
+    def test_hil_classification_fails_closed_when_changed_file_collection_fails(self) -> None:
+        scratch_root = ROOT / "build" / "contract-scratch" / "strict-runner-gate"
+        scratch_root.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.TemporaryDirectory(dir=scratch_root) as temp_dir:
+            output_path = Path(temp_dir) / "classification.json"
+            completed = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(CLASSIFY_CHANGE),
+                    "-Mode",
+                    "hil",
+                    "-OutputPath",
+                    str(output_path),
+                    "-BaseSha",
+                    "missing-base-sha",
+                    "-HeadSha",
+                    "missing-head-sha",
+                ],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+            )
+
+            output = f"{completed.stdout}\n{completed.stderr}"
+            self.assertEqual(completed.returncode, 0, msg=output)
+
+            classification = json.loads(output_path.read_text(encoding="utf-8-sig"))
+            self.assertFalse(classification["classification_reliable"])
+            self.assertTrue(classification["requires_hil"])
+            self.assertIn("changed-file classification unavailable", classification["hil_reason"])
 
     def test_strict_hil_gate_fail_closed_before_self_hosted_runner_for_untrusted_pr(self) -> None:
         workflow = _read(STRICT_HIL_WORKFLOW)

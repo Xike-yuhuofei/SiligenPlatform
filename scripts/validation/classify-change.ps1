@@ -83,6 +83,23 @@ function Get-EventLabels {
     return @($Event.pull_request.labels | ForEach-Object { [string]$_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
+function Invoke-ChangedFileCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommandName,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    $output = @(& $CommandName @Arguments 2>&1)
+    $exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+    if ($exitCode -ne 0) {
+        $message = ($output | ForEach-Object { [string]$_ }) -join "`n"
+        throw "$CommandName $($Arguments -join ' ') failed with exit code ${exitCode}: $message"
+    }
+    return @($output | ForEach-Object { [string]$_ })
+}
+
 function Get-ChangedFiles {
     param(
         $Event,
@@ -102,19 +119,19 @@ function Get-ChangedFiles {
         if ($null -ne $Event -and $EventNameValue -eq "pull_request" -and $null -ne $Event.pull_request) {
             $prNumber = [string]$Event.pull_request.number
             if (-not [string]::IsNullOrWhiteSpace($prNumber) -and -not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
-                $result.files = @(gh pr diff $prNumber --repo $env:GITHUB_REPOSITORY --name-only)
+                $result.files = @(Invoke-ChangedFileCommand -CommandName "gh" -Arguments @("pr", "diff", $prNumber, "--repo", $env:GITHUB_REPOSITORY, "--name-only"))
                 $result.source = "gh-pr-diff"
                 return [pscustomobject]$result
             }
         }
 
         if (-not [string]::IsNullOrWhiteSpace($Base) -and -not [string]::IsNullOrWhiteSpace($Head)) {
-            $result.files = @(git diff --name-only $Base $Head)
+            $result.files = @(Invoke-ChangedFileCommand -CommandName "git" -Arguments @("diff", "--name-only", $Base, $Head))
             $result.source = "git-diff-base-head"
             return [pscustomobject]$result
         }
 
-        $result.files = @(git diff --name-only "HEAD~1" "HEAD")
+        $result.files = @(Invoke-ChangedFileCommand -CommandName "git" -Arguments @("diff", "--name-only", "HEAD~1", "HEAD"))
         $result.source = "git-diff-head"
         return [pscustomobject]$result
     } catch {
