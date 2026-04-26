@@ -49,6 +49,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hil-case-matrix-summary-json", default="")
     parser.add_argument("--hil-evidence-bundle-json", default="")
     parser.add_argument("--require-hil-case-matrix", action="store_true")
+    parser.add_argument("--expected-offline-head-sha", default="")
+    parser.add_argument("--expected-offline-lane", default="full-offline-gate")
     return parser.parse_args()
 
 
@@ -178,6 +180,64 @@ def _check_offline_required_cases(payload: dict[str, Any]) -> GateCheck:
         actual="; ".join(actual_parts),
         note="offline release predicate for limited-hil is not satisfied",
     )
+
+
+def _check_offline_provenance(payload: dict[str, Any], *, expected_head_sha: str, expected_lane: str) -> list[GateCheck]:
+    metadata = payload.get("metadata", {})
+    provenance = metadata.get("validation_provenance", {}) if isinstance(metadata, dict) else {}
+    provenance_ok = isinstance(provenance, dict)
+    required_fields = (
+        "report_schema_version",
+        "head_sha",
+        "base_sha",
+        "workflow_run_id",
+        "workflow_run_attempt",
+        "github_event_name",
+        "github_ref",
+        "github_repository",
+        "lane",
+        "suite_set",
+    )
+    missing = [field_name for field_name in required_fields if not provenance_ok or field_name not in provenance]
+    checks = [
+        GateCheck(
+            name="offline-prereq-provenance-schema",
+            status="passed" if not missing else "failed",
+            expected="validation_provenance contains workspace-validation.v1 fields",
+            actual="all present" if not missing else "missing=" + ",".join(missing),
+            note="" if not missing else "offline prerequisite provenance is incomplete",
+        )
+    ]
+    schema_version = str(provenance.get("report_schema_version", "")) if provenance_ok else ""
+    checks.append(
+        GateCheck(
+            name="offline-prereq-provenance-version",
+            status="passed" if schema_version == "workspace-validation.v1" else "failed",
+            expected="workspace-validation.v1",
+            actual=schema_version or "missing",
+        )
+    )
+    if expected_head_sha.strip():
+        actual_head_sha = str(provenance.get("head_sha", "")).strip() if provenance_ok else ""
+        checks.append(
+            GateCheck(
+                name="offline-prereq-head-sha",
+                status="passed" if actual_head_sha == expected_head_sha.strip() else "failed",
+                expected=expected_head_sha.strip(),
+                actual=actual_head_sha or "missing",
+            )
+        )
+    if expected_lane.strip():
+        actual_lane = str(provenance.get("lane", "")).strip() if provenance_ok else ""
+        checks.append(
+            GateCheck(
+                name="offline-prereq-lane",
+                status="passed" if actual_lane == expected_lane.strip() else "failed",
+                expected=expected_lane.strip(),
+                actual=actual_lane or "missing",
+            )
+        )
+    return checks
 
 
 def _check_summary_status(payload: dict[str, Any], *, name: str, expected_status: str = "passed") -> GateCheck:
@@ -389,6 +449,13 @@ def main() -> int:
                 _check_summary_status(hardware_payload, name="hardware-smoke-overall-status"),
                 _check_summary_status(hil_payload, name="hil-closed-loop-overall-status"),
             ]
+        )
+        checks.extend(
+            _check_offline_provenance(
+                offline_payload,
+                expected_head_sha=args.expected_offline_head_sha,
+                expected_lane=args.expected_offline_lane,
+            )
         )
         checks.extend(_check_hil_bundle(bundle_payload))
 

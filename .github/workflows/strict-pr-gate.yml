@@ -17,8 +17,8 @@ permissions:
   contents: read
 
 jobs:
-  strict-pr-gate:
-    name: Strict PR Gate
+  hmi-gateway-contract:
+    name: HMI Gateway Contract
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -36,6 +36,28 @@ jobs:
         run: |
           .\scripts\validation\assert-hmi-formal-gateway-launch-contract.ps1
 
+      - name: Upload HMI gateway contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-pr-gate-hmi-gateway-contract-evidence
+          path: tests/reports/github-actions/strict-pr-gate/hmi-gateway-contract
+          if-no-files-found: ignore
+
+  legacy-exit:
+    name: Legacy Exit Gate
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        shell: pwsh
+        run: |
+          .\scripts\validation\install-python-deps.ps1
+
       - name: Run legacy exit gate
         shell: pwsh
         run: |
@@ -43,11 +65,55 @@ jobs:
             -Profile CI `
             -ReportDir tests\reports\github-actions\strict-pr-gate\legacy-exit
 
+      - name: Upload legacy exit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-pr-gate-legacy-exit-evidence
+          path: tests/reports/github-actions/strict-pr-gate/legacy-exit
+          if-no-files-found: error
+
+  semgrep:
+    name: Semgrep Architecture Gate
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        shell: pwsh
+        run: |
+          .\scripts\validation\install-python-deps.ps1
+
       - name: Run Semgrep architecture gate
         shell: pwsh
         run: |
           .\scripts\validation\invoke-semgrep.ps1 `
             -ReportDir tests\reports\github-actions\strict-pr-gate\semgrep
+
+      - name: Upload Semgrep evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-pr-gate-semgrep-evidence
+          path: tests/reports/github-actions/strict-pr-gate/semgrep
+          if-no-files-found: error
+
+  import-linter:
+    name: Import Linter Gate
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install validation dependencies
+        shell: pwsh
+        run: |
+          .\scripts\validation\install-python-deps.ps1
 
       - name: Run Import Linter gate
         shell: pwsh
@@ -55,10 +121,46 @@ jobs:
           .\scripts\validation\invoke-import-linter.ps1 `
             -ReportDir tests\reports\github-actions\strict-pr-gate\import-linter
 
-      - name: Upload strict gate evidence
+      - name: Upload Import Linter evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: strict-pr-gate-evidence
-          path: tests/reports/github-actions/strict-pr-gate
+          name: strict-pr-gate-import-linter-evidence
+          path: tests/reports/github-actions/strict-pr-gate/import-linter
           if-no-files-found: error
+
+  strict-pr-gate:
+    name: Strict PR Gate
+    needs:
+      - hmi-gateway-contract
+      - legacy-exit
+      - semgrep
+      - import-linter
+    if: always()
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Summarize strict PR gate status
+        shell: pwsh
+        env:
+          HMI_GATEWAY_CONTRACT_RESULT: ${{ needs.hmi-gateway-contract.result }}
+          LEGACY_EXIT_RESULT: ${{ needs.legacy-exit.result }}
+          SEMGREP_RESULT: ${{ needs.semgrep.result }}
+          IMPORT_LINTER_RESULT: ${{ needs.import-linter.result }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $results = [ordered]@{
+            "hmi-gateway-contract" = $env:HMI_GATEWAY_CONTRACT_RESULT
+            "legacy-exit" = $env:LEGACY_EXIT_RESULT
+            "semgrep" = $env:SEMGREP_RESULT
+            "import-linter" = $env:IMPORT_LINTER_RESULT
+          }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Strict PR Gate"
+          foreach ($entry in $results.GetEnumerator()) {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- $($entry.Key): ``$($entry.Value)``"
+            if ($entry.Value -ne "success") {
+              throw "Strict PR Gate dependency '$($entry.Key)' finished with result '$($entry.Value)'."
+            }
+          }
+          Write-Output "Strict PR Gate passed."
