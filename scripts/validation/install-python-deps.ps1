@@ -15,7 +15,7 @@ if (-not (Test-Path $engineeringDataPython)) {
 python -m pip install --upgrade pip
 python -m pip install -e (Join-Path $workspaceRoot "shared\\testing\\test-kit")
 python -m pip install -e (Join-Path $workspaceRoot "modules\\dxf-geometry\\application")
-python -m pip install semgrep import-linter pydeps coverage pytest
+python -m pip install semgrep import-linter pydeps coverage pytest jsonschema PyYAML pyright
 
 if (-not $SkipApps) {
     python -m pip install -r (Join-Path $workspaceRoot "apps\\hmi-app\\requirements.txt")

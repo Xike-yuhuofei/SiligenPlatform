@@ -9,69 +9,6 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "tooling-common.ps1")
 
-function ConvertTo-ArgumentLine {
-    param([string[]]$Arguments)
-
-    $quoted = @()
-    foreach ($arg in @($Arguments)) {
-        if ($null -eq $arg) {
-            continue
-        }
-
-        $text = [string]$arg
-        if ($text.Length -eq 0) {
-            $quoted += '""'
-            continue
-        }
-
-        if ($text -notmatch '[\s"]') {
-            $quoted += $text
-            continue
-        }
-
-        $escaped = $text -replace '\\(?=("+)$)', '\\' -replace '"', '\"'
-        $quoted += '"' + $escaped + '"'
-    }
-
-    return ($quoted -join " ")
-}
-
-function Invoke-ExternalCommand {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FileName,
-        [Parameter(Mandatory = $true)]
-        [string[]]$Arguments,
-        [Parameter(Mandatory = $true)]
-        [string]$WorkingDirectory
-    )
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo.FileName = $FileName
-    $process.StartInfo.Arguments = ConvertTo-ArgumentLine -Arguments $Arguments
-    $process.StartInfo.WorkingDirectory = $WorkingDirectory
-    $process.StartInfo.UseShellExecute = $false
-    $process.StartInfo.RedirectStandardOutput = $true
-    $process.StartInfo.RedirectStandardError = $true
-    $process.StartInfo.CreateNoWindow = $true
-
-    try {
-        [void]$process.Start()
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
-
-        return [pscustomobject]@{
-            ExitCode = $process.ExitCode
-            StandardOutput = $stdoutTask.Result
-            StandardError = $stderrTask.Result
-        }
-    }
-    finally {
-        $process.Dispose()
-    }
-}
-
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $resolvedReportDir = Ensure-WorkspaceDirectory -Path (Resolve-WorkspaceReportPath -WorkspaceRoot $workspaceRoot -ReportPath $ReportDir)
 $xmlReportPath = Join-Path $resolvedReportDir "cppcheck.xml"
@@ -86,7 +23,7 @@ if ([string]::IsNullOrWhiteSpace($cppcheckCommand)) {
         ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
         '- failure_condition: `tool missing or non-zero cppcheck exit when FailOnIssues is enabled`',
         '- report_dir: `tests/reports/static-analysis/cppcheck`',
-        '- detail: 当前环境未安装 `cppcheck`。强制门禁模式下必须安装 cppcheck 后再放行。'
+        '- detail: `cppcheck` is not installed in the current environment. Install cppcheck before passing the strict gate.'
     )
     Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
     Write-Output "cppcheck tool missing; summary written to $mdReportPath"
@@ -118,13 +55,9 @@ else {
 }
 
 Write-Output "cppcheck: $cppcheckCommand $($arguments -join ' ')"
-$commandResult = Invoke-ExternalCommand -FileName $cppcheckCommand -Arguments $arguments -WorkingDirectory $workspaceRoot
-$exitCode = $commandResult.ExitCode
-$xmlContent = [string]$commandResult.StandardError
-if ([string]::IsNullOrWhiteSpace($xmlContent)) {
-    $xmlContent = [string]$commandResult.StandardOutput
-}
-Set-Content -LiteralPath $xmlReportPath -Value $xmlContent.Trim() -Encoding UTF8
+$stderrLines = & $cppcheckCommand @arguments 2>&1
+$exitCode = $LASTEXITCODE
+Set-Content -LiteralPath $xmlReportPath -Value (($stderrLines | Out-String).Trim()) -Encoding UTF8
 
 $status = if ($exitCode -eq 0) { "passed" } else { "reported" }
 $lines = @(
@@ -134,7 +67,7 @@ $lines = @(
     '- gate: `report-only by default`',
     '- failure_condition: `FailOnIssues + non-zero exit`',
     '- xml_report: `tests/reports/static-analysis/cppcheck/cppcheck.xml`',
-    '- detail: 当前第一版以高信号基础规则为主，历史噪声先报告不阻断。'
+    '- detail: this first version focuses on high-signal baseline rules; historical noise is reported without blocking.'
 )
 Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
 

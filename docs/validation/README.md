@@ -67,6 +67,10 @@
 
 后续新增或调整门禁时，必须同步更新 gate 配置、契约测试和 `gate-orchestrator.md`。不得在 GitHub workflow、本地 hook 或临时脚本中维护独立测试清单。
 
+`pre-push` 当前是风险路由型 quick gate：`invoke-pre-push-gate.ps1` 先确认待 push commit range 和 dirty worktree 策略，再调用 `classify-change.ps1` 输出 `selected_pre_push_steps`，最后由 `invoke-gate.ps1 -Gate pre-push` 只运行被选中的 quick checks。Native/HIL 敏感变更在 pre-push 中只生成 follow-up evidence，不直接跑 full native 或 HIL。
+
+PR / Native / HIL / Nightly / Release 分层以 `docs/validation/gate-orchestrator.md` 和 `scripts/validation/gates/gates.json` 为准。`Strict PR Gate` 是所有 PR 的中等强度 baseline；`Strict Native Gate` 与 `Strict HIL Gate` 对所有 PR 产生稳定 check，敏感 PR 才真实执行重门禁；Nightly 承接 full-offline、performance、长稳/仿真、baseline drift 和 coverage；Release Gate 承接发布 Go/No-Go。PR passed 不等于 release ready。
+
 ## 3. 历史文档区
 
 历史材料统一放在 [history/](./history/README.md)，当前已分为：

@@ -17,7 +17,7 @@ Run everything from the repository root.
 - `python -m pytest .\apps\hmi-app\tests\unit -q`: targeted Python/HMI regression.
 - `ctest --test-dir .\build -C Debug --output-on-failure`: targeted C++ regression after a successful build.
 
-Gate authority lives in `docs/validation/gate-orchestrator.md` and `scripts/validation/gates/gates.json`. Do not duplicate gate step lists in workflows, hooks, or temporary scripts.
+Gate authority lives in `docs/validation/gate-orchestrator.md` and `scripts/validation/gates/gates.json`. Do not duplicate gate step lists in workflows, hooks, or temporary scripts. Treat PR baseline, conditional Native/HIL, Nightly, and Release as separate gates; PR passed does not mean release ready.
 
 ## Coding Style & Naming Conventions
 Follow existing module boundaries: `apps/` wires, `modules/` owns business semantics, `shared/` stays generic. C++ uses PascalCase file names and `*Test.cpp` tests; Python uses `snake_case` modules and `test_*.py`. Match the surrounding file’s formatting; most repository code uses 4-space indentation. Keep new paths canonical and descriptive, using lowercase kebab-case for folders when creating new docs or scripts.

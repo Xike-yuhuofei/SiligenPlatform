@@ -168,7 +168,7 @@ else {
             $cmakeDetail = "cmake graphviz export failed with exit=$cmakeExitCode"
         }
         else {
-            throw "CMake graphviz 导出失败，退出码: $cmakeExitCode"
+            throw "CMake graphviz export failed with exit code: $cmakeExitCode"
         }
     }
     elseif (-not (Test-Path $totalDotPath)) {

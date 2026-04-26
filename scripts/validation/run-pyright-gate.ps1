@@ -19,85 +19,10 @@ function Resolve-OutputPath {
 
 function Resolve-PyrightCommand {
     try {
-        $pyrightCmd = Get-Command pyright.cmd -ErrorAction SilentlyContinue
-        if ($null -ne $pyrightCmd -and -not [string]::IsNullOrWhiteSpace($pyrightCmd.Source)) {
-            return @($pyrightCmd.Source)
-        }
-
         $pyright = Get-Command pyright -ErrorAction Stop
         return @($pyright.Source)
     } catch {
-        $npxCmd = Get-Command npx.cmd -ErrorAction SilentlyContinue
-        if ($null -ne $npxCmd -and -not [string]::IsNullOrWhiteSpace($npxCmd.Source)) {
-            return @($npxCmd.Source, "--yes", "pyright")
-        }
-
-        return @("npx", "--yes", "pyright")
-    }
-}
-
-function ConvertTo-ArgumentLine {
-    param([string[]]$Arguments)
-
-    $quoted = @()
-    foreach ($arg in @($Arguments)) {
-        if ($null -eq $arg) {
-            continue
-        }
-
-        $text = [string]$arg
-        if ($text.Length -eq 0) {
-            $quoted += '""'
-            continue
-        }
-
-        if ($text -notmatch '[\s"]') {
-            $quoted += $text
-            continue
-        }
-
-        $escaped = $text -replace '\\(?=("+)$)', '\\' -replace '"', '\"'
-        $quoted += '"' + $escaped + '"'
-    }
-
-    return ($quoted -join " ")
-}
-
-function Invoke-ExternalCommand {
-    param(
-        [string[]]$Command,
-        [string[]]$Arguments,
-        [string]$WorkingDirectory
-    )
-
-    $commandPrefix = @()
-    if ($Command.Count -gt 1) {
-        $commandPrefix = @($Command[1..($Command.Count - 1)])
-    }
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo.FileName = $Command[0]
-    $process.StartInfo.Arguments = ConvertTo-ArgumentLine -Arguments (@($commandPrefix) + @($Arguments))
-    $process.StartInfo.WorkingDirectory = $WorkingDirectory
-    $process.StartInfo.UseShellExecute = $false
-    $process.StartInfo.RedirectStandardOutput = $true
-    $process.StartInfo.RedirectStandardError = $true
-    $process.StartInfo.CreateNoWindow = $true
-
-    try {
-        [void]$process.Start()
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
-
-        $stdout = $stdoutTask.Result
-        $stderr = $stderrTask.Result
-        return [pscustomobject]@{
-            ExitCode = $process.ExitCode
-            CombinedOutput = @($stdout, $stderr) -join [Environment]::NewLine
-        }
-    } finally {
-        $process.Dispose()
+        throw "pyright was not found on PATH. Install it before running this gate; pre-push does not use npx fallback or download tools at runtime."
     }
 }
 
@@ -162,17 +87,20 @@ $jsonPath = Join-Path $resolvedReportDir "pyright-report.json"
 $mdPath = Join-Path $resolvedReportDir "pyright-report.md"
 $rawPath = Join-Path $resolvedReportDir "pyright-report.raw.txt"
 
-$command = Resolve-PyrightCommand
-$pyrightArgs = @(
+$command = @(Resolve-PyrightCommand)
+$commandPrefix = @()
+if ($command.Count -gt 1) {
+    $commandPrefix = @($command[1..($command.Count - 1)])
+}
+$args = @(
     "--project",
     (Join-Path $repoRoot "pyrightconfig.json"),
     "--outputjson"
 )
 
-$commandResult = Invoke-ExternalCommand -Command $command -Arguments $pyrightArgs -WorkingDirectory $repoRoot
-$exitCode = $commandResult.ExitCode
-$rawText = [string]$commandResult.CombinedOutput
-$rawText = $rawText.Trim()
+$output = & $command[0] @commandPrefix @args 2>&1
+$exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+$rawText = ($output | Out-String).Trim()
 $rawText | Set-Content -Path $rawPath -Encoding UTF8
 
 $parsed = $null
@@ -201,7 +129,7 @@ $warningCount = if ($summary) { $summary.warningCount } else { 0 }
 $infoCount = if ($summary) { $summary.informationCount } else { 0 }
 $timeInSec = if ($summary) { $summary.timeInSec } else { 0 }
 
-$commandLine = ($command + $pyrightArgs) -join " "
+$commandLine = ($command + $args) -join " "
 $lines = @(
     "# Pyright Report",
     "",

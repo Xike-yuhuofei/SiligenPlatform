@@ -56,17 +56,22 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $classificationPath = "tests\reports\github-actions\strict-native-gate\classification\classification.json"
-          $classificationArgs = @{
-            Mode = "native"
-            OutputPath = $classificationPath
-            BaseSha = $env:BASE_SHA
-            HeadSha = $env:HEAD_SHA
-            EventName = $env:EVENT_NAME
-          }
           if ($env:FORCE_NATIVE -eq "true") {
-            $classificationArgs["ForceNative"] = $true
+            .\scripts\validation\classify-change.ps1 `
+              -Mode native `
+              -OutputPath $classificationPath `
+              -BaseSha $env:BASE_SHA `
+              -HeadSha $env:HEAD_SHA `
+              -EventName $env:EVENT_NAME `
+              -ForceNative
+          } else {
+            .\scripts\validation\classify-change.ps1 `
+              -Mode native `
+              -OutputPath $classificationPath `
+              -BaseSha $env:BASE_SHA `
+              -HeadSha $env:HEAD_SHA `
+              -EventName $env:EVENT_NAME
           }
-          .\scripts\validation\classify-change.ps1 @classificationArgs
 
           $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
           $trustedNativeRunner = $false
@@ -119,20 +124,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Prepare strict native build cache
+        shell: pwsh
+        run: |
+          .\scripts\validation\prepare-strict-native-build-cache.ps1
 
       - name: Run full offline native gate
         shell: pwsh
         env:
           FORCE_NATIVE: ${{ inputs.force_native || 'false' }}
         run: |
-          $gateArgs = @{
-            Gate = "native"
-            ReportRoot = "tests\reports\github-actions\strict-native-gate"
-          }
           if ($env:FORCE_NATIVE -eq "true") {
-            $gateArgs["ForceNative"] = $true
+            .\scripts\validation\invoke-gate.ps1 `
+              -Gate native `
+              -ReportRoot tests\reports\github-actions\strict-native-gate `
+              -ForceNative
+          } else {
+            .\scripts\validation\invoke-gate.ps1 `
+              -Gate native `
+              -ReportRoot tests\reports\github-actions\strict-native-gate
           }
-          .\scripts\validation\invoke-gate.ps1 @gateArgs
 
       - name: Upload strict native evidence
         if: always()

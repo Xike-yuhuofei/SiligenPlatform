@@ -2,23 +2,152 @@
   "schemaVersion": 1,
   "gates": {
     "pre-push": {
-      "description": "Fast local pre-push gate.",
+      "description": "Risk-routed quick local pre-push gate. It never runs native full build, HIL, performance, or release steps.",
       "defaultReportRoot": "tests/reports/pre-push-gate",
       "steps": [
         {
+          "id": "git-hygiene",
+          "name": "Validate push range and changed-file hygiene",
+          "blocking": true,
+          "timeoutSeconds": 180,
+          "requiresTool": [
+            {
+              "id": "git",
+              "names": [
+                "git"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-hygiene.ps1",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}",
+            "{baseShaArgs}",
+            "{headShaArgs}",
+            "{dirtyWorktreeArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/pre-push-hygiene.json",
+            "{stepReportDir}/pre-push-hygiene.md"
+          ]
+        },
+        {
           "id": "tool-readiness",
-          "name": "Validate local gate tools",
+          "name": "Validate selected quick-gate tools",
+          "blocking": true,
+          "timeoutSeconds": 60,
+          "requiresTool": [
+            {
+              "id": "git",
+              "names": [
+                "git"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/pre-push-tool-readiness.json",
+            "{stepReportDir}/pre-push-tool-readiness.md"
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-tool-readiness.ps1",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{classificationPathArgs}",
+            "{changedFileArgs}"
+          ]
+        },
+        {
+          "id": "pre-push-classification",
+          "name": "Publish pre-push classification evidence",
+          "blocking": true,
+          "timeoutSeconds": 60,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "if (-not (Test-Path '{classificationPath}')) { throw 'classification evidence missing: {classificationPath}' }; Copy-Item -LiteralPath '{classificationPath}' -Destination '{stepReportDir}/classification.json' -Force"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/classification.json"
+          ]
+        },
+        {
+          "id": "changed-file-parse",
+          "name": "Confirm changed-file parse coverage",
           "blocking": true,
           "timeoutSeconds": 120,
           "requiresTool": [
-            { "id": "python", "names": [ "python" ] },
-            { "id": "semgrep", "names": [ "pysemgrep", "semgrep" ] },
-            { "id": "import-linter", "names": [ "lint-imports", "import-linter" ] },
-            { "id": "pydeps", "names": [ "pydeps" ] },
-            { "id": "cppcheck", "names": [ "cppcheck" ], "required": false }
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
           ],
-          "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "Write-Output 'tool readiness passed'" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "changed-file-parse",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/changed-file-parse.json",
+            "{stepReportDir}/changed-file-parse.md"
+          ]
         },
         {
           "id": "hmi-formal-gateway-contract",
@@ -26,55 +155,338 @@
           "blocking": true,
           "timeoutSeconds": 120,
           "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1", "-WorkspaceRoot", "{workspaceRoot}" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1",
+            "-WorkspaceRoot",
+            "{workspaceRoot}"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
-          "id": "legacy-exit",
-          "name": "Validate legacy exit",
+          "id": "hmi-runtime-gateway-protocol-compat",
+          "name": "Run HMI/runtime/gateway protocol compatibility quick check",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/legacy-exit-check.ps1", "-Profile", "Local", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/legacy-exit-checks.json", "{stepReportDir}/legacy-exit-checks.md" ]
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "protocol-compatibility",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/protocol-compatibility.json",
+            "{stepReportDir}/protocol-compatibility.md"
+          ]
         },
         {
-          "id": "semgrep",
-          "name": "Run Semgrep architecture gate",
+          "id": "recipe-config-schema-quick",
+          "name": "Run recipe/config schema parse quick check",
           "blocking": true,
-          "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/semgrep-results.json", "{stepReportDir}/semgrep-summary.md" ]
+          "timeoutSeconds": 120,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "recipe-config-schema",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/recipe-config-schema.json",
+            "{stepReportDir}/recipe-config-schema.md"
+          ]
         },
         {
-          "id": "import-linter",
-          "name": "Run Import Linter gate",
+          "id": "state-machine-interlock-contract",
+          "name": "Run state-machine/interlock quick contract",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/import-linter-report.json", "{stepReportDir}/import-linter-report.md" ]
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "state-machine-interlock",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/state-machine-interlock.json",
+            "{stepReportDir}/state-machine-interlock.md"
+          ]
         },
         {
-          "id": "module-boundary-bridges",
-          "name": "Validate module boundary bridges",
+          "id": "offline-simulation-smoke",
+          "name": "Run offline simulation smoke",
+          "blocking": true,
+          "timeoutSeconds": 180,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "offline-simulation-smoke",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/offline-simulation-smoke.json",
+            "{stepReportDir}/offline-simulation-smoke.md"
+          ]
+        },
+        {
+          "id": "validation-system-contract",
+          "name": "Run validation/build-system contract quick check",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-module-boundary-bridges.ps1", "-WorkspaceRoot", "{workspaceRoot}", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/module-boundary-bridges.json", "{stepReportDir}/module-boundary-bridges.md" ]
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "validation-system-contract",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/validation-system-contract.json",
+            "{stepReportDir}/validation-system-contract.md"
+          ]
         },
         {
           "id": "pyright-static",
           "name": "Run Pyright static gate",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/run-pyright-gate.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/pyright-report.json", "{stepReportDir}/pyright-report.md" ]
+          "requiresTool": [
+            {
+              "id": "pyright",
+              "names": [
+                "pyright"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/run-pyright-gate.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/pyright-report.json",
+            "{stepReportDir}/pyright-report.md"
+          ]
         },
         {
           "id": "contracts-quick",
-          "name": "Run quick contracts subset",
+          "name": "Run quick Python contracts subset",
           "blocking": true,
-          "timeoutSeconds": 900,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "Local", "-Suite", "contracts", "-ReportDir", "{stepReportDir}", "-Lane", "quick-gate", "-RiskProfile", "medium", "-DesiredDepth", "quick" ],
-          "requiredArtifacts": [ "{stepReportDir}/workspace-validation.json", "{stepReportDir}/workspace-validation.md" ]
+          "timeoutSeconds": 300,
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "contracts-quick",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/contracts-quick.json",
+            "{stepReportDir}/contracts-quick.md"
+          ]
+        },
+        {
+          "id": "native-followup-notice",
+          "name": "Record native/full-offline follow-up requirement",
+          "blocking": true,
+          "timeoutSeconds": 60,
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-followup-notice.ps1",
+            "-Kind",
+            "native",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{classificationPathArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/native-followup-notice.json",
+            "{stepReportDir}/native-followup-notice.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hil-followup-notice",
+          "name": "Record HIL follow-up requirement",
+          "blocking": true,
+          "timeoutSeconds": 60,
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-followup-notice.ps1",
+            "-Kind",
+            "hil",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{classificationPathArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/hil-followup-notice.json",
+            "{stepReportDir}/hil-followup-notice.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -88,7 +500,29 @@
           "blocking": true,
           "timeoutSeconds": 600,
           "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/install-python-deps.ps1" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/install-python-deps.ps1"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ]
         },
         {
           "id": "hmi-formal-gateway-contract",
@@ -96,47 +530,458 @@
           "blocking": true,
           "timeoutSeconds": 120,
           "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1", "-WorkspaceRoot", "{workspaceRoot}" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1",
+            "-WorkspaceRoot",
+            "{workspaceRoot}"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "legacy-exit",
           "name": "Validate legacy exit",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/legacy-exit-check.ps1", "-Profile", "CI", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/legacy-exit-checks.json", "{stepReportDir}/legacy-exit-checks.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/legacy-exit-check.ps1",
+            "-Profile",
+            "CI",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/legacy-exit-checks.json",
+            "{stepReportDir}/legacy-exit-checks.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "semgrep",
           "name": "Run Semgrep architecture gate",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/semgrep-results.json", "{stepReportDir}/semgrep-summary.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/semgrep-results.json",
+            "{stepReportDir}/semgrep-summary.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "semgrep",
+              "names": [
+                "semgrep",
+                "pysemgrep"
+              ]
+            }
+          ]
         },
         {
           "id": "import-linter",
           "name": "Run Import Linter gate",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/import-linter-report.json", "{stepReportDir}/import-linter-report.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/import-linter-report.json",
+            "{stepReportDir}/import-linter-report.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "import-linter",
+              "names": [
+                "lint-imports"
+              ]
+            }
+          ]
         },
         {
           "id": "module-boundary-bridges",
           "name": "Validate module boundary bridges",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-module-boundary-bridges.ps1", "-WorkspaceRoot", "{workspaceRoot}", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/module-boundary-bridges.json", "{stepReportDir}/module-boundary-bridges.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/assert-module-boundary-bridges.ps1",
+            "-WorkspaceRoot",
+            "{workspaceRoot}",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/module-boundary-bridges.json",
+            "{stepReportDir}/module-boundary-bridges.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "pyright-static",
           "name": "Run Pyright static gate",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/run-pyright-gate.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/pyright-report.json", "{stepReportDir}/pyright-report.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/run-pyright-gate.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/pyright-report.json",
+            "{stepReportDir}/pyright-report.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "pyright",
+              "names": [
+                "pyright"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "classification-evidence",
+          "name": "Generate classification evidence",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "git",
+              "names": [
+                "git"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/classify-change.ps1",
+            "-Mode",
+            "all",
+            "-OutputPath",
+            "{stepReportDir}/classification.json",
+            "{baseShaArgs}",
+            "{headShaArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/classification.json"
+          ]
+        },
+        {
+          "id": "hmi-runtime-gateway-protocol-compat",
+          "name": "Run HMI/runtime/gateway protocol compatibility quick check",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "protocol-compatibility",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/protocol-compatibility.json",
+            "{stepReportDir}/protocol-compatibility.md"
+          ]
+        },
+        {
+          "id": "recipe-config-schema-quick",
+          "name": "Run recipe/config schema parse quick check",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "recipe-config-schema",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/recipe-config-schema.json",
+            "{stepReportDir}/recipe-config-schema.md"
+          ]
+        },
+        {
+          "id": "state-machine-interlock-contract",
+          "name": "Run state-machine/interlock quick contract",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "state-machine-interlock",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/state-machine-interlock.json",
+            "{stepReportDir}/state-machine-interlock.md"
+          ]
+        },
+        {
+          "id": "offline-simulation-smoke",
+          "name": "Run offline simulation smoke",
+          "blocking": true,
+          "timeoutSeconds": 180,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "offline-simulation-smoke",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/offline-simulation-smoke.json",
+            "{stepReportDir}/offline-simulation-smoke.md"
+          ]
+        },
+        {
+          "id": "validation-system-contract",
+          "name": "Run validation/build-system contract quick check",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "requiresTool": [
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "validation-system-contract",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/validation-system-contract.json",
+            "{stepReportDir}/validation-system-contract.md"
+          ]
+        },
+        {
+          "id": "contracts-quick",
+          "name": "Run hosted PR Python contract quick subset",
+          "blocking": true,
+          "timeoutSeconds": 300,
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pytest",
+              "names": [
+                "pytest"
+              ],
+              "required": false
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-quick-check.ps1",
+            "-Check",
+            "contracts-quick",
+            "-ReportDir",
+            "{stepReportDir}",
+            "{changedFileArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/contracts-quick.json",
+            "{stepReportDir}/contracts-quick.md"
+          ]
         }
       ]
     },
@@ -150,22 +995,29 @@
           "blocking": true,
           "timeoutSeconds": 600,
           "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/install-python-deps.ps1" ]
-        },
-        {
-          "id": "tool-readiness",
-          "name": "Validate native gate tools",
-          "blocking": true,
-          "timeoutSeconds": 120,
-          "requiresTool": [
-            { "id": "python", "names": [ "python" ] },
-            { "id": "semgrep", "names": [ "pysemgrep", "semgrep" ] },
-            { "id": "import-linter", "names": [ "lint-imports", "import-linter" ] },
-            { "id": "pydeps", "names": [ "pydeps" ] },
-            { "id": "cppcheck", "names": [ "cppcheck" ] }
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/install-python-deps.ps1"
           ],
-          "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "Write-Output 'tool readiness passed'" ]
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ]
         },
         {
           "id": "hmi-formal-gateway-contract",
@@ -173,31 +1025,127 @@
           "blocking": true,
           "timeoutSeconds": 120,
           "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1", "-WorkspaceRoot", "{workspaceRoot}" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/assert-hmi-formal-gateway-launch-contract.ps1",
+            "-WorkspaceRoot",
+            "{workspaceRoot}"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "legacy-exit",
           "name": "Validate legacy exit",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/legacy-exit-check.ps1", "-Profile", "CI", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/legacy-exit-checks.json", "{stepReportDir}/legacy-exit-checks.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/legacy-exit-check.ps1",
+            "-Profile",
+            "CI",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/legacy-exit-checks.json",
+            "{stepReportDir}/legacy-exit-checks.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "semgrep",
           "name": "Run Semgrep architecture gate",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/semgrep-results.json", "{stepReportDir}/semgrep-summary.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-semgrep.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/semgrep-results.json",
+            "{stepReportDir}/semgrep-summary.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "semgrep",
+              "names": [
+                "semgrep",
+                "pysemgrep"
+              ]
+            }
+          ]
         },
         {
           "id": "import-linter",
           "name": "Run Import Linter gate",
           "blocking": true,
           "timeoutSeconds": 300,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/import-linter-report.json", "{stepReportDir}/import-linter-report.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-import-linter.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/import-linter-report.json",
+            "{stepReportDir}/import-linter-report.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "import-linter",
+              "names": [
+                "lint-imports"
+              ]
+            }
+          ]
         },
         {
           "id": "build-ci",
@@ -205,44 +1153,183 @@
           "blocking": true,
           "timeoutSeconds": 2700,
           "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/build.ps1", "-Profile", "CI", "{suiteArgs}", "{laneArgs}", "{riskProfileArgs}", "{desiredDepthArgs}", "{changedScopeArgs}", "{skipLayerArgs}", "{cppCoverageArgs}" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/build.ps1",
+            "-Profile",
+            "CI",
+            "{suiteArgs}",
+            "{laneArgs}",
+            "{riskProfileArgs}",
+            "{desiredDepthArgs}",
+            "{changedScopeArgs}",
+            "{skipLayerArgs}",
+            "{cppCoverageArgs}"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "test-ci",
           "name": "Run workspace tests",
           "blocking": true,
           "timeoutSeconds": 2700,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "{suiteArgs}", "-ReportDir", "{gateReportDir}", "{laneArgs}", "{riskProfileArgs}", "{desiredDepthArgs}", "{changedScopeArgs}", "{skipLayerArgs}", "-FailOnKnownFailure", "{includeHilArgs}", "{pythonCoverageArgs}", "{cppCoverageArgs}" ],
-          "requiredArtifacts": [ "{gateReportDir}/workspace-validation.json", "{gateReportDir}/workspace-validation.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/test.ps1",
+            "-Profile",
+            "CI",
+            "{suiteArgs}",
+            "-ReportDir",
+            "{gateReportDir}",
+            "{laneArgs}",
+            "{riskProfileArgs}",
+            "{desiredDepthArgs}",
+            "{changedScopeArgs}",
+            "{skipLayerArgs}",
+            "-FailOnKnownFailure",
+            "{includeHilArgs}",
+            "{pythonCoverageArgs}",
+            "{cppCoverageArgs}"
+          ],
+          "requiredArtifacts": [
+            "{gateReportDir}/workspace-validation.json",
+            "{gateReportDir}/workspace-validation.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ]
         },
         {
           "id": "cppcheck",
           "name": "Run Cppcheck blocking gate",
           "blocking": true,
           "timeoutSeconds": 600,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-cppcheck.ps1", "-ReportDir", "{stepReportDir}", "-FailOnIssues" ],
-          "requiredArtifacts": [ "{stepReportDir}/cppcheck-summary.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-cppcheck.ps1",
+            "-ReportDir",
+            "{stepReportDir}",
+            "-FailOnIssues"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/cppcheck-summary.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "cppcheck",
+              "names": [
+                "cppcheck"
+              ]
+            }
+          ]
         },
         {
           "id": "dependency-graphs",
           "name": "Export dependency graphs",
           "blocking": true,
           "timeoutSeconds": 900,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-dependency-graph-export.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/dependency-graphs-summary.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-dependency-graph-export.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/dependency-graphs-summary.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "local-validation-gate",
           "name": "Run local validation evidence gate",
           "blocking": true,
           "timeoutSeconds": 2700,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/run-local-validation-gate.ps1", "-ReportRoot", "{stepReportDir}", "{laneArgs}", "{riskProfileArgs}", "{desiredDepthArgs}", "{changedScopeArgs}", "{skipLayerArgs}", "{includeHilArgs}" ],
-          "requiredArtifacts": [ "{stepReportDir}/*/local-validation-gate-summary.json", "{stepReportDir}/*/local-validation-gate-summary.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/run-local-validation-gate.ps1",
+            "-ReportRoot",
+            "{stepReportDir}",
+            "{laneArgs}",
+            "{riskProfileArgs}",
+            "{desiredDepthArgs}",
+            "{changedScopeArgs}",
+            "{skipLayerArgs}",
+            "{includeHilArgs}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/*/local-validation-gate-summary.json",
+            "{stepReportDir}/*/local-validation-gate-summary.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         }
       ],
       "requiredArtifacts": [
         "{gateReportDir}/workspace-validation.md",
-        "{gateReportDir}/dsp-e2e-spec-docset"
+        "{gateReportDir}/dsp-e2e-spec-docset",
+        "{gateReportDir}/local-validation-gate/*/local-validation-gate-summary.json"
       ]
     },
     "native": {
@@ -259,23 +1346,124 @@
           "blocking": true,
           "timeoutSeconds": 600,
           "requiredArtifacts": [],
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/install-python-deps.ps1" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/install-python-deps.ps1"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ]
         },
         {
           "id": "offline-prerequisite",
           "name": "Run HIL offline prerequisites",
           "blocking": true,
           "timeoutSeconds": 2700,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "-Suite", "all", "-ReportDir", "{stepReportDir}", "-Lane", "full-offline-gate", "-RiskProfile", "hardware-sensitive", "-DesiredDepth", "full-offline", "-FailOnKnownFailure" ],
-          "requiredArtifacts": [ "{stepReportDir}/workspace-validation.json", "{stepReportDir}/workspace-validation.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/test.ps1",
+            "-Profile",
+            "CI",
+            "-Suite",
+            "contracts",
+            "integration",
+            "e2e",
+            "protocol-compatibility",
+            "-ReportDir",
+            "{stepReportDir}",
+            "-Lane",
+            "full-offline-gate",
+            "-RiskProfile",
+            "hardware-sensitive",
+            "-DesiredDepth",
+            "full-offline",
+            "-FailOnKnownFailure"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/workspace-validation.json",
+            "{stepReportDir}/workspace-validation.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            },
+            {
+              "id": "pyright",
+              "names": [
+                "pyright"
+              ]
+            }
+          ]
         },
         {
           "id": "controlled-hil",
           "name": "Run controlled HIL quick gate",
           "blocking": true,
           "timeoutSeconds": 7200,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1", "-Profile", "Local", "-ReportDir", "{gateReportDir}", "-UseTimestampedReportDir", "-OfflinePrereqReport", "{gateReportDir}/offline-prerequisite/workspace-validation.json", "-PublishLatestOnPass:$false" ],
-          "requiredArtifacts": [ "{gateReportDir}/**/hil-controlled-gate-summary.json", "{gateReportDir}/**/hil-controlled-release-summary.md", "{gateReportDir}/**/case-matrix-summary.json" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/tests/e2e/hardware-in-loop/run_hil_controlled_test.ps1",
+            "-Profile",
+            "Local",
+            "-ReportDir",
+            "{gateReportDir}",
+            "-UseTimestampedReportDir",
+            "-PublishLatestOnPass:$false"
+          ],
+          "requiredArtifacts": [
+            "{gateReportDir}/**/hil-controlled-gate-summary.json",
+            "{gateReportDir}/**/hil-controlled-release-summary.md",
+            "{gateReportDir}/**/case-matrix-summary.json"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -288,32 +1476,243 @@
           "name": "Run full offline gate",
           "blocking": true,
           "timeoutSeconds": 3600,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-gate.ps1", "-Gate", "full-offline", "-ReportRoot", "{gateReportDir}/full-offline" ],
-          "requiredArtifacts": [ "{gateReportDir}/full-offline/gate-summary.json" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-gate.ps1",
+            "-Gate",
+            "full-offline",
+            "-ReportRoot",
+            "{gateReportDir}/full-offline"
+          ],
+          "requiredArtifacts": [
+            "{gateReportDir}/full-offline/gate-summary.json"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         },
         {
           "id": "performance",
           "name": "Run nightly performance suite",
           "blocking": true,
           "timeoutSeconds": 3600,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/test.ps1", "-Profile", "CI", "-Suite", "performance", "-ReportDir", "{stepReportDir}", "-Lane", "nightly-performance", "-RiskProfile", "high", "-DesiredDepth", "nightly", "-FailOnKnownFailure" ],
-          "requiredArtifacts": [ "{stepReportDir}/workspace-validation.json", "{stepReportDir}/workspace-validation.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/test.ps1",
+            "-Profile",
+            "CI",
+            "-Suite",
+            "performance",
+            "-ReportDir",
+            "{stepReportDir}",
+            "-Lane",
+            "nightly-performance",
+            "-RiskProfile",
+            "high",
+            "-DesiredDepth",
+            "nightly",
+            "-FailOnKnownFailure"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/workspace-validation.json",
+            "{stepReportDir}/workspace-validation.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ]
         },
         {
           "id": "python-coverage",
           "name": "Collect Python coverage",
           "blocking": false,
           "timeoutSeconds": 1800,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-python-coverage.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/coverage-summary.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-python-coverage.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/coverage-summary.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ]
         },
         {
           "id": "cpp-coverage",
           "name": "Collect C++ coverage",
           "blocking": false,
           "timeoutSeconds": 1800,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "{workspaceRoot}/scripts/validation/invoke-cpp-coverage.ps1", "-ReportDir", "{stepReportDir}" ],
-          "requiredArtifacts": [ "{stepReportDir}/coverage-summary.md" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-cpp-coverage.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/coverage-summary.md"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "long-running-simulation",
+          "name": "Run long-running simulation suite",
+          "blocking": true,
+          "timeoutSeconds": 7200,
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/test.ps1",
+            "-Profile",
+            "CI",
+            "-Suite",
+            "e2e",
+            "-ReportDir",
+            "{stepReportDir}",
+            "-Lane",
+            "nightly-performance",
+            "-RiskProfile",
+            "high",
+            "-DesiredDepth",
+            "nightly",
+            "-FailOnKnownFailure"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/workspace-validation.json",
+            "{stepReportDir}/workspace-validation.md"
+          ]
+        },
+        {
+          "id": "baseline-drift-check",
+          "name": "Run baseline drift governance check",
+          "blocking": true,
+          "timeoutSeconds": 900,
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "python '{workspaceRoot}/scripts/engineering-data/generate_dxf_truth_matrix_fixtures.py' --check *> '{stepReportDir}/baseline-drift-check.txt'; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Set-Content -Path '{stepReportDir}/baseline-drift-check.md' -Value '# Baseline Drift Check`n`nstatus: passed' -Encoding UTF8"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/baseline-drift-check.txt",
+            "{stepReportDir}/baseline-drift-check.md"
+          ]
+        },
+        {
+          "id": "performance-baseline-evidence",
+          "name": "Publish performance baseline evidence",
+          "blocking": true,
+          "timeoutSeconds": 120,
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "$summary = '{gateReportDir}/performance/workspace-validation.md'; if (-not (Test-Path -LiteralPath $summary)) { throw \"performance baseline evidence missing: $summary\" }; Set-Content -Path '{stepReportDir}/performance-baseline-evidence.md' -Value \"# Performance Baseline Evidence`n`nsource: $summary\" -Encoding UTF8"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/performance-baseline-evidence.md"
+          ]
         }
       ]
     },
@@ -326,8 +1725,26 @@
           "name": "Run release check",
           "blocking": true,
           "timeoutSeconds": 7200,
-          "command": [ "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "if ([string]::IsNullOrWhiteSpace($env:SILIGEN_RELEASE_VERSION)) { throw 'SILIGEN_RELEASE_VERSION is required for release gate.' }; & '{workspaceRoot}/release-check.ps1' -Version $env:SILIGEN_RELEASE_VERSION -ReportDir '{gateReportDir}'" ],
-          "requiredArtifacts": [ "{gateReportDir}/release-manifest.txt" ]
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "if ([string]::IsNullOrWhiteSpace($env:SILIGEN_RELEASE_VERSION)) { throw 'SILIGEN_RELEASE_VERSION is required for release gate.' }; & '{workspaceRoot}/release-check.ps1' -Version $env:SILIGEN_RELEASE_VERSION -ReportDir '{gateReportDir}'"
+          ],
+          "requiredArtifacts": [
+            "{gateReportDir}/release-manifest.txt"
+          ],
+          "requiresTool": [
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ]
         }
       ]
     }
