@@ -78,12 +78,9 @@ TEST(
     const auto result = operations->BuildExecutionArtifactsFromAuthority(
         BuildWorkflowExecutionInput(input, corrupted_authority));
 
-    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
-    const auto& payload = result.Value();
-    EXPECT_FALSE(payload.preview_authority_shared_with_execution);
-    EXPECT_FALSE(payload.execution_binding_ready);
-    EXPECT_FALSE(payload.execution_contract_ready);
-    EXPECT_EQ(payload.execution_failure_reason, "authority trigger binding non-monotonic");
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_EQ(result.GetError().GetMessage(), "authority trigger binding non-monotonic");
 }
 
 TEST(
@@ -718,7 +715,7 @@ TEST(
         Point2D(0.0f, 10.0f),
         Point2D(0.0f, 0.0f),
     }, 5.0f);
-    square.spline_max_step_mm = 1.0f;
+    square.curve_flatten_max_step_mm = 1.0f;
 
     auto rotated_square = BuildPolylineInput({
         Point2D(10.0f, 0.0f),
@@ -727,7 +724,7 @@ TEST(
         Point2D(0.0f, 0.0f),
         Point2D(10.0f, 0.0f),
     }, 5.0f);
-    rotated_square.spline_max_step_mm = 1.0f;
+    rotated_square.curve_flatten_max_step_mm = 1.0f;
 
     const auto square_result = operations->AssemblePlanningArtifacts(BuildWorkflowPlanningInput(square));
     const auto rotated_result = operations->AssemblePlanningArtifacts(BuildWorkflowPlanningInput(rotated_square));
@@ -765,7 +762,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsBi
         Point2D(0.0f, 10.0f),
         Point2D(0.0f, 0.0f),
     }, 5.0f);
-    authority_square.spline_max_step_mm = 1.0f;
+    authority_square.curve_flatten_max_step_mm = 1.0f;
 
     auto rotated_execution_square = BuildPolylineInput({
         Point2D(10.0f, 0.0f),
@@ -774,7 +771,7 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsBi
         Point2D(0.0f, 0.0f),
         Point2D(10.0f, 0.0f),
     }, 5.0f);
-    rotated_execution_square.spline_max_step_mm = 1.0f;
+    rotated_execution_square.curve_flatten_max_step_mm = 1.0f;
     rotated_execution_square.authority_process_path = authority_square.process_path;
 
     const auto result = operations->AssemblePlanningArtifacts(BuildWorkflowPlanningInput(rotated_execution_square));
@@ -1119,8 +1116,8 @@ TEST(WorkflowPlanningAssemblyOperationsContractTest, AssemblePlanningArtifactsRe
     };
     input.motion_plan.total_length = 0.0f;
     input.motion_plan.total_time = 1.0f;
-    input.spline_max_step_mm = 1.0f;
-    input.spline_max_error_mm = 0.05f;
+    input.curve_flatten_max_step_mm = 1.0f;
+    input.curve_flatten_max_error_mm = 0.05f;
 
     const auto result = operations->AssemblePlanningArtifacts(BuildWorkflowPlanningInput(input));
 

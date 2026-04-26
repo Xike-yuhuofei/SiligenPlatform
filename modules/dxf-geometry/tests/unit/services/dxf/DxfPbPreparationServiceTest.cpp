@@ -63,6 +63,65 @@ void WriteTextFile(const std::filesystem::path& path, const std::string& content
     std::ofstream out(path, std::ios::binary);
     out << content;
 }
+
+std::filesystem::path DxfGeometryApplicationRoot() {
+    auto cursor = std::filesystem::path(__FILE__).parent_path();
+    while (!cursor.empty()) {
+        const auto candidate = cursor / "application" / "engineering_data";
+        if (std::filesystem::exists(candidate)) {
+            return cursor / "application";
+        }
+        cursor = cursor.parent_path();
+    }
+    return {};
+}
+
+void WriteValidPbBundle(const std::filesystem::path& pb_path, const std::string& source_path) {
+    const auto script_path = pb_path.parent_path() / (pb_path.stem().string() + "_emit_pb.py");
+    WriteTextFile(
+        script_path,
+        "import json\n"
+        "import pathlib\n"
+        "import sys\n"
+        "sys.path.insert(0, r'" + DxfGeometryApplicationRoot().generic_string() + "')\n"
+        "from engineering_data.proto import dxf_primitives_pb2 as pb\n"
+        "output_path = pathlib.Path(sys.argv[1])\n"
+        "source_path = sys.argv[2]\n"
+        "bundle = pb.PathBundle()\n"
+        "bundle.header.schema_version = 2\n"
+        "bundle.header.source_path = source_path\n"
+        "bundle.header.units = 'mm'\n"
+        "bundle.header.unit_scale = 1.0\n"
+        "line = bundle.primitives.add()\n"
+        "line.type = pb.PRIMITIVE_LINE\n"
+        "line.line.start.x = 0.0\n"
+        "line.line.start.y = 0.0\n"
+        "line.line.end.x = 10.0\n"
+        "line.line.end.y = 0.0\n"
+        "output_path.write_bytes(bundle.SerializeToString())\n"
+        "output_path.with_suffix('.validation.json').write_text(json.dumps({\n"
+        "  'report_id': 'report-test',\n"
+        "  'schema_version': 'DXFValidationReport.v1',\n"
+        "  'file': {'file_hash': 'sha256-test', 'source_drawing_ref': 'sha256:sha256-test'},\n"
+        "  'summary': {'gate_result': 'PASS'},\n"
+        "  'classification': 'success',\n"
+        "  'preview_ready': True,\n"
+        "  'production_ready': True,\n"
+        "  'operator_summary': 'DXF import succeeded and is ready for production.',\n"
+        "  'primary_code': '',\n"
+        "  'warning_codes': [],\n"
+        "  'error_codes': [],\n"
+        "  'resolved_units': 'mm',\n"
+        "  'resolved_unit_scale': 1.0\n"
+        "}, indent=2), encoding='utf-8')\n");
+
+    const auto command =
+        "python " + QuoteArg(script_path.string()) + " " + QuoteArg(pb_path.string()) + " " + QuoteArg(source_path);
+    ASSERT_EQ(std::system(command.c_str()), 0);
+
+    std::error_code ec;
+    std::filesystem::remove(script_path, ec);
+}
 }  // namespace
 
 TEST(DxfPbPreparationServiceTest, SkipsRegenerationWhenUpToDatePbExists) {
@@ -72,7 +131,7 @@ TEST(DxfPbPreparationServiceTest, SkipsRegenerationWhenUpToDatePbExists) {
     const auto generator_path = base_dir / "should_not_run.cmd";
 
     WriteTextFile(dxf_path, MinimalDxf());
-    WriteTextFile(pb_path, "cached-pb");
+    WriteValidPbBundle(pb_path, dxf_path.string());
     WriteTextFile(generator_path, "@echo off\nexit /b 9\n");
 
     SetEnvVar("SILIGEN_DXF_PB_COMMAND", QuoteArg(generator_path.string()) + " {input} {output}");
@@ -82,9 +141,7 @@ TEST(DxfPbPreparationServiceTest, SkipsRegenerationWhenUpToDatePbExists) {
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
     EXPECT_EQ(result.Value(), pb_path.string());
 
-    std::ifstream in(pb_path, std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    EXPECT_EQ(content, "cached-pb");
+    EXPECT_GT(std::filesystem::file_size(pb_path), 0U);
 
     UnsetEnvVar("SILIGEN_DXF_PB_COMMAND");
 
@@ -158,12 +215,41 @@ TEST(DxfPbPreparationServiceTest, UsesExternalDxFProjectLauncherWhenAvailable) {
     WriteTextFile(
         launcher_path,
         "import pathlib\n"
+        "import json\n"
         "import sys\n"
+        "sys.path.insert(0, r'" + DxfGeometryApplicationRoot().generic_string() + "')\n"
+        "from engineering_data.proto import dxf_primitives_pb2 as pb\n"
         "\n"
         "args = sys.argv[1:]\n"
         "assert args[0] == 'engineering-data-dxf-to-pb'\n"
         "output = pathlib.Path(args[args.index('--output') + 1])\n"
-        "output.write_bytes(b'external-pb')\n");
+        "bundle = pb.PathBundle()\n"
+        "bundle.header.schema_version = 2\n"
+        "bundle.header.source_path = str(output.with_suffix('.dxf'))\n"
+        "bundle.header.units = 'mm'\n"
+        "bundle.header.unit_scale = 1.0\n"
+        "line = bundle.primitives.add()\n"
+        "line.type = pb.PRIMITIVE_LINE\n"
+        "line.line.start.x = 0.0\n"
+        "line.line.start.y = 0.0\n"
+        "line.line.end.x = 10.0\n"
+        "line.line.end.y = 0.0\n"
+        "output.write_bytes(bundle.SerializeToString())\n"
+        "output.with_suffix('.validation.json').write_text(json.dumps({\n"
+        "  'report_id': 'report-external',\n"
+        "  'schema_version': 'DXFValidationReport.v1',\n"
+        "  'file': {'file_hash': 'sha256-external', 'source_drawing_ref': 'sha256:sha256-external'},\n"
+        "  'summary': {'gate_result': 'PASS'},\n"
+        "  'classification': 'success',\n"
+        "  'preview_ready': True,\n"
+        "  'production_ready': True,\n"
+        "  'operator_summary': 'DXF import succeeded and is ready for production.',\n"
+        "  'primary_code': '',\n"
+        "  'warning_codes': [],\n"
+        "  'error_codes': [],\n"
+        "  'resolved_units': 'mm',\n"
+        "  'resolved_unit_scale': 1.0\n"
+        "}, indent=2), encoding='utf-8')\n");
 
     WriteTextFile(dxf_path, MinimalDxf());
 
@@ -179,9 +265,7 @@ TEST(DxfPbPreparationServiceTest, UsesExternalDxFProjectLauncherWhenAvailable) {
     pb_path.replace_extension(".pb");
     ASSERT_TRUE(std::filesystem::exists(pb_path));
 
-    std::ifstream in(pb_path, std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    EXPECT_EQ(content, "external-pb");
+    EXPECT_GT(std::filesystem::file_size(pb_path), 0U);
 
     std::error_code ec;
     std::filesystem::remove_all(root_dir, ec);
@@ -264,12 +348,41 @@ TEST(DxfPbPreparationServiceTest, DefaultConfigDoesNotPassRetiredStrictFlagsToPy
     WriteTextFile(
         script_path,
         "import pathlib\n"
+        "import json\n"
         "import sys\n"
+        "sys.path.insert(0, r'" + DxfGeometryApplicationRoot().generic_string() + "')\n"
+        "from engineering_data.proto import dxf_primitives_pb2 as pb\n"
         "args = sys.argv[1:]\n"
         "if '--strict-r2000' in args or '--no-strict-r2000' in args:\n"
         "    raise SystemExit(8)\n"
         "output = pathlib.Path(args[args.index('--output') + 1])\n"
-        "output.write_bytes(b'default-without-retired-strict-flags')\n");
+        "bundle = pb.PathBundle()\n"
+        "bundle.header.schema_version = 2\n"
+        "bundle.header.source_path = str(output.with_suffix('.dxf'))\n"
+        "bundle.header.units = 'mm'\n"
+        "bundle.header.unit_scale = 1.0\n"
+        "line = bundle.primitives.add()\n"
+        "line.type = pb.PRIMITIVE_LINE\n"
+        "line.line.start.x = 0.0\n"
+        "line.line.start.y = 0.0\n"
+        "line.line.end.x = 10.0\n"
+        "line.line.end.y = 0.0\n"
+        "output.write_bytes(bundle.SerializeToString())\n"
+        "output.with_suffix('.validation.json').write_text(json.dumps({\n"
+        "  'report_id': 'report-default-flags',\n"
+        "  'schema_version': 'DXFValidationReport.v1',\n"
+        "  'file': {'file_hash': 'sha256-default-flags', 'source_drawing_ref': 'sha256:sha256-default-flags'},\n"
+        "  'summary': {'gate_result': 'PASS'},\n"
+        "  'classification': 'success',\n"
+        "  'preview_ready': True,\n"
+        "  'production_ready': True,\n"
+        "  'operator_summary': 'DXF import succeeded and is ready for production.',\n"
+        "  'primary_code': '',\n"
+        "  'warning_codes': [],\n"
+        "  'error_codes': [],\n"
+        "  'resolved_units': 'mm',\n"
+        "  'resolved_unit_scale': 1.0\n"
+        "}, indent=2), encoding='utf-8')\n");
 
     SetEnvVar("SILIGEN_DXF_PB_SCRIPT", script_path.string());
     DxfPbPreparationService service;
@@ -298,10 +411,39 @@ TEST(DxfPbPreparationServiceTest, FindsDefaultPbScriptRelativeToWorkspaceWhenCwd
     WriteTextFile(
         script_path,
         "import pathlib\n"
+        "import json\n"
         "import sys\n"
+        "sys.path.insert(0, r'" + DxfGeometryApplicationRoot().generic_string() + "')\n"
+        "from engineering_data.proto import dxf_primitives_pb2 as pb\n"
         "args = sys.argv[1:]\n"
         "output = pathlib.Path(args[args.index('--output') + 1])\n"
-        "output.write_bytes(b'workspace-script-pb')\n");
+        "bundle = pb.PathBundle()\n"
+        "bundle.header.schema_version = 2\n"
+        "bundle.header.source_path = str(output.with_suffix('.dxf'))\n"
+        "bundle.header.units = 'mm'\n"
+        "bundle.header.unit_scale = 1.0\n"
+        "line = bundle.primitives.add()\n"
+        "line.type = pb.PRIMITIVE_LINE\n"
+        "line.line.start.x = 0.0\n"
+        "line.line.start.y = 0.0\n"
+        "line.line.end.x = 10.0\n"
+        "line.line.end.y = 0.0\n"
+        "output.write_bytes(bundle.SerializeToString())\n"
+        "output.with_suffix('.validation.json').write_text(json.dumps({\n"
+        "  'report_id': 'report-workspace',\n"
+        "  'schema_version': 'DXFValidationReport.v1',\n"
+        "  'file': {'file_hash': 'sha256-workspace', 'source_drawing_ref': 'sha256:sha256-workspace'},\n"
+        "  'summary': {'gate_result': 'PASS'},\n"
+        "  'classification': 'success',\n"
+        "  'preview_ready': True,\n"
+        "  'production_ready': True,\n"
+        "  'operator_summary': 'DXF import succeeded and is ready for production.',\n"
+        "  'primary_code': '',\n"
+        "  'warning_codes': [],\n"
+        "  'error_codes': [],\n"
+        "  'resolved_units': 'mm',\n"
+        "  'resolved_unit_scale': 1.0\n"
+        "}, indent=2), encoding='utf-8')\n");
 
     UnsetEnvVar("SILIGEN_DXF_PB_SCRIPT");
     UnsetEnvVar("SILIGEN_DXF_PB_COMMAND");
@@ -323,9 +465,7 @@ TEST(DxfPbPreparationServiceTest, FindsDefaultPbScriptRelativeToWorkspaceWhenCwd
     pb_path.replace_extension(".pb");
     ASSERT_TRUE(std::filesystem::exists(pb_path));
 
-    std::ifstream in(pb_path, std::ios::binary);
-    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    EXPECT_EQ(content, "workspace-script-pb");
+    EXPECT_GT(std::filesystem::file_size(pb_path), 0U);
 
     std::filesystem::remove_all(base_dir, ec);
 }
@@ -371,10 +511,39 @@ TEST(DxfPbPreparationServiceTest, PrefersCanonicalEngineeringDataPythonEnv) {
     WriteTextFile(
         script_path,
         "import pathlib\n"
+        "import json\n"
         "import sys\n"
+        "sys.path.insert(0, r'" + DxfGeometryApplicationRoot().generic_string() + "')\n"
+        "from engineering_data.proto import dxf_primitives_pb2 as pb\n"
         "args = sys.argv[1:]\n"
         "output = pathlib.Path(args[args.index('--output') + 1])\n"
-        "output.write_bytes(b'pb-from-canonical-env')\n");
+        "bundle = pb.PathBundle()\n"
+        "bundle.header.schema_version = 2\n"
+        "bundle.header.source_path = str(output.with_suffix('.dxf'))\n"
+        "bundle.header.units = 'mm'\n"
+        "bundle.header.unit_scale = 1.0\n"
+        "line = bundle.primitives.add()\n"
+        "line.type = pb.PRIMITIVE_LINE\n"
+        "line.line.start.x = 0.0\n"
+        "line.line.start.y = 0.0\n"
+        "line.line.end.x = 10.0\n"
+        "line.line.end.y = 0.0\n"
+        "output.write_bytes(bundle.SerializeToString())\n"
+        "output.with_suffix('.validation.json').write_text(json.dumps({\n"
+        "  'report_id': 'report-canonical-env',\n"
+        "  'schema_version': 'DXFValidationReport.v1',\n"
+        "  'file': {'file_hash': 'sha256-canonical-env', 'source_drawing_ref': 'sha256:sha256-canonical-env'},\n"
+        "  'summary': {'gate_result': 'PASS'},\n"
+        "  'classification': 'success',\n"
+        "  'preview_ready': True,\n"
+        "  'production_ready': True,\n"
+        "  'operator_summary': 'DXF import succeeded and is ready for production.',\n"
+        "  'primary_code': '',\n"
+        "  'warning_codes': [],\n"
+        "  'error_codes': [],\n"
+        "  'resolved_units': 'mm',\n"
+        "  'resolved_unit_scale': 1.0\n"
+        "}, indent=2), encoding='utf-8')\n");
 
     SetEnvVar("SILIGEN_ENGINEERING_DATA_PYTHON", "python");
     SetEnvVar("SILIGEN_DXF_PB_PYTHON", "python_binary_that_must_not_be_used");

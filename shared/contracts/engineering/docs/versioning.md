@@ -39,8 +39,15 @@
 
 `PathHeader.schema_version` 是 payload 自描述版本。
 
-- 当前 canonical `PathBundle` schema version：`1`
+- 当前 canonical `PathBundle` schema version：`2`
 - 只有发生 wire-level breaking change 时才提升该值
+
+当前 `v1` canonical proto 路径下承载的是最新单轨 schema，而不是历史 payload 兼容窗口。
+
+- 历史 `schema_version=1` `PathBundle` 已退出 live 支持
+- 当前 producer 必须输出 `schema_version=2`
+- 当前 consumer 必须对非 `2` 的 payload fail-closed
+- 旧 payload 的唯一升级路径是重新从 `.dxf` 正式生成，禁止仓内静默兼容读取
 
 ## JSON 版本策略
 

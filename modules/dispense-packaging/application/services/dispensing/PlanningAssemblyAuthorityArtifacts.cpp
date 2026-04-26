@@ -257,8 +257,8 @@ Result<TriggerArtifacts> BuildTriggerArtifacts(
     request.enable_branch_revisit_split = true;
     request.emit_topology_diagnostics = true;
     request.compensation_profile = input.compensation_profile;
-    request.spline_max_error_mm = input.spline_max_error_mm;
-    request.spline_max_step_mm = input.spline_max_step_mm;
+    request.curve_flatten_max_error_mm = input.curve_flatten_max_error_mm;
+    request.curve_flatten_max_step_mm = input.curve_flatten_max_step_mm;
 
     auto layout_result = planner.Plan(request);
     if (layout_result.IsError()) {
@@ -365,8 +365,8 @@ Result<AuthorityPreviewBuildResult> AssembleAuthorityPreviewArtifacts(
     authority_input.min_interval_ms = input.min_interval_ms;
     authority_input.sample_dt = input.sample_dt;
     authority_input.sample_ds = input.sample_ds;
-    authority_input.spline_max_step_mm = input.spline_max_step_mm;
-    authority_input.spline_max_error_mm = input.spline_max_error_mm;
+    authority_input.curve_flatten_max_step_mm = input.curve_flatten_max_step_mm;
+    authority_input.curve_flatten_max_error_mm = input.curve_flatten_max_error_mm;
     authority_input.dispensing_strategy = input.dispensing_strategy;
     authority_input.subsegment_count = input.subsegment_count;
     authority_input.dispense_only_cruise = input.dispense_only_cruise;
@@ -410,7 +410,7 @@ Result<AuthorityPreviewBuildResult> AssembleAuthorityPreviewArtifacts(
     auto preview_points_result =
         BuildInterpolationSeedPoints(
             canonical_process_path,
-            input.spline_max_error_mm,
+            input.curve_flatten_max_error_mm,
             ResolveInterpolationStep(authority_input));
     if (preview_points_result.IsError()) {
         if (trigger_artifacts.validation_classification == "fail") {

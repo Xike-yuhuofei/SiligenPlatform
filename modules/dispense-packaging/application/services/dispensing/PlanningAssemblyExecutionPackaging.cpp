@@ -707,8 +707,8 @@ PlanningArtifactsAssemblyInput BuildExecutionPlanningInput(
     execution_input.max_jerk = input.max_jerk;
     execution_input.sample_dt = input.sample_dt;
     execution_input.sample_ds = input.sample_ds;
-    execution_input.spline_max_step_mm = input.spline_max_step_mm;
-    execution_input.spline_max_error_mm = input.spline_max_error_mm;
+    execution_input.curve_flatten_max_step_mm = input.curve_flatten_max_step_mm;
+    execution_input.curve_flatten_max_error_mm = input.curve_flatten_max_error_mm;
     execution_input.execution_nominal_time_s = input.execution_nominal_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;

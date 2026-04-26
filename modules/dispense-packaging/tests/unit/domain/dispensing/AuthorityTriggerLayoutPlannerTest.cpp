@@ -1075,8 +1075,8 @@ TEST(AuthorityTriggerLayoutPlannerTest, CanDisableBranchRevisitSplitForLegacyCom
 TEST(AuthorityTriggerLayoutPlannerTest, KeepsSplineOpenChainOnUnifiedArcLengthKernel) {
     AuthorityTriggerLayoutPlanner planner;
     auto request = BuildRequest();
-    request.spline_max_error_mm = 0.05f;
-    request.spline_max_step_mm = 1.0f;
+    request.curve_flatten_max_error_mm = 0.05f;
+    request.curve_flatten_max_step_mm = 1.0f;
     request.process_path.segments.push_back(BuildSplineSegment({
         Point2D(0.0f, 0.0f),
         Point2D(5.0f, 5.0f),

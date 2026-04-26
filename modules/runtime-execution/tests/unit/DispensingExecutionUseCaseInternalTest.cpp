@@ -44,6 +44,7 @@ using Siligen::Domain::Dispensing::ValueObjects::DispensingRuntimeParams;
 using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Dispensing::ValueObjects::ProductionTriggerMode;
+using Siligen::JobIngest::Contracts::DxfInputQuality;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
 using Siligen::Domain::Motion::Ports::IMotionStatePort;
 using Siligen::Domain::Motion::Ports::MotionState;
@@ -1140,6 +1141,11 @@ TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityReturnsCompletedT
     job_context->plan_id = "plan-trace-completed";
     job_context->plan_fingerprint = "fp-trace-completed";
     job_context->execution_request = std::make_shared<DispensingExecutionRequest>(request);
+    job_context->production_baseline.baseline_id = "baseline-trace-completed";
+    job_context->production_baseline.baseline_fingerprint = "baseline-fp-trace-completed";
+    job_context->input_quality.report_id = "input-quality-report-trace-completed";
+    job_context->input_quality.classification = "success";
+    job_context->input_quality.production_ready = true;
     job_context->state.store(JobState::COMPLETED);
     job_context->final_state_committed.store(true);
     job_context->target_count.store(1);
@@ -1174,6 +1180,11 @@ TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityReturnsCompletedT
     EXPECT_EQ(response.verdict, "passed");
     EXPECT_TRUE(response.verdict_reason.empty());
     EXPECT_TRUE(response.strict_one_to_one_proven);
+    EXPECT_EQ(response.production_baseline.baseline_id, "baseline-trace-completed");
+    EXPECT_EQ(response.production_baseline.baseline_fingerprint, "baseline-fp-trace-completed");
+    EXPECT_EQ(response.input_quality.report_id, "input-quality-report-trace-completed");
+    EXPECT_EQ(response.input_quality.classification, "success");
+    EXPECT_TRUE(response.input_quality.production_ready);
 }
 
 TEST(DispensingExecutionUseCaseInternalTest, GetJobTraceabilityFailsClosedForCancelledTerminal) {
@@ -1241,6 +1252,11 @@ TEST(DispensingExecutionUseCaseInternalTest,
     start_request.plan_fingerprint = "fp-trace-multi";
     start_request.target_count = 2U;
     start_request.cycle_advance_mode = JobCycleAdvanceMode::AUTO_CONTINUE;
+    start_request.production_baseline.baseline_id = "baseline-trace-multi";
+    start_request.production_baseline.baseline_fingerprint = "baseline-fp-trace-multi";
+    start_request.input_quality.report_id = "input-quality-report-trace-multi";
+    start_request.input_quality.classification = "success";
+    start_request.input_quality.production_ready = true;
 
     const auto start_result = use_case->StartJob(start_request);
     ASSERT_TRUE(start_result.IsSuccess()) << start_result.GetError().GetMessage();
@@ -1255,6 +1271,11 @@ TEST(DispensingExecutionUseCaseInternalTest,
     const auto& response = traceability_result.Value();
 
     EXPECT_EQ(response.terminal_state, "completed");
+    EXPECT_EQ(response.production_baseline.baseline_id, "baseline-trace-multi");
+    EXPECT_EQ(response.production_baseline.baseline_fingerprint, "baseline-fp-trace-multi");
+    EXPECT_EQ(response.input_quality.report_id, "input-quality-report-trace-multi");
+    EXPECT_EQ(response.input_quality.classification, "success");
+    EXPECT_TRUE(response.input_quality.production_ready);
     EXPECT_EQ(response.expected_trace.size(), 4U);
     EXPECT_EQ(response.actual_trace.size(), 1U);
     EXPECT_EQ(response.verdict, "insufficient_evidence");

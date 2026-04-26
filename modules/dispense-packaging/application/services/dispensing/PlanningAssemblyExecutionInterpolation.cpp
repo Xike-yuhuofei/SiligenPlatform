@@ -51,8 +51,8 @@ PlanningArtifactsAssemblyInput BuildExecutionPlanningInput(
     execution_input.max_jerk = input.max_jerk;
     execution_input.sample_dt = input.sample_dt;
     execution_input.sample_ds = input.sample_ds;
-    execution_input.spline_max_step_mm = input.spline_max_step_mm;
-    execution_input.spline_max_error_mm = input.spline_max_error_mm;
+    execution_input.curve_flatten_max_step_mm = input.curve_flatten_max_step_mm;
+    execution_input.curve_flatten_max_error_mm = input.curve_flatten_max_error_mm;
     execution_input.execution_nominal_time_s = input.execution_nominal_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;
@@ -318,8 +318,8 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     config.max_acceleration = input.acceleration;
     config.max_jerk = input.max_jerk;
     config.time_step = (input.sample_dt > kEpsilon) ? input.sample_dt : 0.001f;
-    if (input.spline_max_error_mm > kEpsilon) {
-        config.position_tolerance = input.spline_max_error_mm;
+    if (input.curve_flatten_max_error_mm > kEpsilon) {
+        config.position_tolerance = input.curve_flatten_max_error_mm;
     }
     if (input.compensation_profile.curvature_speed_factor > kEpsilon) {
         config.curvature_speed_factor = input.compensation_profile.curvature_speed_factor;
@@ -343,7 +343,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
 
     if (input.interpolation_algorithm == InterpolationAlgorithm::LINEAR) {
         const auto seed_points_result =
-            BuildInterpolationSeedPoints(path, input.spline_max_error_mm, ResolveInterpolationStep(input));
+            BuildInterpolationSeedPoints(path, input.curve_flatten_max_error_mm, ResolveInterpolationStep(input));
         if (seed_points_result.IsError()) {
             return Result<std::vector<TrajectoryPoint>>::Failure(seed_points_result.GetError());
         }
@@ -395,7 +395,7 @@ Result<std::vector<TrajectoryPoint>> BuildInterpolationPoints(
     const auto seed_started_at = std::chrono::steady_clock::now();
     log_stage("seed_start");
     const auto seed_points_result =
-        BuildInterpolationSeedPoints(path, input.spline_max_error_mm, ResolveInterpolationStep(input));
+        BuildInterpolationSeedPoints(path, input.curve_flatten_max_error_mm, ResolveInterpolationStep(input));
     if (seed_points_result.IsError()) {
         log_stage(
             "seed_failed",

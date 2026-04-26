@@ -668,6 +668,8 @@ Result<JobID> DispensingExecutionUseCase::Impl::StartJob(const RuntimeStartJobRe
     context->plan_id = request.plan_id;
     context->plan_fingerprint = request.plan_fingerprint;
     context->execution_request = execution_request;
+    context->production_baseline = request.production_baseline;
+    context->input_quality = request.input_quality;
     context->state.store(JobState::PENDING);
     context->requested_transition_state.store(ExecutionTransitionState::PENDING);
     context->target_count.store(request.target_count);
@@ -1129,6 +1131,8 @@ RuntimeJobTraceabilityResponse DispensingExecutionUseCase::Impl::BuildJobTraceab
     response.verdict = context->traceability_verdict;
     response.verdict_reason = context->traceability_verdict_reason;
     response.strict_one_to_one_proven = context->strict_one_to_one_proven;
+    response.production_baseline = context->production_baseline;
+    response.input_quality = context->input_quality;
     return response;
 }
 

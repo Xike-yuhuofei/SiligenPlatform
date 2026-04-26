@@ -24,20 +24,20 @@ class PathArcLengthLocator {
     Result<ArcLengthLocation> Locate(
         const ProcessPath& path,
         float32 distance_mm,
-        float32 spline_max_error_mm = 0.0f,
-        float32 spline_max_step_mm = 0.0f) const;
+        float32 curve_flatten_max_error_mm = 0.0f,
+        float32 curve_flatten_max_step_mm = 0.0f) const;
 
     Result<ArcLengthLocation> Locate(
         const std::vector<ProcessSegment>& segments,
         float32 distance_mm,
-        float32 spline_max_error_mm = 0.0f,
-        float32 spline_max_step_mm = 0.0f) const;
+        float32 curve_flatten_max_error_mm = 0.0f,
+        float32 curve_flatten_max_step_mm = 0.0f) const;
 
     Result<Point2D> LocateOnSegment(
         const Segment& segment,
         float32 local_distance_mm,
-        float32 spline_max_error_mm = 0.0f,
-        float32 spline_max_step_mm = 0.0f) const;
+        float32 curve_flatten_max_error_mm = 0.0f,
+        float32 curve_flatten_max_step_mm = 0.0f) const;
 };
 
 }  // namespace Siligen::Domain::Dispensing::DomainServices

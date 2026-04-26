@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dispense_packaging/contracts/ExecutionPackage.h"
+#include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/dispensing/IDispensingProcessPort.h"
 #include "runtime_execution/contracts/dispensing/ProfileCompareExecutionSchedule.h"
@@ -38,6 +39,7 @@ using RuntimeTaskSchedulerPort = Siligen::Domain::Dispensing::Ports::ITaskSchedu
 using RuntimeHomingPort = Siligen::Domain::Motion::Ports::IHomingPort;
 using RuntimeInterlockSignalPort = Siligen::Domain::Safety::Ports::IInterlockSignalPort;
 using ExecutionTransitionState = Siligen::Application::Services::Motion::Execution::ExecutionTransitionState;
+using DxfInputQuality = Siligen::JobIngest::Contracts::DxfInputQuality;
 
 enum class JobCycleAdvanceMode {
     WAIT_FOR_CONTINUE = 0,
@@ -103,12 +105,19 @@ struct DispensingExecutionResult {
 
 using JobID = std::string;
 
+struct RuntimeProductionBaselineProvenance {
+    std::string baseline_id;
+    std::string baseline_fingerprint;
+};
+
 struct RuntimeStartJobRequest {
     std::string plan_id;
     DispensingExecutionRequest execution_request;
     std::string plan_fingerprint;
     uint32 target_count = 1;
     JobCycleAdvanceMode cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
+    RuntimeProductionBaselineProvenance production_baseline;
+    DxfInputQuality input_quality;
 };
 
 struct RuntimeJobStatusResponse {
@@ -142,6 +151,8 @@ struct RuntimeJobTraceabilityResponse {
     std::string verdict = "insufficient_evidence";
     std::string verdict_reason;
     bool strict_one_to_one_proven = false;
+    RuntimeProductionBaselineProvenance production_baseline;
+    DxfInputQuality input_quality;
 };
 
 struct ExecutionTransitionSnapshot {

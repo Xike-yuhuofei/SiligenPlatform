@@ -11,15 +11,22 @@
     "generated_filename": "20260321_sample.dxf",
     "size": 128,
     "timestamp": 1774070400000,
-    "import_result_classification": "success",
-    "import_preview_ready": true,
-    "import_production_ready": true,
-    "formal_compare_gate": null,
-    "import_summary": "DXF import succeeded and is ready for production.",
-    "import_primary_code": "",
-    "import_warning_codes": [],
-    "import_error_codes": [],
-    "import_resolved_units": "mm",
-    "import_resolved_unit_scale": 1.0
+    "input_quality": {
+      "report_id": "dxf-report-20260321-001",
+      "report_path": "D:/runtime/uploads/sample.validation.json",
+      "schema_version": "DXFValidationReport.v1",
+      "dxf_hash": "sha256-sample",
+      "source_drawing_ref": "sha256:sha256-sample",
+      "gate_result": "PASS",
+      "classification": "success",
+      "preview_ready": true,
+      "production_ready": true,
+      "summary": "DXF import succeeded and is ready for production.",
+      "primary_code": "",
+      "warning_codes": [],
+      "error_codes": [],
+      "resolved_units": "mm",
+      "resolved_unit_scale": 1.0
+    }
   }
 }

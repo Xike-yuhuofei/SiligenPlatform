@@ -250,7 +250,7 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(prepare_operation["paramsSchema"]["required"]))
     assert "recipe_id" not in prepare_operation["paramsSchema"]["properties"]
     assert "version_id" not in prepare_operation["paramsSchema"]["properties"]
-    assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
+    assert {"input_quality", "formal_compare_gate", "prepared_filepath"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
     assert {"execution_nominal_time_s", "execution_plan_summary", "production_baseline"}.issubset(
@@ -260,6 +260,10 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert "speed_mm_s" not in prepare_operation["paramsSchema"]["properties"]
     assert "use_hardware_trigger" not in prepare_operation["paramsSchema"]["properties"]
     assert "approximate_splines" not in prepare_operation["paramsSchema"]["properties"]
+    assert "spline_max_step_mm" not in prepare_operation["paramsSchema"]["properties"]
+    assert "spline_max_error_mm" not in prepare_operation["paramsSchema"]["properties"]
+    assert "curve_flatten_max_step_mm" in prepare_operation["paramsSchema"]["properties"]
+    assert "curve_flatten_max_error_mm" in prepare_operation["paramsSchema"]["properties"]
     assert not prepare_operation.get("compatibility", {}).get("requestAliases")
     assert "requested_execution_strategy" in prepare_operation["paramsSchema"]["properties"]
     notes = "\n".join(prepare_operation.get("compatibility", {}).get("notes", []))
@@ -275,7 +279,7 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
     job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
     assert "回退最近一次 prepared plan" not in job_start_notes
-    assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
+    assert {"input_quality", "formal_compare_gate", "prepared_filepath"}.issubset(
         set(job_start_operation["resultSchema"]["required"])
     )
     assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(
@@ -285,6 +289,8 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert '{"execution_nominal_time_s", plan.execution_nominal_time_s}' in dispatcher_source
     assert '{"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)}' in dispatcher_source
     assert '{"production_baseline", BuildProductionBaselineJson(' in dispatcher_source
+    assert "dxf_cache_.formal_compare_gate = plan.formal_compare_gate;" in dispatcher_source
+    assert 'BuildFormalCompareGateJson(plan.formal_compare_gate)' in dispatcher_source
     assert '{"execution_budget_s", start_response.execution_budget_s}' in dispatcher_source
     assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
     assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
@@ -335,10 +341,16 @@ def test_dxf_job_traceability_contract_is_wired():
     assert 'RegisterCommand("dxf.job.traceability"' in dispatcher_source
     assert 'std::string TcpCommandDispatcher::HandleDxfJobTraceability' in dispatcher_source
     assert "GetDxfJobTraceability(job_id)" in dispatcher_source
+    assert "response.production_baseline.baseline_id = runtime_traceability.production_baseline.baseline_id" in (
+        TCP_DISPENSING_FACADE_CPP.read_text(encoding="utf-8")
+    )
+    assert "response.input_quality = runtime_traceability.input_quality;" in TCP_DISPENSING_FACADE_CPP.read_text(
+        encoding="utf-8"
+    )
     assert 'def dxf_get_job_traceability' in protocol_source
     assert 'send_request("dxf.job.traceability", {"job_id": job_id})' in protocol_source
     dxf_job_traceability = states["definitions"]["dxfJobTraceability"]
-    assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"}.issubset(
+    assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven", "production_baseline", "input_quality"}.issubset(
         set(dxf_job_traceability["required"])
     )
     assert set(dxf_job_traceability["properties"]["verdict"]["enum"]) == {

@@ -2,6 +2,73 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "protocol": "siligen.application/1.0",
   "group": "dxf",
+  "definitions": {
+    "inputQuality": {
+      "type": "object",
+      "required": ["report_id", "report_path", "schema_version", "dxf_hash", "source_drawing_ref", "gate_result", "classification", "preview_ready", "production_ready", "summary", "primary_code", "warning_codes", "error_codes", "resolved_units", "resolved_unit_scale"],
+      "properties": {
+        "report_id": { "type": "string" },
+        "report_path": { "type": "string" },
+        "schema_version": { "type": "string" },
+        "dxf_hash": { "type": "string" },
+        "source_drawing_ref": { "type": "string" },
+        "gate_result": { "type": "string", "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"] },
+        "classification": { "type": "string", "enum": ["success", "success_with_warnings", "preview_only", "failed", "unspecified"] },
+        "preview_ready": { "type": "boolean" },
+        "production_ready": { "type": "boolean" },
+        "summary": { "type": "string" },
+        "primary_code": { "type": "string" },
+        "warning_codes": { "type": "array", "items": { "type": "string" } },
+        "error_codes": { "type": "array", "items": { "type": "string" } },
+        "resolved_units": { "type": "string" },
+        "resolved_unit_scale": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "formalCompareGate": {
+      "type": ["object", "null"],
+      "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
+      "properties": {
+        "status": { "type": "string" },
+        "reason_code": { "type": "string" },
+        "authority_span_ref": { "type": "string" },
+        "trigger_begin_index": { "type": "integer" },
+        "current_start_position_mm": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+          "additionalProperties": false
+        },
+        "next_trigger_position_mm": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+          "additionalProperties": false
+        },
+        "candidate_failures": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "productionBaseline": {
+      "type": "object",
+      "required": ["baseline_id", "baseline_fingerprint"],
+      "properties": {
+        "baseline_id": { "type": "string" },
+        "baseline_fingerprint": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "pathQuality": {
+      "type": "object",
+      "required": ["verdict", "blocking", "reason_codes"],
+      "properties": {
+        "verdict": { "type": "string", "enum": ["pass", "pass_with_exception", "fail"] },
+        "blocking": { "type": "boolean" },
+        "reason_codes": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
   "operations": [
     {
       "method": "dxf.artifact.create",
@@ -19,7 +86,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["created", "artifact_id", "filepath", "prepared_filepath", "original_name", "generated_filename", "size", "timestamp", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": ["created", "artifact_id", "filepath", "prepared_filepath", "original_name", "generated_filename", "size", "timestamp", "input_quality"],
         "properties": {
           "created": { "type": "boolean" },
           "artifact_id": { "type": "string" },
@@ -29,45 +96,7 @@
           "generated_filename": { "type": "string" },
           "size": { "type": "integer" },
           "timestamp": { "type": "integer" },
-          "import_result_classification": { "type": "string" },
-          "import_preview_ready": { "type": "boolean" },
-          "import_production_ready": { "type": "boolean" },
-          "formal_compare_gate": {
-            "type": ["object", "null"],
-            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
-            "properties": {
-              "status": { "type": "string" },
-              "reason_code": { "type": "string" },
-              "authority_span_ref": { "type": "string" },
-              "trigger_begin_index": { "type": "integer" },
-              "current_start_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "next_trigger_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "candidate_failures": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
-          "import_summary": { "type": "string" },
-          "import_primary_code": { "type": "string" },
-          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
-          "import_error_codes": { "type": "array", "items": { "type": "string" } },
-          "import_resolved_units": { "type": "string" },
-          "import_resolved_unit_scale": { "type": "number" }
+          "input_quality": { "$ref": "#/definitions/inputQuality" }
         },
         "additionalProperties": false
       },
@@ -92,8 +121,8 @@
           "start_x": { "type": "number" },
           "start_y": { "type": "number" },
           "two_opt_iterations": { "type": "integer" },
-          "spline_max_step_mm": { "type": "number" },
-          "spline_max_error_mm": { "type": "number" },
+          "curve_flatten_max_step_mm": { "type": "number" },
+          "curve_flatten_max_error_mm": { "type": "number" },
           "arc_tolerance_mm": { "type": "number" },
           "arc_tolerance": { "type": "number" },
           "continuity_tolerance_mm": { "type": "number" },
@@ -112,7 +141,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "execution_nominal_time_s", "execution_plan_summary", "generated_at", "production_baseline", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale", "path_quality"],
+        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "execution_nominal_time_s", "execution_plan_summary", "generated_at", "production_baseline", "prepared_filepath", "input_quality", "formal_compare_gate", "path_quality"],
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
@@ -139,54 +168,9 @@
             },
             "additionalProperties": false
           },
-          "production_baseline": {
-            "type": "object",
-            "required": ["baseline_id", "baseline_fingerprint"],
-            "properties": {
-              "baseline_id": { "type": "string" },
-              "baseline_fingerprint": { "type": "string" }
-            },
-            "additionalProperties": false
-          },
-          "import_result_classification": { "type": "string" },
-          "import_preview_ready": { "type": "boolean" },
-          "import_production_ready": { "type": "boolean" },
-          "formal_compare_gate": {
-            "type": ["object", "null"],
-            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
-            "properties": {
-              "status": { "type": "string" },
-              "reason_code": { "type": "string" },
-              "authority_span_ref": { "type": "string" },
-              "trigger_begin_index": { "type": "integer" },
-              "current_start_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "next_trigger_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "candidate_failures": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
-          "import_summary": { "type": "string" },
-          "import_primary_code": { "type": "string" },
-          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
-          "import_error_codes": { "type": "array", "items": { "type": "string" } },
-          "import_resolved_units": { "type": "string" },
-          "import_resolved_unit_scale": { "type": "number" },
+          "production_baseline": { "$ref": "#/definitions/productionBaseline" },
+          "input_quality": { "$ref": "#/definitions/inputQuality" },
+          "formal_compare_gate": { "$ref": "#/definitions/formalCompareGate" },
           "generated_at": { "type": "string" },
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -194,16 +178,7 @@
           "preview_exception_reason": { "type": "string" },
           "preview_failure_reason": { "type": "string" },
           "preview_diagnostic_code": { "type": "string" },
-          "path_quality": {
-            "type": "object",
-            "required": ["verdict", "blocking", "reason_codes"],
-            "properties": {
-              "verdict": { "type": "string", "enum": ["pass", "pass_with_exception", "fail"] },
-              "blocking": { "type": "boolean" },
-              "reason_codes": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
+          "path_quality": { "$ref": "#/definitions/pathQuality" },
           "preview_request_signature": { "type": "string" },
           "preview_state": { "type": "string" },
           "performance_profile": {
@@ -250,7 +225,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "glue_reveal_lengths_mm", "preview_binding", "motion_preview", "execution_point_count", "total_length_mm", "estimated_time_s", "generated_at", "path_quality"],
+        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "glue_reveal_lengths_mm", "preview_binding", "motion_preview", "execution_point_count", "total_length_mm", "estimated_time_s", "generated_at", "path_quality", "input_quality"],
         "properties": {
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -333,16 +308,8 @@
           },
           "total_length_mm": { "type": "number" },
           "estimated_time_s": { "type": "number" },
-          "path_quality": {
-            "type": "object",
-            "required": ["verdict", "blocking", "reason_codes"],
-            "properties": {
-              "verdict": { "type": "string", "enum": ["pass", "pass_with_exception", "fail"] },
-              "blocking": { "type": "boolean" },
-              "reason_codes": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
+          "path_quality": { "$ref": "#/definitions/pathQuality" },
+          "input_quality": { "$ref": "#/definitions/inputQuality" },
           "generated_at": { "type": "string" }
         },
         "additionalProperties": false
@@ -404,7 +371,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "execution_budget_s", "execution_budget_breakdown", "production_baseline", "performance_profile", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "execution_budget_s", "execution_budget_breakdown", "production_baseline", "performance_profile", "prepared_filepath", "input_quality", "formal_compare_gate"],
         "properties": {
           "started": { "type": "boolean" },
           "job_id": { "type": "string" },
@@ -426,55 +393,10 @@
             },
             "additionalProperties": false
           },
-          "production_baseline": {
-            "type": "object",
-            "required": ["baseline_id", "baseline_fingerprint"],
-            "properties": {
-              "baseline_id": { "type": "string" },
-              "baseline_fingerprint": { "type": "string" }
-            },
-            "additionalProperties": false
-          },
+          "production_baseline": { "$ref": "#/definitions/productionBaseline" },
           "prepared_filepath": { "type": "string" },
-          "import_result_classification": { "type": "string" },
-          "import_preview_ready": { "type": "boolean" },
-          "import_production_ready": { "type": "boolean" },
-          "formal_compare_gate": {
-            "type": ["object", "null"],
-            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
-            "properties": {
-              "status": { "type": "string" },
-              "reason_code": { "type": "string" },
-              "authority_span_ref": { "type": "string" },
-              "trigger_begin_index": { "type": "integer" },
-              "current_start_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "next_trigger_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "candidate_failures": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
-          "import_summary": { "type": "string" },
-          "import_primary_code": { "type": "string" },
-          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
-          "import_error_codes": { "type": "array", "items": { "type": "string" } },
-          "import_resolved_units": { "type": "string" },
-          "import_resolved_unit_scale": { "type": "number" },
+          "input_quality": { "$ref": "#/definitions/inputQuality" },
+          "formal_compare_gate": { "$ref": "#/definitions/formalCompareGate" },
           "performance_profile": {
             "type": "object",
             "properties": {

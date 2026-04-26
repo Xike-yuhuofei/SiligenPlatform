@@ -10,6 +10,7 @@
 #include "process_path/contracts/IPathSourcePort.h"
 #include "process_path/contracts/PathGenerationResult.h"
 #include "process_path/contracts/Primitive.h"
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -47,6 +48,23 @@ using Siligen::Shared::Types::Point2D;
 template <typename T>
 using ResultT = Siligen::Shared::Types::Result<T>;
 using ResultVoid = Siligen::Shared::Types::Result<void>;
+
+std::string QuoteArg(const std::string& value) {
+    if (value.find_first_of(" \t\"") == std::string::npos) {
+        return value;
+    }
+    std::string out;
+    out.reserve(value.size() + 2);
+    out.push_back('"');
+    for (char c : value) {
+        if (c == '"') {
+            out.push_back('\\');
+        }
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
+}
 
 Siligen::ProcessPath::Contracts::ProcessSegment MakeLineProcessSegment(
     const Point2D& start,
@@ -268,12 +286,66 @@ std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAss
         .CreateOperations();
 }
 
+std::filesystem::path DxfGeometryApplicationRoot() {
+    auto cursor = std::filesystem::path(__FILE__).parent_path();
+    while (!cursor.empty()) {
+        const auto candidate = cursor / "modules" / "dxf-geometry" / "application" / "engineering_data";
+        if (std::filesystem::exists(candidate)) {
+            return cursor / "modules" / "dxf-geometry" / "application";
+        }
+        cursor = cursor.parent_path();
+    }
+    return {};
+}
+
 std::filesystem::path MakeTempPbPath() {
     const auto suffix = std::chrono::steady_clock::now().time_since_epoch().count();
     auto path = std::filesystem::temp_directory_path() / ("siligen_planning_export_" + std::to_string(suffix) + ".pb");
-    std::ofstream output(path, std::ios::binary);
-    output << "fake-pb";
-    output.close();
+
+    const auto script_path = path.parent_path() / (path.stem().string() + "_emit_pb.py");
+    std::ofstream script(script_path, std::ios::binary);
+    script
+        << "import json\n"
+        << "import pathlib\n"
+        << "import sys\n"
+        << "sys.path.insert(0, r'" << DxfGeometryApplicationRoot().generic_string() << "')\n"
+        << "from engineering_data.proto import dxf_primitives_pb2 as pb\n"
+        << "output_path = pathlib.Path(sys.argv[1])\n"
+        << "bundle = pb.PathBundle()\n"
+        << "bundle.header.schema_version = 2\n"
+        << "bundle.header.source_path = 'planning-use-case-export-test.dxf'\n"
+        << "bundle.header.units = 'mm'\n"
+        << "bundle.header.unit_scale = 1.0\n"
+        << "line = bundle.primitives.add()\n"
+        << "line.type = pb.PRIMITIVE_LINE\n"
+        << "line.line.start.x = 0.0\n"
+        << "line.line.start.y = 0.0\n"
+        << "line.line.end.x = 10.0\n"
+        << "line.line.end.y = 0.0\n"
+        << "output_path.write_bytes(bundle.SerializeToString())\n"
+        << "output_path.with_suffix('.validation.json').write_text(json.dumps({\n"
+        << "  'report_id': 'report-planning-export',\n"
+        << "  'schema_version': 'DXFValidationReport.v1',\n"
+        << "  'file': {'file_hash': 'sha256-planning-export', 'source_drawing_ref': 'sha256:sha256-planning-export'},\n"
+        << "  'summary': {'gate_result': 'PASS'},\n"
+        << "  'classification': 'success',\n"
+        << "  'preview_ready': True,\n"
+        << "  'production_ready': True,\n"
+        << "  'operator_summary': 'DXF import succeeded and is ready for production.',\n"
+        << "  'primary_code': '',\n"
+        << "  'warning_codes': [],\n"
+        << "  'error_codes': [],\n"
+        << "  'resolved_units': 'mm',\n"
+        << "  'resolved_unit_scale': 1.0\n"
+        << "}, indent=2), encoding='utf-8')\n";
+    script.close();
+
+    const auto command = "python " + QuoteArg(script_path.string()) + " " + QuoteArg(path.string());
+    EXPECT_EQ(std::system(command.c_str()), 0);
+
+    std::error_code ec;
+    std::filesystem::remove(script_path, ec);
+
     return path;
 }
 

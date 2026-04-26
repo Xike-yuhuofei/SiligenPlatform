@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+import uuid
 
 
 SCHEMA_VERSION = "DXFValidationReport.v1"
@@ -143,17 +144,34 @@ def build_validation_report(
     error_items = [build_diagnostic(code, message, warning=False) for code, message in errors]
     warning_items = [build_diagnostic(code, message, warning=True) for code, message in warnings]
     gate_result = "FAIL" if error_items else ("PASS_WITH_WARNINGS" if warning_items else "PASS")
+    preview_ready = entity_count > 0
+    production_ready = gate_result in {"PASS", "PASS_WITH_WARNINGS"}
+    if gate_result == "PASS":
+        classification = "success"
+        operator_summary = "DXF import succeeded and is ready for production."
+    elif gate_result == "PASS_WITH_WARNINGS":
+        classification = "success_with_warnings"
+        operator_summary = warning_items[0].operator_message if warning_items else "DXF import succeeded with warnings."
+    elif preview_ready:
+        classification = "preview_only"
+        operator_summary = error_items[0].operator_message if error_items else "DXF import is preview-only."
+    else:
+        classification = "failed"
+        operator_summary = error_items[0].operator_message if error_items else "DXF import failed."
+    primary_code = error_items[0].error_code if error_items else (warning_items[0].error_code if warning_items else "")
     stage_id = "S1" if any(item.stage_id == "S1" for item in error_items) else "S2"
     owner_module = "M1" if stage_id == "S1" else "M2"
+    file_hash = _file_hash(source_path)
     report = {
+        "report_id": f"dxf-report-{uuid.uuid4().hex}",
         "schema_version": SCHEMA_VERSION,
         "file": {
             "file_name": source_path.name,
-            "file_hash": _file_hash(source_path),
+            "file_hash": file_hash,
             "file_size_bytes": source_path.stat().st_size if source_path.exists() and source_path.is_file() else 0,
             "dxf_version": dxf_version,
             "unit": unit,
-            "source_drawing_ref": f"sha256:{_file_hash(source_path)}" if source_path.exists() and source_path.is_file() else None,
+            "source_drawing_ref": f"sha256:{file_hash}" if file_hash else None,
         },
         "policy": {
             "spec_version": SPEC_VERSION,
@@ -167,6 +185,7 @@ def build_validation_report(
         },
         "summary": {
             "gate_result": gate_result,
+            "operator_summary": operator_summary,
             "error_count": len(error_items),
             "warning_count": len(warning_items),
             "entity_count": entity_count,
@@ -178,6 +197,15 @@ def build_validation_report(
         "layer_summary": [],
         "geometry_summary": {},
         "topology_summary": {},
+        "classification": classification,
+        "preview_ready": preview_ready,
+        "production_ready": production_ready,
+        "operator_summary": operator_summary,
+        "primary_code": primary_code,
+        "warning_codes": [item.error_code for item in warning_items],
+        "error_codes": [item.error_code for item in error_items],
+        "resolved_units": unit,
+        "resolved_unit_scale": 1.0 if unit == "mm" else 0.0,
         "errors": [asdict(item) for item in error_items],
         "warnings": [asdict(item) for item in warning_items],
         "recommended_actions": [

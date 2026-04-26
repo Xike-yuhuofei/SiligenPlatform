@@ -17,8 +17,14 @@ namespace Siligen::Application::Services::DXF {
 
 using Siligen::Shared::Types::Result;
 
-struct ImportDiagnosticsSummary {
-    std::string result_classification;
+struct InputQualitySummary {
+    std::string report_id;
+    std::string report_path;
+    std::string schema_version;
+    std::string dxf_hash;
+    std::string source_drawing_ref;
+    std::string gate_result;
+    std::string classification;
     bool preview_ready = false;
     bool production_ready = false;
     std::string summary;
@@ -31,7 +37,7 @@ struct ImportDiagnosticsSummary {
 
 struct PreparedInputArtifact {
     std::string prepared_path;
-    ImportDiagnosticsSummary import_diagnostics;
+    InputQualitySummary input_quality;
 };
 
 class DxfPbPreparationService {

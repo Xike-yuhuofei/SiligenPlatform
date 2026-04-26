@@ -39,6 +39,10 @@ UseCases::Dispensing::JobTraceabilityResponse ToWorkflowJobTraceability(
     response.verdict = runtime_traceability.verdict;
     response.verdict_reason = runtime_traceability.verdict_reason;
     response.strict_one_to_one_proven = runtime_traceability.strict_one_to_one_proven;
+    response.production_baseline.baseline_id = runtime_traceability.production_baseline.baseline_id;
+    response.production_baseline.baseline_fingerprint =
+        runtime_traceability.production_baseline.baseline_fingerprint;
+    response.input_quality = runtime_traceability.input_quality;
     return response;
 }
 

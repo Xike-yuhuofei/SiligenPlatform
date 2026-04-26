@@ -66,8 +66,8 @@ struct AuthorityPreviewBuildInput {
     float32 min_interval_ms = 0.0f;
     float32 sample_dt = 0.01f;
     float32 sample_ds = 0.0f;
-    float32 spline_max_step_mm = 0.0f;
-    float32 spline_max_error_mm = 0.0f;
+    float32 curve_flatten_max_step_mm = 0.0f;
+    float32 curve_flatten_max_error_mm = 0.0f;
     Siligen::Shared::Types::DispensingStrategy dispensing_strategy =
         Siligen::Shared::Types::DispensingStrategy::BASELINE;
     int subsegment_count = 8;
@@ -119,8 +119,8 @@ struct ExecutionAssemblyBuildInput {
     float32 max_jerk = 0.0f;
     float32 sample_dt = 0.01f;
     float32 sample_ds = 0.0f;
-    float32 spline_max_step_mm = 0.0f;
-    float32 spline_max_error_mm = 0.0f;
+    float32 curve_flatten_max_step_mm = 0.0f;
+    float32 curve_flatten_max_error_mm = 0.0f;
     float32 execution_nominal_time_s = 0.0f;
     bool use_interpolation_planner = false;
     InterpolationAlgorithm interpolation_algorithm = InterpolationAlgorithm::LINEAR;
@@ -170,8 +170,8 @@ struct PlanningArtifactsAssemblyInput {
     float32 max_jerk = 0.0f;
     float32 sample_dt = 0.01f;
     float32 sample_ds = 0.0f;
-    float32 spline_max_step_mm = 0.0f;
-    float32 spline_max_error_mm = 0.0f;
+    float32 curve_flatten_max_step_mm = 0.0f;
+    float32 curve_flatten_max_error_mm = 0.0f;
     float32 execution_nominal_time_s = 0.0f;
     Siligen::Shared::Types::DispensingStrategy dispensing_strategy =
         Siligen::Shared::Types::DispensingStrategy::BASELINE;
@@ -232,7 +232,7 @@ float32 ResolveInterpolationStep(const PlanningArtifactsAssemblyInput& input);
 std::vector<TrajectoryPoint> ConvertMotionTrajectoryToTrajectoryPoints(const MotionTrajectory& trajectory);
 Siligen::Shared::Types::Result<std::vector<Point2D>> BuildInterpolationSeedPoints(
     const ProcessPath& path,
-    float32 spline_max_error_mm,
+    float32 curve_flatten_max_error_mm,
     float32 step_mm);
 std::vector<TrajectoryPoint> ConvertPreviewPointsToTrajectory(const std::vector<Point2D>& preview_points);
 Siligen::Shared::Types::Result<std::vector<TrajectoryPoint>> BuildTimedExecutionTrajectoryFromMotionPlan(

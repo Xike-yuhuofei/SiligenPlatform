@@ -1,20 +1,32 @@
 # DXF 输入治理冻结补充标准 v1
 
 Status: Frozen Supplement Standard
-Owner: M1 job-ingest / M2 dxf-geometry / M3 topology-feature / M4 process-planning / M6 process-path / M8 dispense-packaging / M9 runtime-execution / M10 trace-diagnostics
-Canonical Docset: `docs/architecture/dsp-e2e-spec/`
-Recommended Repo Path: `docs/architecture/dsp-e2e-spec/dxf-input-governance-standard-v1.md`
+Authority: Supplement to S01/S02/S04/S05/S09
+Applies To: DXF input governance across S1-S5, S8, S11B, S12, S16
+Owns / Covers: DXF validation, canonicalization, topology quality, layer semantics, input quality gate, diagnostics reports, repair boundary
+Related Owners: M1 job-ingest / M2 dxf-geometry / M3 topology-feature / M4 process-planning / M6 process-path / M8 dispense-packaging / M9 runtime-execution / M10 trace-diagnostics
+Must Not Override: S01-S10 formal spec axes; S04 object chain; S05 owner boundaries
+Read When: handling DXF import, validation failure, geometry quality, topology rejection, layer semantics, path quality preconditions, input traceability
+Conflict Priority: use this document for DXF governance detail only; defer object/owner/stage conflicts to S01-S10
+Codex Keywords: DXF, SourceDrawing, CanonicalGeometry, TopologyModel, FeatureGraph, input_valid, DXFValidationReport, GeometryQualityReport, quality gate
 Scope: 无痕内衣视觉点胶机上位机 DXF 输入治理
 Target: 产品级可靠 + 算法领先基础版，并保留 L5 工艺闭环演进路径
 Last Updated: 2026-04-24
 
 ---
 
+## Codex Decision Summary
+
+- 本文细化 DXF 输入治理、验证报告、质量门禁、诊断挂载和拒绝/修复边界。
+- 本文不另起正式对象链，不改变 S1-S4 owner，不替代 S01-S10。
+- DXF 不合格不得执行；禁止静默修复；所有报告必须挂载到正式对象诊断或追溯链。
+
+---
 # 1. 文档定位
 
 本文档是 `docs/architecture/dsp-e2e-spec/` 正式冻结文档集下的 **DXF 输入治理专项冻结补充标准**。
 
-本文档不是第二套冻结文档集，不替代 `S01-S10`，不另建并行对象链。
+本文档只作为冻结补充标准使用，不替代 `S01-S10`，不另建并行对象链。
 凡涉及 DXF 输入治理的专项规则，必须回链到 `dsp-e2e-spec` 已冻结的阶段链、对象链、模块边界、状态机、测试矩阵与归档规则。
 
 本文档主要细化以下阶段：

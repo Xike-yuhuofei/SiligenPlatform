@@ -255,6 +255,8 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
     namespace fs = std::filesystem;
 
     std::vector<std::string> args;
+    auto validation_report_path = pb_path;
+    validation_report_path.replace_extension(".validation.json");
     if (!external_root.empty()) {
         const fs::path launcher_path = external_root / kDxFProjectLauncherRelative;
         args = {
@@ -265,6 +267,8 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
             dxf_path.string(),
             "--output",
             pb_path.string(),
+            "--validation-report",
+            validation_report_path.string(),
         };
 
         AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);
@@ -298,6 +302,8 @@ Result<std::vector<std::string>> BuildPbCommandArgs(
         dxf_path.string(),
         "--output",
         pb_path.string(),
+        "--validation-report",
+        validation_report_path.string(),
     };
 
     AppendBoolArg(args, "--normalize-units", preprocess_config.normalize_units);

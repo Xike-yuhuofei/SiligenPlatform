@@ -1,0 +1,53 @@
+{
+  "report_id": "dxf-report-d8a68045fa254997b222e397404ca264",
+  "schema_version": "DXFValidationReport.v1",
+  "file": {
+    "file_name": "Demo-1.dxf",
+    "file_hash": "6be11b43f24e66271e6a08eca764cfd41d5766180d2bc73ce9398735573d0948",
+    "file_size_bytes": 76082,
+    "dxf_version": "R2000",
+    "unit": "mm",
+    "source_drawing_ref": "sha256:6be11b43f24e66271e6a08eca764cfd41d5766180d2bc73ce9398735573d0948"
+  },
+  "policy": {
+    "spec_version": "DXFInputSpec.v1",
+    "policy_version": "DXFValidationPolicy.v1",
+    "tolerance_policy_version": "GeometryTolerancePolicy.v1",
+    "layer_semantic_policy_version": "LayerSemanticPolicy.v1"
+  },
+  "stage": {
+    "stage_id": "S2",
+    "owner_module": "M2"
+  },
+  "summary": {
+    "gate_result": "PASS",
+    "operator_summary": "DXF import succeeded and is ready for production.",
+    "error_count": 0,
+    "warning_count": 0,
+    "entity_count": 391,
+    "layer_count": 2,
+    "glue_contour_count": 0,
+    "bounds_mm": {
+      "min_x": 0.0,
+      "min_y": 0.0,
+      "max_x": 0.0,
+      "max_y": 0.0
+    }
+  },
+  "entity_summary": [],
+  "layer_summary": [],
+  "geometry_summary": {},
+  "topology_summary": {},
+  "classification": "success",
+  "preview_ready": true,
+  "production_ready": true,
+  "operator_summary": "DXF import succeeded and is ready for production.",
+  "primary_code": "",
+  "warning_codes": [],
+  "error_codes": [],
+  "resolved_units": "mm",
+  "resolved_unit_scale": 1.0,
+  "errors": [],
+  "warnings": [],
+  "recommended_actions": []
+}

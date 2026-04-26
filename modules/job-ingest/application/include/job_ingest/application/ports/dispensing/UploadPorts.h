@@ -11,12 +11,12 @@
 namespace Siligen::JobIngest::Application::Ports::Dispensing {
 
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
+using Siligen::JobIngest::Contracts::DxfInputQuality;
 using Siligen::Shared::Types::Result;
 
 struct PreparedInputArtifact {
     std::string prepared_path;
-    DxfImportDiagnostics import_diagnostics;
+    DxfInputQuality input_quality;
 };
 
 class IUploadStoragePort {

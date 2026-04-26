@@ -107,6 +107,25 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
         expected.header.source_path = ""
         self.assertEqual(actual.SerializeToString(), expected.SerializeToString())
 
+    def test_load_path_bundle_rejects_retired_schema_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_path = Path(tmp_dir) / "legacy.pb"
+            bundle = dxf_to_pb.pb.PathBundle()
+            bundle.header.schema_version = 1
+            bundle.header.source_path = "legacy.dxf"
+            bundle.header.units = "mm"
+            bundle.header.unit_scale = 1.0
+            line = bundle.primitives.add()
+            line.type = dxf_to_pb.pb.PRIMITIVE_LINE
+            line.line.start.x = 0.0
+            line.line.start.y = 0.0
+            line.line.end.x = 10.0
+            line.line.end.y = 0.0
+            output_path.write_bytes(bundle.SerializeToString())
+
+            with self.assertRaisesRegex(ValueError, "Unsupported PathBundle schema_version=1; expected 2"):
+                load_path_bundle(output_path)
+
     def test_dxf_to_pb_rejects_insert_instead_of_expanding_block_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dxf_path = Path(tmp_dir) / "mixed_noise.dxf"

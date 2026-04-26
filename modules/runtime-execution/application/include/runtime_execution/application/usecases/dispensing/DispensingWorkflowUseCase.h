@@ -37,7 +37,7 @@ using PlanID = std::string;
 using Siligen::Domain::Dispensing::Contracts::ExecutionBudgetBreakdown;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPlanSummary;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
-using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
+using Siligen::JobIngest::Contracts::DxfInputQuality;
 using Siligen::JobIngest::Contracts::UploadRequest;
 using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
@@ -51,7 +51,7 @@ struct CreateArtifactResponse {
     std::string generated_filename;
     std::size_t size = 0;
     int64_t timestamp = 0;
-    DxfImportDiagnostics import_diagnostics;
+    DxfInputQuality input_quality;
 };
 
 struct PreparePlanRuntimeOverrides {
@@ -114,12 +114,13 @@ struct PreparePlanResponse {
     float32 total_length_mm = 0.0f;
     float32 execution_nominal_time_s = 0.0f;
     ExecutionPlanSummary execution_plan_summary;
-    DxfImportDiagnostics import_diagnostics;
+    DxfInputQuality input_quality;
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
     Siligen::Shared::Types::PathQualityAssessment path_quality;
+    Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     std::string generated_at;
     ProductionBaselineContext production_baseline;
     PerformanceProfile performance_profile;
@@ -170,6 +171,7 @@ struct StartJobResponse {
     float32 execution_budget_s = 0.0f;
     ExecutionBudgetBreakdown execution_budget_breakdown;
     ProductionBaselineContext production_baseline;
+    DxfInputQuality input_quality;
     PerformanceProfile performance_profile;
 };
 
@@ -216,6 +218,8 @@ struct JobStatusResponse {
 };
 
 struct JobTraceabilityResponse {
+    using ProductionBaselineContext = PreparePlanResponse::ProductionBaselineContext;
+
     JobID job_id;
     PlanID plan_id;
     std::string plan_fingerprint;
@@ -226,6 +230,8 @@ struct JobTraceabilityResponse {
     std::string verdict = "insufficient_evidence";
     std::string verdict_reason;
     bool strict_one_to_one_proven = false;
+    ProductionBaselineContext production_baseline;
+    DxfInputQuality input_quality;
 };
 
 class DispensingWorkflowUseCase {
@@ -471,7 +477,7 @@ class DispensingWorkflowUseCase {
 public:
     void RefreshPathQualityAssessment(PlanRecord& plan_record) const;
 private:
-    void RefreshPlanImportDiagnostics(PlanRecord& plan_record) const;
+    void RefreshPlanInputQuality(PlanRecord& plan_record) const;
     std::optional<Siligen::Shared::Types::Error> BuildPreviewGateError(
         PlanRecord& plan_record,
         bool mark_failed,

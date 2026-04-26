@@ -235,8 +235,8 @@ Result<float32> MeasureSegmentLength(
             CurveFlatteningService flattening_service;
             auto flattened_result = flattening_service.Flatten(
                 segment,
-                request.spline_max_error_mm,
-                request.spline_max_step_mm);
+                request.curve_flatten_max_error_mm,
+                request.curve_flatten_max_step_mm);
             if (flattened_result.IsError()) {
                 return Result<float32>::Failure(flattened_result.GetError());
             }
@@ -746,8 +746,8 @@ Result<PlannedAuthoritySpan> FinalizeAuthoritySpanLayout(
         auto location_result = locator.Locate(
             span.segments,
             geometry_distance_mm,
-            request.spline_max_error_mm,
-            request.spline_max_step_mm);
+            request.curve_flatten_max_error_mm,
+            request.curve_flatten_max_step_mm);
         if (location_result.IsError()) {
             planned.outcome.classification = SpacingValidationClassification::Fail;
             planned.outcome.exception_reason.clear();

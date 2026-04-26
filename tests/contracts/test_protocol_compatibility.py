@@ -161,7 +161,8 @@ def test_dxf_preview_and_job_contract():
     assert "dxf.job.traceability" in operations
 
     artifact_create = operations["dxf.artifact.create"]
-    assert "formal_compare_gate" in artifact_create["resultSchema"]["required"]
+    assert "formal_compare_gate" not in artifact_create["resultSchema"]["required"]
+    assert "input_quality" in artifact_create["resultSchema"]["required"]
 
     preview = operations["dxf.preview.snapshot"]
     preview_params = preview["paramsSchema"]
@@ -178,6 +179,8 @@ def test_dxf_preview_and_job_contract():
     assert "motion_preview" in preview_result_properties
     assert "path_quality" in preview["resultSchema"]["required"]
     assert "path_quality" in preview_result_properties
+    assert "input_quality" in preview["resultSchema"]["required"]
+    assert "input_quality" in preview_result_properties
 
     preview_confirm = operations["dxf.preview.confirm"]
     assert {"plan_id", "snapshot_hash"}.issubset(set(preview_confirm["paramsSchema"]["required"]))
@@ -190,8 +193,7 @@ def test_dxf_preview_and_job_contract():
 
     plan_prepare = operations["dxf.plan.prepare"]
     assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
-    assert "import_result_classification" in plan_prepare["resultSchema"]["required"]
-    assert "import_production_ready" in plan_prepare["resultSchema"]["required"]
+    assert "input_quality" in plan_prepare["resultSchema"]["required"]
     assert "formal_compare_gate" in plan_prepare["resultSchema"]["required"]
     assert "prepared_filepath" in plan_prepare["resultSchema"]["required"]
     assert "execution_nominal_time_s" in plan_prepare["resultSchema"]["required"]
@@ -199,6 +201,10 @@ def test_dxf_preview_and_job_contract():
     assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
     assert "path_quality" in plan_prepare["resultSchema"]["required"]
     assert "approximate_splines" not in plan_prepare["paramsSchema"]["properties"]
+    assert "spline_max_step_mm" not in plan_prepare["paramsSchema"]["properties"]
+    assert "spline_max_error_mm" not in plan_prepare["paramsSchema"]["properties"]
+    assert "curve_flatten_max_step_mm" in plan_prepare["paramsSchema"]["properties"]
+    assert "curve_flatten_max_error_mm" in plan_prepare["paramsSchema"]["properties"]
 
     job_start = operations["dxf.job.start"]
     assert {"started", "job_id", "plan_id", "plan_fingerprint", "target_count"}.issubset(
@@ -207,7 +213,7 @@ def test_dxf_preview_and_job_contract():
     assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
-    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
+    assert {"input_quality", "prepared_filepath"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
     assert "formal_compare_gate" in job_start["resultSchema"]["required"]
@@ -226,7 +232,7 @@ def test_dxf_preview_and_job_contract():
     assert job_traceability["resultRef"].endswith("#/definitions/dxfJobTraceability")
     assert job_traceability["paramsSchema"]["required"] == ["job_id"]
     dxf_job_traceability = states["definitions"]["dxfJobTraceability"]
-    assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven"}.issubset(
+    assert {"job_id", "plan_id", "plan_fingerprint", "terminal_state", "expected_trace", "actual_trace", "mismatches", "verdict", "verdict_reason", "strict_one_to_one_proven", "production_baseline", "input_quality"}.issubset(
         set(dxf_job_traceability["required"])
     )
     assert set(dxf_job_traceability["properties"]["verdict"]["enum"]) == {
@@ -239,7 +245,8 @@ def test_dxf_preview_and_job_contract():
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
     preview_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json")
     start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
-    assert artifact_fixture["result"]["formal_compare_gate"] is None
+    assert "formal_compare_gate" not in artifact_fixture["result"]
+    assert artifact_fixture["result"]["input_quality"]["classification"] == "success"
     assert prepare_fixture["result"]["formal_compare_gate"] is None
     assert "estimated_time_s" not in prepare_fixture["result"]
     assert "execution_nominal_time_s" in prepare_fixture["result"]
@@ -254,7 +261,9 @@ def test_dxf_preview_and_job_contract():
         "blocking": False,
         "reason_codes": [],
     }
+    assert preview_fixture["result"]["input_quality"]["classification"] == "success"
     assert start_fixture["result"]["formal_compare_gate"] is None
+    assert start_fixture["result"]["input_quality"]["classification"] == "success"
     assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(set(start_fixture["result"].keys()))
 
 

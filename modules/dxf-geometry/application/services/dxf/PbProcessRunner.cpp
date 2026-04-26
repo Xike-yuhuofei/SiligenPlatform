@@ -4,9 +4,15 @@
 #include "shared/types/Error.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#if SILIGEN_ENABLE_PROTOBUF
+#include "dxf_primitives.pb.h"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -24,6 +30,7 @@ using Siligen::Shared::Types::Result;
 namespace {
 
 constexpr const char* kModuleName = "DxfPbPreparationService";
+constexpr std::uint32_t kCanonicalPathBundleSchemaVersion = 2U;
 
 std::string QuoteArg(const std::string& value) {
     if (value.find_first_of(" \t\"") == std::string::npos) {
@@ -178,6 +185,32 @@ Result<void> PbProcessRunner::ValidateOutput(const std::filesystem::path& pb_pat
         return Result<void>::Failure(
             Error(ErrorCode::FILE_FORMAT_INVALID, "PB output is empty: " + pb_path.string(), kModuleName));
     }
+
+#if SILIGEN_ENABLE_PROTOBUF
+    std::ifstream input(pb_path, std::ios::binary);
+    if (!input.good()) {
+        return Result<void>::Failure(
+            Error(ErrorCode::FILE_NOT_FOUND, "PB output not readable: " + pb_path.string(), kModuleName));
+    }
+
+    siligen::dxf::PathBundle bundle;
+    if (!bundle.ParseFromIstream(&input)) {
+        return Result<void>::Failure(
+            Error(ErrorCode::FILE_FORMAT_INVALID, "PB output parse failed: " + pb_path.string(), kModuleName));
+    }
+    if (bundle.header().schema_version() != kCanonicalPathBundleSchemaVersion) {
+        return Result<void>::Failure(
+            Error(
+                ErrorCode::FILE_FORMAT_INVALID,
+                "PB output schema_version unsupported: " + std::to_string(bundle.header().schema_version()) +
+                    " expected=" + std::to_string(kCanonicalPathBundleSchemaVersion),
+                kModuleName));
+    }
+    if (bundle.primitives_size() == 0) {
+        return Result<void>::Failure(
+            Error(ErrorCode::FILE_FORMAT_INVALID, "PB output has no primitives: " + pb_path.string(), kModuleName));
+    }
+#endif
 
     return Result<void>::Success();
 }

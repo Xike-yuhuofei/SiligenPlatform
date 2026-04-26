@@ -166,6 +166,9 @@ def build_preview_snapshot_success_result(
     preview_binding_layout_id: str | None = None,
     preview_binding_diagnostic_code: str | None = None,
     preview_binding_failure_reason: str | None = None,
+    path_quality_verdict: str | None = None,
+    path_quality_blocking: bool | None = None,
+    path_quality_reason_codes: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     result = load_preview_snapshot_success_result()
     binding_block = result["preview_binding"]
@@ -252,6 +255,15 @@ def build_preview_snapshot_success_result(
         result["generated_at"] = generated_at
     if dry_run is not None:
         result["dry_run"] = bool(dry_run)
+    path_quality = result.get("path_quality", {})
+    if isinstance(path_quality, dict):
+        path_quality["verdict"] = path_quality_verdict if path_quality_verdict is not None else path_quality.get("verdict", "pass")
+        path_quality["blocking"] = bool(path_quality_blocking) if path_quality_blocking is not None else bool(path_quality.get("blocking", False))
+        if path_quality_reason_codes is not None:
+            path_quality["reason_codes"] = [str(item) for item in path_quality_reason_codes]
+        else:
+            path_quality["reason_codes"] = list(path_quality.get("reason_codes", []))
+        result["path_quality"] = path_quality
 
     motion_preview_block["polyline"] = normalized_motion_preview
     motion_preview_block["point_count"] = len(normalized_motion_preview)

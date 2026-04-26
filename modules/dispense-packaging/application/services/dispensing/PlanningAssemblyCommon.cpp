@@ -246,8 +246,8 @@ AuthorityPreviewBuildInput BuildAuthorityPreviewBuildInput(const WorkflowAuthori
     authority_input.min_interval_ms = input.runtime_options.min_interval_ms;
     authority_input.sample_dt = input.runtime_options.sample_dt;
     authority_input.sample_ds = input.runtime_options.sample_ds;
-    authority_input.spline_max_step_mm = input.runtime_options.spline_max_step_mm;
-    authority_input.spline_max_error_mm = input.runtime_options.spline_max_error_mm;
+    authority_input.curve_flatten_max_step_mm = input.runtime_options.curve_flatten_max_step_mm;
+    authority_input.curve_flatten_max_error_mm = input.runtime_options.curve_flatten_max_error_mm;
     authority_input.dispensing_strategy = input.dispensing_strategy;
     authority_input.subsegment_count = input.subsegment_count;
     authority_input.dispense_only_cruise = input.dispense_only_cruise;
@@ -334,8 +334,8 @@ ExecutionAssemblyBuildInput BuildExecutionAssemblyBuildInput(const WorkflowExecu
     execution_input.max_jerk = input.max_jerk;
     execution_input.sample_dt = input.runtime_options.sample_dt;
     execution_input.sample_ds = input.runtime_options.sample_ds;
-    execution_input.spline_max_step_mm = input.runtime_options.spline_max_step_mm;
-    execution_input.spline_max_error_mm = input.runtime_options.spline_max_error_mm;
+    execution_input.curve_flatten_max_step_mm = input.runtime_options.curve_flatten_max_step_mm;
+    execution_input.curve_flatten_max_error_mm = input.runtime_options.curve_flatten_max_error_mm;
     execution_input.execution_nominal_time_s = input.execution_nominal_time_s;
     execution_input.use_interpolation_planner = input.use_interpolation_planner;
     execution_input.interpolation_algorithm = input.interpolation_algorithm;
@@ -540,8 +540,8 @@ float32 ResolveInterpolationStep(const PlanningArtifactsAssemblyInput& input) {
     if (input.sample_ds > kEpsilon) {
         return input.sample_ds;
     }
-    if (input.spline_max_step_mm > kEpsilon) {
-        return input.spline_max_step_mm;
+    if (input.curve_flatten_max_step_mm > kEpsilon) {
+        return input.curve_flatten_max_step_mm;
     }
     return 1.0f;
 }
@@ -563,7 +563,7 @@ std::vector<TrajectoryPoint> ConvertMotionTrajectoryToTrajectoryPoints(const Mot
 
 Result<std::vector<Point2D>> BuildInterpolationSeedPoints(
     const ProcessPath& path,
-    float32 spline_max_error_mm,
+    float32 curve_flatten_max_error_mm,
     float32 step_mm) {
     std::vector<Point2D> points;
     Siligen::Domain::Dispensing::DomainServices::CurveFlatteningService flattening_service;
@@ -576,7 +576,7 @@ Result<std::vector<Point2D>> BuildInterpolationSeedPoints(
         if (geometry.is_point) {
             AppendUniquePoint(points, geometry.line.start);
         } else {
-            auto flattened_result = flattening_service.Flatten(geometry, spline_max_error_mm, step_mm);
+            auto flattened_result = flattening_service.Flatten(geometry, curve_flatten_max_error_mm, step_mm);
             if (flattened_result.IsError()) {
                 return Result<std::vector<Point2D>>::Failure(flattened_result.GetError());
             }

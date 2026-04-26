@@ -32,6 +32,14 @@ function Get-RelativeRepoPath {
     }
 }
 
+function New-StringFromCodeUnits {
+    param(
+        [int[]]$CodeUnits
+    )
+
+    return [string]::Concat(($CodeUnits | ForEach-Object { [char]$_ }))
+}
+
 $repoRoot = Resolve-AbsolutePath -BasePath (Get-Location).Path -PathValue $WorkspaceRoot
 $resolvedReportDir = Resolve-AbsolutePath -BasePath $repoRoot -PathValue $ReportDir
 New-Item -ItemType Directory -Force -Path $resolvedReportDir | Out-Null
@@ -49,22 +57,26 @@ $requiredFiles = @(
     "docs/process-model/reviews/topology-feature-module-architecture-review-20260331-075200.md"
 )
 
+$evidenceIndexHeading = "## 8. " + (New-StringFromCodeUnits @(0x8BC1, 0x636E, 0x7D22, 0x5F15))
+$reviewAppendixHeading = "## " + (New-StringFromCodeUnits @(0x590D, 0x6838, 0x9644, 0x5F55))
+$numberedReviewAppendixHeading = "## 9. " + (New-StringFromCodeUnits @(0x590D, 0x6838, 0x9644, 0x5F55))
+
 $supplementExpectations = @(
     @{
         path = "docs/process-model/reviews/coordinate-alignment-module-architecture-review-20260331-074844.md"
-        patterns = @("## 8. 证据索引", "## 复核附录", "Get-FileHash")
+        patterns = @($evidenceIndexHeading, $reviewAppendixHeading, "Get-FileHash")
     },
     @{
         path = "docs/process-model/reviews/dispense-packaging-module-architecture-review-20260331-074840.md"
-        patterns = @("## 8. 证据索引", "## 复核附录", "Get-FileHash")
+        patterns = @($evidenceIndexHeading, $reviewAppendixHeading, "Get-FileHash")
     },
     @{
         path = "docs/process-model/reviews/topology-feature-module-architecture-review-20260331-075200.md"
-        patterns = @("## 8. 证据索引", "## 9. 复核附录", "Get-FileHash")
+        patterns = @($evidenceIndexHeading, $numberedReviewAppendixHeading, "Get-FileHash")
     },
     @{
         path = "docs/process-model/reviews/process-planning-module-architecture-review-20260331-075201.md"
-        patterns = @("## 8. 证据索引", "## 9. 复核附录", "git diff --no-index")
+        patterns = @($evidenceIndexHeading, $numberedReviewAppendixHeading, "git diff --no-index")
     }
 )
 
@@ -92,7 +104,7 @@ foreach ($expectation in $supplementExpectations) {
         continue
     }
 
-    $content = Get-Content -Raw -LiteralPath $fullPath
+    $content = Get-Content -Raw -Encoding UTF8 -LiteralPath $fullPath
     foreach ($pattern in $expectation.patterns) {
         if ($content -notmatch [regex]::Escape($pattern)) {
             $findings.Add([pscustomobject]@{

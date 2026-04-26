@@ -5,18 +5,17 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import dataclass, field
-import json
 import math
 from pathlib import Path
+import json
 import sys
 from typing import Any, Iterable, cast
 
 import ezdxf
 
-from engineering_data.contracts.dxf_validation_report import build_validation_report
 from engineering_data.proto import dxf_primitives_pb2 as pb
+from engineering_data.contracts.dxf_validation_report import build_validation_report
 
-MIN_BEZIER_SEGMENTS = 4
 STANDARD_DXF_VERSION = "AC1015"
 STANDARD_DXF_VERSION_LABEL = "R2000"
 MAX_INSERT_DEPTH = 8
@@ -34,19 +33,7 @@ READABLE_DXF_VERSIONS = {
 STANDARD_CORE_ENTITY_TYPES = {"LINE", "ARC", "CIRCLE", "LWPOLYLINE", "POLYLINE", "POINT"}
 STANDARD_HIGH_ORDER_ENTITY_TYPES = {"SPLINE", "ELLIPSE"}
 IGNORED_ENTITY_TYPES = {"TEXT", "MTEXT", "DIMENSION", "LEADER", "MLEADER"}
-REJECTED_ENTITY_TYPES = {
-    "XLINE",
-    "RAY",
-    "IMAGE",
-    "PDFUNDERLAY",
-    "HATCH",
-    "3DFACE",
-    "REGION",
-    "BODY",
-    "SURFACE",
-    "MESH",
-    "PROXY",
-}
+REJECTED_ENTITY_TYPES = {"XLINE", "RAY", "IMAGE", "PDFUNDERLAY", "3DFACE", "REGION", "BODY", "SURFACE", "MESH", "PROXY"}
 
 INSUNITS_TO_SCALE = {
     1: 25.4,
@@ -100,8 +87,39 @@ FATAL_IMPORT_ERROR_CODES = {
     "DXF_E_INVALID_SIGNATURE",
     "DXF_E_CORRUPTED_FILE",
     "DXF_E_UNSUPPORTED_VERSION",
+    "DXF_E_UNIT_REQUIRED_FOR_PRODUCTION",
     "DXF_E_UNIT_UNSUPPORTED",
+    "DXF_E_BLOCK_INSERT_NOT_EXPLODED",
+    "DXF_E_HATCH_NOT_SUPPORTED",
+    "DXF_E_SPLINE_NOT_SUPPORTED",
+    "DXF_E_ELLIPSE_NOT_SUPPORTED",
+    "DXF_E_3D_ENTITY_FOUND",
+    "DXF_E_UNSUPPORTED_ENTITY",
     "DXF_E_NO_VALID_ENTITY",
+}
+
+PATH_BUNDLE_SCHEMA_VERSION = 2
+
+IMPORT_RESULT_UNSPECIFIED = 0
+IMPORT_RESULT_SUCCESS = 1
+IMPORT_RESULT_SUCCESS_WITH_WARNINGS = 2
+IMPORT_RESULT_PREVIEW_ONLY = 3
+IMPORT_RESULT_FAILED = 4
+
+IMPORT_RESULT_NAMES = {
+    IMPORT_RESULT_UNSPECIFIED: "IMPORT_RESULT_UNSPECIFIED",
+    IMPORT_RESULT_SUCCESS: "IMPORT_RESULT_SUCCESS",
+    IMPORT_RESULT_SUCCESS_WITH_WARNINGS: "IMPORT_RESULT_SUCCESS_WITH_WARNINGS",
+    IMPORT_RESULT_PREVIEW_ONLY: "IMPORT_RESULT_PREVIEW_ONLY",
+    IMPORT_RESULT_FAILED: "IMPORT_RESULT_FAILED",
+}
+
+IMPORT_RESULT_CLASSIFICATIONS = {
+    IMPORT_RESULT_SUCCESS: "success",
+    IMPORT_RESULT_SUCCESS_WITH_WARNINGS: "success_with_warnings",
+    IMPORT_RESULT_PREVIEW_ONLY: "preview_only",
+    IMPORT_RESULT_FAILED: "failed",
+    IMPORT_RESULT_UNSPECIFIED: "unspecified",
 }
 
 
@@ -129,6 +147,23 @@ class ImportContext:
         if any(issue.code == code and issue.message == message for issue in self.errors):
             return
         self.errors.append(ImportIssue(code=code, message=message))
+
+
+@dataclass
+class InputQualitySnapshot:
+    classification: int = IMPORT_RESULT_UNSPECIFIED
+    preview_ready: bool = False
+    production_ready: bool = False
+    summary: str = ""
+    primary_code: str = ""
+    warning_codes: list[str] = field(default_factory=list)
+    error_codes: list[str] = field(default_factory=list)
+    warning_messages: list[str] = field(default_factory=list)
+    error_messages: list[str] = field(default_factory=list)
+    ignored_entity_types: list[str] = field(default_factory=list)
+    rejected_entity_types: list[str] = field(default_factory=list)
+    resolved_units: str = "mm"
+    resolved_unit_scale: float = 1.0
 
 
 def resolve_color(entity, doc) -> int:
@@ -445,8 +480,22 @@ def process_core_entity(entity, doc, entity_id, bundle, scale, opts, context: Im
     return False
 
 
+def process_high_order_entity(entity, doc, entity_id, bundle, scale, opts):
+    etype = entity.dxftype()
+
+    if etype == "SPLINE":
+        return False
+
+    if etype == "ELLIPSE":
+        return False
+
+    return False
+
+
 def process_entity(entity, doc, entity_id, bundle, scale, opts, context: ImportContext):
-    return process_core_entity(entity, doc, entity_id, bundle, scale, opts, context)
+    if process_core_entity(entity, doc, entity_id, bundle, scale, opts, context):
+        return True
+    return process_high_order_entity(entity, doc, entity_id, bundle, scale, opts)
 
 
 def classify_entity_type(entity) -> str:
@@ -468,8 +517,8 @@ def is_higher_than_standard(version: str) -> bool:
 def resolve_unit_scale(doc, normalize_units: bool, context: ImportContext) -> float | None:
     insunits = int(doc.header.get("$INSUNITS", 0) or 0)
     if insunits == 0:
-        context.resolved_units = "unspecified"
-        context.resolved_unit_scale = 0.0
+        context.resolved_units = "mm"
+        context.resolved_unit_scale = 1.0
         context.add_error("DXF_E_UNIT_REQUIRED_FOR_PRODUCTION", "DXF unit missing; production import requires explicit unit.")
         return None
 
@@ -487,8 +536,19 @@ def resolve_unit_scale(doc, normalize_units: bool, context: ImportContext) -> fl
 def expand_entities(entity, context: ImportContext, depth: int = 0):
     etype = entity.dxftype()
     if etype == "INSERT":
-        context.rejected_entity_types[etype] += 1
-        context.add_error("DXF_E_BLOCK_INSERT_NOT_EXPLODED", "DXF contains INSERT/BLOCK content; input governance rejects unexpanded blocks.")
+        context.add_error("DXF_E_BLOCK_INSERT_NOT_EXPLODED", "DXF contains INSERT/BLOCK references and must be exploded before import.")
+        return []
+
+    if etype == "HATCH":
+        context.add_error("DXF_E_HATCH_NOT_SUPPORTED", "DXF contains HATCH and must be removed or converted to controlled contours.")
+        return []
+
+    if etype == "SPLINE":
+        context.add_error("DXF_E_SPLINE_NOT_SUPPORTED", "DXF contains SPLINE and must be converted to controlled LINE/ARC/POLYLINE geometry.")
+        return []
+
+    if etype == "ELLIPSE":
+        context.add_error("DXF_E_ELLIPSE_NOT_SUPPORTED", "DXF contains ELLIPSE and must be converted to controlled LINE/ARC/POLYLINE geometry.")
         return []
 
     if etype in IGNORED_ENTITY_TYPES:
@@ -499,23 +559,8 @@ def expand_entities(entity, context: ImportContext, depth: int = 0):
 
     if etype in REJECTED_ENTITY_TYPES:
         context.rejected_entity_types[etype] += 1
-        if etype in {"3DFACE", "BODY", "SURFACE", "MESH"}:
-            specific_code = "DXF_E_3D_ENTITY_FOUND"
-        elif etype == "HATCH":
-            specific_code = "DXF_E_HATCH_NOT_SUPPORTED"
-        else:
-            specific_code = "DXF_E_UNSUPPORTED_ENTITY"
+        specific_code = "DXF_E_3D_ENTITY_FOUND" if etype in {"3DFACE", "BODY", "SURFACE", "MESH"} else "DXF_E_UNSUPPORTED_ENTITY"
         context.add_error(specific_code, f"Rejected DXF entity type: {etype}.")
-        return []
-
-    if etype == "SPLINE":
-        context.rejected_entity_types[etype] += 1
-        context.add_error("DXF_E_SPLINE_NOT_SUPPORTED", "SPLINE is not supported by DXF input governance v1.")
-        return []
-
-    if etype == "ELLIPSE":
-        context.rejected_entity_types[etype] += 1
-        context.add_error("DXF_E_ELLIPSE_NOT_SUPPORTED", "ELLIPSE is not supported by DXF input governance v1.")
         return []
 
     if classify_entity_type(entity) == "unsupported":
@@ -541,54 +586,55 @@ def build_bundle(doc, source_path, schema_version, tolerances, context: ImportCo
     return bundle
 
 
-def finalize_import_diagnostics(bundle: pb.PathBundle, context: ImportContext):
+def build_input_quality_snapshot(bundle: pb.PathBundle, context: ImportContext) -> InputQualitySnapshot:
     if not bundle.primitives and not any(issue.code == "DXF_E_NO_VALID_ENTITY" for issue in context.errors):
         context.add_error("DXF_E_NO_VALID_ENTITY", "No valid production geometry could be imported from the DXF.")
 
     warning_codes = [issue.code for issue in context.warnings]
     error_codes = [issue.code for issue in context.errors]
     preview_ready = bool(bundle.primitives)
+    has_fatal_error = any(code in FATAL_IMPORT_ERROR_CODES for code in error_codes)
 
     if error_codes:
-        classification = pb.IMPORT_RESULT_FAILED
+        classification = IMPORT_RESULT_PREVIEW_ONLY if preview_ready and not has_fatal_error else IMPORT_RESULT_FAILED
     elif warning_codes:
-        classification = pb.IMPORT_RESULT_SUCCESS_WITH_WARNINGS
+        classification = IMPORT_RESULT_SUCCESS_WITH_WARNINGS
     else:
-        classification = pb.IMPORT_RESULT_SUCCESS
+        classification = IMPORT_RESULT_SUCCESS
 
-    production_ready = classification in {pb.IMPORT_RESULT_SUCCESS, pb.IMPORT_RESULT_SUCCESS_WITH_WARNINGS}
+    production_ready = classification in {IMPORT_RESULT_SUCCESS, IMPORT_RESULT_SUCCESS_WITH_WARNINGS}
     primary_code = error_codes[0] if error_codes else (warning_codes[0] if warning_codes else "")
 
-    if classification == pb.IMPORT_RESULT_SUCCESS:
+    if classification == IMPORT_RESULT_SUCCESS:
         summary = "DXF import succeeded and is ready for production."
-    elif classification == pb.IMPORT_RESULT_SUCCESS_WITH_WARNINGS:
+    elif classification == IMPORT_RESULT_SUCCESS_WITH_WARNINGS:
         summary = context.warnings[0].message
-    elif classification == pb.IMPORT_RESULT_PREVIEW_ONLY:
+    elif classification == IMPORT_RESULT_PREVIEW_ONLY:
         summary = context.errors[0].message if context.errors else "DXF import is preview-only."
     else:
         summary = context.errors[0].message if context.errors else "DXF import failed."
 
-    diagnostics = bundle.import_diagnostics
-    diagnostics.classification = classification
-    diagnostics.preview_ready = preview_ready
-    diagnostics.production_ready = production_ready
-    diagnostics.summary = summary
-    diagnostics.primary_code = primary_code
-    diagnostics.warning_codes.extend(warning_codes)
-    diagnostics.error_codes.extend(error_codes)
-    diagnostics.warning_messages.extend(issue.message for issue in context.warnings)
-    diagnostics.error_messages.extend(issue.message for issue in context.errors)
-    diagnostics.ignored_entity_types.extend(sorted(context.ignored_entity_types))
-    diagnostics.rejected_entity_types.extend(sorted(context.rejected_entity_types))
-    diagnostics.resolved_units = context.resolved_units
-    diagnostics.resolved_unit_scale = float(context.resolved_unit_scale)
-    return diagnostics
+    return InputQualitySnapshot(
+        classification=classification,
+        preview_ready=preview_ready,
+        production_ready=production_ready,
+        summary=summary,
+        primary_code=primary_code,
+        warning_codes=warning_codes,
+        error_codes=error_codes,
+        warning_messages=[issue.message for issue in context.warnings],
+        error_messages=[issue.message for issue in context.errors],
+        ignored_entity_types=sorted(context.ignored_entity_types),
+        rejected_entity_types=sorted(context.rejected_entity_types),
+        resolved_units=context.resolved_units,
+        resolved_unit_scale=float(context.resolved_unit_scale),
+    )
 
 
-def emit_diagnostics_to_stderr(diagnostics: pb.ImportDiagnostics):
-    for code, message in zip(diagnostics.warning_codes, diagnostics.warning_messages):
+def emit_input_quality_to_stderr(input_quality: InputQualitySnapshot):
+    for code, message in zip(input_quality.warning_codes, input_quality.warning_messages):
         print(f"Warning[{code}]: {message}", file=sys.stderr)
-    for code, message in zip(diagnostics.error_codes, diagnostics.error_messages):
+    for code, message in zip(input_quality.error_codes, input_quality.error_messages):
         print(f"Error[{code}]: {message}", file=sys.stderr)
 
 
@@ -596,7 +642,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(description="DXF -> Protobuf (.pb) export")
     parser.add_argument("--input", required=True, help="Input DXF file path")
     parser.add_argument("--output", required=True, help="Output .pb file path")
-    parser.add_argument("--schema-version", type=int, default=1)
+    parser.add_argument("--schema-version", type=int, default=PATH_BUNDLE_SCHEMA_VERSION)
     parser.add_argument("--chordal", type=float, default=0.005)
     parser.add_argument("--max-seg", type=float, default=0.0)
     parser.add_argument("--snap", type=float, default=0.0)
@@ -606,36 +652,8 @@ def parse_args(argv):
     parser.add_argument("--snap-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--densify-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--min-seg-enabled", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--validation-report", help="Optional DXFValidationReport.v1 JSON output path")
+    parser.add_argument("--validation-report", default="", help="Output DXF validation report JSON path")
     return parser.parse_args(argv)
-
-
-def write_validation_report(path: str | None, source_path: Path, doc, context: ImportContext, *, dxf_version: str = "") -> None:
-    if not path:
-        return
-    modelspace_count = 0
-    layer_count = 0
-    if doc is not None:
-        try:
-            modelspace_count = len(list(doc.modelspace()))
-        except Exception:
-            modelspace_count = 0
-        try:
-            layer_count = len(list(doc.layers))
-        except Exception:
-            layer_count = 0
-    report = build_validation_report(
-        source_path=source_path,
-        dxf_version=dxf_version,
-        unit=context.resolved_units,
-        entity_count=modelspace_count,
-        layer_count=layer_count,
-        errors=[(issue.code, issue.message) for issue in context.errors],
-        warnings=[(issue.code, issue.message) for issue in context.warnings],
-    )
-    report_path = Path(path)
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def main(argv=None):
@@ -643,20 +661,21 @@ def main(argv=None):
     input_path = Path(args.input)
     output_path = Path(args.output)
     if not input_path.exists():
-        context = ImportContext()
-        context.add_error("DXF_E_FILE_NOT_FOUND", f"DXF not found: {input_path}")
-        write_validation_report(args.validation_report, input_path, None, context)
         print(f"Error[DXF_E_FILE_NOT_FOUND]: DXF not found: {input_path}", file=sys.stderr)
         return 1
 
     try:
         doc = ezdxf.readfile(str(input_path))
     except Exception as exc:
-        context = ImportContext()
-        context.add_error("DXF_E_FILE_OPEN_FAILED", f"failed to parse DXF: {input_path}: {exc}")
-        write_validation_report(args.validation_report, input_path, None, context)
         print(f"Error[DXF_E_FILE_OPEN_FAILED]: failed to parse DXF: {input_path}: {exc}", file=sys.stderr)
         return 2
+
+    if args.schema_version != PATH_BUNDLE_SCHEMA_VERSION:
+        print(
+            f"Error[DXF_E_UNSUPPORTED_SCHEMA_VERSION]: PathBundle schema_version must be {PATH_BUNDLE_SCHEMA_VERSION}.",
+            file=sys.stderr,
+        )
+        return 3
 
     context = ImportContext()
     dxf_version = str(getattr(doc, "dxfversion", "")).upper()
@@ -703,18 +722,45 @@ def main(argv=None):
             if process_entity(entity, doc, entity_id, bundle, unit_scale, opts, context):
                 entity_id += 1
 
-    diagnostics = finalize_import_diagnostics(bundle, context)
-    write_validation_report(args.validation_report, input_path, doc, context, dxf_version=dxf_version)
-    emit_diagnostics_to_stderr(diagnostics)
+    input_quality = build_input_quality_snapshot(bundle, context)
+    emit_input_quality_to_stderr(input_quality)
 
-    if diagnostics.classification == pb.IMPORT_RESULT_FAILED:
+    if args.validation_report:
+        report_path = Path(args.validation_report)
+        report_payload = build_validation_report(
+            source_path=input_path,
+            dxf_version=READABLE_DXF_VERSIONS.get(dxf_version, dxf_version or "UNKNOWN"),
+            unit=context.resolved_units,
+            entity_count=len(bundle.primitives),
+            layer_count=len({meta.layer for meta in bundle.metadata}),
+            errors=[(issue.code, issue.message) for issue in context.errors],
+            warnings=[(issue.code, issue.message) for issue in context.warnings],
+        )
+        report_payload["classification"] = IMPORT_RESULT_CLASSIFICATIONS.get(
+            input_quality.classification,
+            "unspecified",
+        )
+        report_payload["preview_ready"] = bool(input_quality.preview_ready)
+        report_payload["production_ready"] = bool(input_quality.production_ready)
+        report_payload["operator_summary"] = input_quality.summary
+        report_payload["primary_code"] = input_quality.primary_code
+        report_payload["warning_codes"] = list(input_quality.warning_codes)
+        report_payload["error_codes"] = list(input_quality.error_codes)
+        report_payload["resolved_units"] = input_quality.resolved_units or context.resolved_units
+        report_payload["resolved_unit_scale"] = float(
+            input_quality.resolved_unit_scale if input_quality.resolved_unit_scale > 0.0 else context.resolved_unit_scale
+        )
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    if input_quality.classification == IMPORT_RESULT_FAILED:
         return 4
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("wb") as f:
         f.write(bundle.SerializeToString())
 
-    classification_name = pb.ImportResultClassification.Name(diagnostics.classification)
+    classification_name = IMPORT_RESULT_NAMES.get(input_quality.classification, "IMPORT_RESULT_UNSPECIFIED")
     print(f"Exported {len(bundle.primitives)} primitives -> {output_path} [{classification_name}]")
     return 0
 

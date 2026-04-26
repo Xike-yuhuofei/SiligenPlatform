@@ -57,8 +57,8 @@ Point2D InterpolatePolyline(const FlattenedCurvePath& flattened, float32 distanc
 
 Result<ResolvedSegmentInfo> ResolveSegmentInfo(
     const Segment& segment,
-    float32 spline_max_error_mm,
-    float32 spline_max_step_mm,
+    float32 curve_flatten_max_error_mm,
+    float32 curve_flatten_max_step_mm,
     CurveFlatteningService& flattening_service) {
     ResolvedSegmentInfo info;
     if (segment.is_point) {
@@ -86,7 +86,7 @@ Result<ResolvedSegmentInfo> ResolveSegmentInfo(
         }
         case SegmentType::Spline: {
             auto flattened_result =
-                flattening_service.Flatten(segment, spline_max_error_mm, spline_max_step_mm);
+                flattening_service.Flatten(segment, curve_flatten_max_error_mm, curve_flatten_max_step_mm);
             if (flattened_result.IsError()) {
                 return Result<ResolvedSegmentInfo>::Failure(flattened_result.GetError());
             }
@@ -145,10 +145,14 @@ Result<Point2D> LocateResolvedSegment(
 Result<Point2D> PathArcLengthLocator::LocateOnSegment(
     const Segment& segment,
     float32 local_distance_mm,
-    float32 spline_max_error_mm,
-    float32 spline_max_step_mm) const {
+    float32 curve_flatten_max_error_mm,
+    float32 curve_flatten_max_step_mm) const {
     CurveFlatteningService flattening_service;
-    auto info_result = ResolveSegmentInfo(segment, spline_max_error_mm, spline_max_step_mm, flattening_service);
+    auto info_result = ResolveSegmentInfo(
+        segment,
+        curve_flatten_max_error_mm,
+        curve_flatten_max_step_mm,
+        flattening_service);
     if (info_result.IsError()) {
         return Result<Point2D>::Failure(info_result.GetError());
     }
@@ -158,16 +162,16 @@ Result<Point2D> PathArcLengthLocator::LocateOnSegment(
 Result<ArcLengthLocation> PathArcLengthLocator::Locate(
     const ProcessPath& path,
     float32 distance_mm,
-    float32 spline_max_error_mm,
-    float32 spline_max_step_mm) const {
-    return Locate(path.segments, distance_mm, spline_max_error_mm, spline_max_step_mm);
+    float32 curve_flatten_max_error_mm,
+    float32 curve_flatten_max_step_mm) const {
+    return Locate(path.segments, distance_mm, curve_flatten_max_error_mm, curve_flatten_max_step_mm);
 }
 
 Result<ArcLengthLocation> PathArcLengthLocator::Locate(
     const std::vector<ProcessSegment>& segments,
     float32 distance_mm,
-    float32 spline_max_error_mm,
-    float32 spline_max_step_mm) const {
+    float32 curve_flatten_max_error_mm,
+    float32 curve_flatten_max_step_mm) const {
     if (segments.empty()) {
         return Result<ArcLengthLocation>::Failure(
             Error(ErrorCode::INVALID_PARAMETER, "process path is empty", "PathArcLengthLocator"));
@@ -179,8 +183,8 @@ Result<ArcLengthLocation> PathArcLengthLocator::Locate(
     for (const auto& process_segment : segments) {
         auto info_result = ResolveSegmentInfo(
             process_segment.geometry,
-            spline_max_error_mm,
-            spline_max_step_mm,
+            curve_flatten_max_error_mm,
+            curve_flatten_max_step_mm,
             flattening_service);
         if (info_result.IsError()) {
             return Result<ArcLengthLocation>::Failure(info_result.GetError());

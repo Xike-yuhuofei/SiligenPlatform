@@ -557,8 +557,8 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     ProcessPathBuildRequest process_path_request;
     process_path_request.primitives = std::move(primitives);
     process_path_request.metadata = std::move(metadata);
-    process_path_request.normalization.spline_max_step_mm = request.spline_max_step_mm;
-    process_path_request.normalization.spline_max_error_mm = request.spline_max_error_mm;
+    process_path_request.normalization.curve_flatten_max_step_mm = request.curve_flatten_max_step_mm;
+    process_path_request.normalization.curve_flatten_max_error_mm = request.curve_flatten_max_error_mm;
     if (request.continuity_tolerance_mm > kEpsilon) {
         process_path_request.normalization.continuity_tolerance = request.continuity_tolerance_mm;
     }
@@ -653,8 +653,8 @@ Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewRequest Buil
     workflow_input.runtime_options.min_interval_ms = runtime_params.min_interval_ms;
     workflow_input.runtime_options.sample_dt = runtime_params.sample_dt;
     workflow_input.runtime_options.sample_ds = runtime_params.sample_ds;
-    workflow_input.runtime_options.spline_max_step_mm = request.spline_max_step_mm;
-    workflow_input.runtime_options.spline_max_error_mm = request.spline_max_error_mm;
+    workflow_input.runtime_options.curve_flatten_max_step_mm = request.curve_flatten_max_step_mm;
+    workflow_input.runtime_options.curve_flatten_max_error_mm = request.curve_flatten_max_error_mm;
     workflow_input.runtime_options.compensation_profile = runtime_params.compensation_profile;
     workflow_input.spacing_tol_ratio = request.spacing_tol_ratio;
     workflow_input.spacing_min_mm = request.spacing_min_mm;
@@ -699,8 +699,8 @@ Siligen::Application::Services::Dispensing::WorkflowExecutionAssemblyRequest Bui
     workflow_input.runtime_options.min_interval_ms = runtime_params.min_interval_ms;
     workflow_input.runtime_options.sample_dt = runtime_params.sample_dt;
     workflow_input.runtime_options.sample_ds = runtime_params.sample_ds;
-    workflow_input.runtime_options.spline_max_step_mm = request.spline_max_step_mm;
-    workflow_input.runtime_options.spline_max_error_mm = request.spline_max_error_mm;
+    workflow_input.runtime_options.curve_flatten_max_step_mm = request.curve_flatten_max_step_mm;
+    workflow_input.runtime_options.curve_flatten_max_error_mm = request.curve_flatten_max_error_mm;
     workflow_input.runtime_options.compensation_profile = runtime_params.compensation_profile;
     workflow_input.max_jerk = request.trajectory_config.max_jerk;
     workflow_input.use_interpolation_planner = request.use_interpolation_planner;
@@ -901,8 +901,8 @@ std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& reque
         << request.start_x << '|'
         << request.start_y << '|'
         << request.two_opt_iterations << '|'
-        << request.spline_max_step_mm << '|'
-        << request.spline_max_error_mm << '|'
+        << request.curve_flatten_max_step_mm << '|'
+        << request.curve_flatten_max_error_mm << '|'
         << request.continuity_tolerance_mm << '|'
         << request.curve_chain_angle_deg << '|'
         << request.curve_chain_max_segment_mm << '|'

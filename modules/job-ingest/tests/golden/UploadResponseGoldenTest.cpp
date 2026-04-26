@@ -54,11 +54,11 @@ std::string SerializeSummary(const UploadResponse& response, const std::filesyst
     out << "generated_filename=" << NormalizeDynamicFilename(response.generated_filename) << "\n";
     out << "stored_filename=" << NormalizeDynamicFilename(response.filepath) << "\n";
     out << "prepared_filename=" << NormalizeDynamicFilename(response.prepared_filepath) << "\n";
-    out << "import_result_classification=" << response.import_diagnostics.result_classification << "\n";
-    out << "import_preview_ready=" << response.import_diagnostics.preview_ready << "\n";
-    out << "import_production_ready=" << response.import_diagnostics.production_ready << "\n";
-    out << "import_primary_code=" << response.import_diagnostics.primary_code << "\n";
-    out << "import_summary=" << response.import_diagnostics.summary << "\n";
+    out << "input_quality_classification=" << response.input_quality.classification << "\n";
+    out << "input_quality_preview_ready=" << response.input_quality.preview_ready << "\n";
+    out << "input_quality_production_ready=" << response.input_quality.production_ready << "\n";
+    out << "input_quality_primary_code=" << response.input_quality.primary_code << "\n";
+    out << "input_quality_summary=" << response.input_quality.summary << "\n";
     out << "pb_filename=" << NormalizeDynamicFilename(pb_path.string()) << "\n";
     out << "pb_size=" << std::filesystem::file_size(pb_path) << "\n";
     out << "pb_contents=" << ReadTextFile(pb_path) << "\n";
