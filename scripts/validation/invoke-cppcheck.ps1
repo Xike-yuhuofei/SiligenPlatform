@@ -9,6 +9,69 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "tooling-common.ps1")
 
+function ConvertTo-ArgumentLine {
+    param([string[]]$Arguments)
+
+    $quoted = @()
+    foreach ($arg in @($Arguments)) {
+        if ($null -eq $arg) {
+            continue
+        }
+
+        $text = [string]$arg
+        if ($text.Length -eq 0) {
+            $quoted += '""'
+            continue
+        }
+
+        if ($text -notmatch '[\s"]') {
+            $quoted += $text
+            continue
+        }
+
+        $escaped = $text -replace '\\(?=("+)$)', '\\' -replace '"', '\"'
+        $quoted += '"' + $escaped + '"'
+    }
+
+    return ($quoted -join " ")
+}
+
+function Invoke-ExternalCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FileName,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+        [Parameter(Mandatory = $true)]
+        [string]$WorkingDirectory
+    )
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo.FileName = $FileName
+    $process.StartInfo.Arguments = ConvertTo-ArgumentLine -Arguments $Arguments
+    $process.StartInfo.WorkingDirectory = $WorkingDirectory
+    $process.StartInfo.UseShellExecute = $false
+    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardError = $true
+    $process.StartInfo.CreateNoWindow = $true
+
+    try {
+        [void]$process.Start()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            StandardOutput = $stdoutTask.Result
+            StandardError = $stderrTask.Result
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $resolvedReportDir = Ensure-WorkspaceDirectory -Path (Resolve-WorkspaceReportPath -WorkspaceRoot $workspaceRoot -ReportPath $ReportDir)
 $xmlReportPath = Join-Path $resolvedReportDir "cppcheck.xml"
@@ -55,9 +118,13 @@ else {
 }
 
 Write-Output "cppcheck: $cppcheckCommand $($arguments -join ' ')"
-$stderrLines = & $cppcheckCommand @arguments 2>&1
-$exitCode = $LASTEXITCODE
-Set-Content -LiteralPath $xmlReportPath -Value (($stderrLines | Out-String).Trim()) -Encoding UTF8
+$commandResult = Invoke-ExternalCommand -FileName $cppcheckCommand -Arguments $arguments -WorkingDirectory $workspaceRoot
+$exitCode = $commandResult.ExitCode
+$xmlContent = [string]$commandResult.StandardError
+if ([string]::IsNullOrWhiteSpace($xmlContent)) {
+    $xmlContent = [string]$commandResult.StandardOutput
+}
+Set-Content -LiteralPath $xmlReportPath -Value $xmlContent.Trim() -Encoding UTF8
 
 $status = if ($exitCode -eq 0) { "passed" } else { "reported" }
 $lines = @(
