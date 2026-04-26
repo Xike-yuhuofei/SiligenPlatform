@@ -139,6 +139,8 @@ public:
         runtime_request.plan_fingerprint = request.plan_fingerprint;
         runtime_request.target_count = request.target_count;
         runtime_request.cycle_advance_mode = request.cycle_advance_mode;
+        runtime_request.production_baseline = request.production_baseline;
+        runtime_request.input_quality = request.input_quality;
         runtime_request.execution_request.execution_package = request.execution_request.execution_package;
         runtime_request.execution_request.profile_compare_schedule = request.execution_request.profile_compare_schedule;
         runtime_request.execution_request.expected_trace = request.execution_request.expected_trace;
@@ -450,8 +452,11 @@ class ScopedTempPbFile {
     ScopedTempPbFile() {
         path_ = std::filesystem::temp_directory_path() /
                 ("siligen-dispensing-" + std::to_string(std::rand()) + ".pb");
-        std::ofstream output(path_, std::ios::binary);
-        output << "pb";
+        const auto fixture_path = ResolveCanonicalFixturePath();
+        std::filesystem::copy_file(
+            fixture_path,
+            path_,
+            std::filesystem::copy_options::overwrite_existing);
     }
 
     ~ScopedTempPbFile() {
@@ -462,6 +467,19 @@ class ScopedTempPbFile {
     const std::string string() const { return path_.string(); }
 
    private:
+    static std::filesystem::path ResolveCanonicalFixturePath() {
+        auto cursor = std::filesystem::path(__FILE__).parent_path();
+        while (!cursor.empty()) {
+            const auto candidate =
+                cursor / "shared" / "contracts" / "engineering" / "fixtures" / "cases" / "rect_diag" / "rect_diag.pb";
+            if (std::filesystem::exists(candidate)) {
+                return candidate;
+            }
+            cursor = cursor.parent_path();
+        }
+        throw std::runtime_error("canonical rect_diag PathBundle fixture not found");
+    }
+
     std::filesystem::path path_;
 };
 
@@ -3968,6 +3986,9 @@ TEST(DispensingWorkflowUseCaseTest, StartJobAllowsProfileComparePlanRequiringMul
 
     auto& plan_record = use_case.plans_.at("plan-axis-switch-start");
     ConfigureAxisSwitchProfileComparePlan(plan_record);
+    plan_record.response.production_baseline.baseline_id = "baseline-axis-switch";
+    plan_record.response.production_baseline.baseline_fingerprint = "baseline-fp-axis-switch";
+    plan_record.response.input_quality.report_id = "input-quality-axis-switch";
     motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
     motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
     homing_port->homed[LogicalAxisId::X] = true;
@@ -4011,6 +4032,11 @@ TEST(DispensingWorkflowUseCaseTest, StartJobAllowsProfileComparePlanRequiringMul
     ASSERT_TRUE(wait_for_traceability);
     EXPECT_EQ(traceability_response.verdict, "passed");
     EXPECT_TRUE(traceability_response.strict_one_to_one_proven);
+    EXPECT_EQ(traceability_response.production_baseline.baseline_id, "baseline-axis-switch");
+    EXPECT_EQ(traceability_response.production_baseline.baseline_fingerprint, "baseline-fp-axis-switch");
+    EXPECT_EQ(traceability_response.input_quality.report_id, "input-quality-axis-switch");
+    EXPECT_EQ(traceability_response.input_quality.classification, "success");
+    EXPECT_TRUE(traceability_response.input_quality.production_ready);
     EXPECT_EQ(traceability_response.expected_trace.size(), 3U);
     EXPECT_EQ(traceability_response.actual_trace.size(), 3U);
     EXPECT_TRUE(traceability_response.mismatches.empty());

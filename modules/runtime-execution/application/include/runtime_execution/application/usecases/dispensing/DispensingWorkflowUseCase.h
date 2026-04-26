@@ -120,6 +120,7 @@ struct PreparePlanResponse {
     std::string preview_failure_reason;
     std::string preview_diagnostic_code;
     Siligen::Shared::Types::PathQualityAssessment path_quality;
+    Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
     std::string generated_at;
     ProductionBaselineContext production_baseline;
     PerformanceProfile performance_profile;

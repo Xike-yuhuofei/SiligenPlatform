@@ -289,6 +289,8 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert '{"execution_nominal_time_s", plan.execution_nominal_time_s}' in dispatcher_source
     assert '{"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)}' in dispatcher_source
     assert '{"production_baseline", BuildProductionBaselineJson(' in dispatcher_source
+    assert "dxf_cache_.formal_compare_gate = plan.formal_compare_gate;" in dispatcher_source
+    assert 'BuildFormalCompareGateJson(plan.formal_compare_gate)' in dispatcher_source
     assert '{"execution_budget_s", start_response.execution_budget_s}' in dispatcher_source
     assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
     assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
@@ -339,6 +341,12 @@ def test_dxf_job_traceability_contract_is_wired():
     assert 'RegisterCommand("dxf.job.traceability"' in dispatcher_source
     assert 'std::string TcpCommandDispatcher::HandleDxfJobTraceability' in dispatcher_source
     assert "GetDxfJobTraceability(job_id)" in dispatcher_source
+    assert "response.production_baseline.baseline_id = runtime_traceability.production_baseline.baseline_id" in (
+        TCP_DISPENSING_FACADE_CPP.read_text(encoding="utf-8")
+    )
+    assert "response.input_quality = runtime_traceability.input_quality;" in TCP_DISPENSING_FACADE_CPP.read_text(
+        encoding="utf-8"
+    )
     assert 'def dxf_get_job_traceability' in protocol_source
     assert 'send_request("dxf.job.traceability", {"job_id": job_id})' in protocol_source
     dxf_job_traceability = states["definitions"]["dxfJobTraceability"]

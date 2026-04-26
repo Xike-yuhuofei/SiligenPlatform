@@ -2227,6 +2227,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         dxf_cache_.input_quality_error_codes = plan.input_quality.error_codes;
         dxf_cache_.input_quality_resolved_units = plan.input_quality.resolved_units;
         dxf_cache_.input_quality_resolved_unit_scale = plan.input_quality.resolved_unit_scale;
+        dxf_cache_.formal_compare_gate = plan.formal_compare_gate;
         active_dxf_job_id_.clear();
     }
 
@@ -2263,7 +2264,7 @@ std::string TcpCommandDispatcher::HandleDxfPlanPrepare(const std::string& id, co
         {"performance_profile", performance_profile},
     };
     result["prepared_filepath"] = plan.prepared_filepath;
-    result["formal_compare_gate"] = BuildFormalCompareGateJson(dxf_cache_.formal_compare_gate);
+    result["formal_compare_gate"] = BuildFormalCompareGateJson(plan.formal_compare_gate);
     result["input_quality"] = BuildInputQualityJson(plan.input_quality);
     return GatewayJsonProtocol::MakeSuccessResponse(id, result);
 }

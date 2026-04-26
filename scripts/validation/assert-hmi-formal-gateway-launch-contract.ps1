@@ -75,8 +75,8 @@ $resolvedCanonicalBuildRoot = [System.IO.Path]::GetFullPath((Join-Path $resolved
 if (-not (Test-Path $resolvedContractPath)) {
     throw (
         "HMI formal gateway launch contract missing: $resolvedContractPath. " +
-        "验证/CI/release 入口必须提供 apps/hmi-app/config/gateway-launch.json；" +
-        "开发态临时契约仅允许通过 apps/hmi-app/run.ps1 生成。"
+        "Validation, CI, and release entrypoints must provide apps/hmi-app/config/gateway-launch.json. " +
+        "Development-only temporary contracts may only be generated through apps/hmi-app/run.ps1."
     )
 }
 

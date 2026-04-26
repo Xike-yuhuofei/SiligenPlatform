@@ -20,6 +20,8 @@ using Siligen::Domain::Dispensing::ValueObjects::JobExecutionMode;
 using Siligen::Domain::Dispensing::ValueObjects::ProcessOutputPolicy;
 using Siligen::Domain::Machine::ValueObjects::MachineMode;
 using Siligen::Application::UseCases::Dispensing::JobCycleAdvanceMode;
+using Siligen::Application::UseCases::Dispensing::RuntimeProductionBaselineProvenance;
+using Siligen::Application::UseCases::Dispensing::DxfInputQuality;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::float32;
@@ -162,6 +164,8 @@ struct WorkflowRuntimeStartJobRequest {
     std::string plan_fingerprint;
     uint32 target_count = 1;
     JobCycleAdvanceMode cycle_advance_mode = JobCycleAdvanceMode::WAIT_FOR_CONTINUE;
+    RuntimeProductionBaselineProvenance production_baseline;
+    DxfInputQuality input_quality;
 };
 
 class IWorkflowExecutionPort {

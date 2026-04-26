@@ -102,6 +102,8 @@ struct JobExecutionContext {
     std::string traceability_verdict = "insufficient_evidence";
     std::string traceability_verdict_reason;
     bool strict_one_to_one_proven = false;
+    RuntimeProductionBaselineProvenance production_baseline;
+    DxfInputQuality input_quality;
     std::chrono::steady_clock::time_point start_time{};
     std::chrono::steady_clock::time_point end_time{};
     mutable std::mutex mutex_;

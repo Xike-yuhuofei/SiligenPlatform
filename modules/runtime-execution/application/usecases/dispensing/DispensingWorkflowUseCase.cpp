@@ -205,6 +205,7 @@ void DispensingWorkflowUseCase::RefreshResponseExecutionContract(PlanRecord& pla
     if (!execution_package) {
         plan_record.response.execution_nominal_time_s = 0.0f;
         plan_record.response.execution_plan_summary = {};
+        plan_record.response.formal_compare_gate = {};
         return;
     }
 
@@ -212,6 +213,7 @@ void DispensingWorkflowUseCase::RefreshResponseExecutionContract(PlanRecord& pla
         Siligen::Domain::Dispensing::Contracts::ResolveExecutionNominalTimeS(*execution_package);
     plan_record.response.execution_plan_summary =
         Siligen::Domain::Dispensing::Contracts::BuildExecutionPlanSummary(*execution_package);
+    plan_record.response.formal_compare_gate = plan_record.execution_assembly.formal_compare_gate;
 }
 
 DispensingWorkflowUseCase::DispensingWorkflowUseCase(
@@ -628,6 +630,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     }
     auto execution_launch = execution_launch_result.Value();
     StartJobResponse::ProductionBaselineContext production_baseline;
+    DxfInputQuality input_quality;
 
     {
         std::lock_guard<std::mutex> lock(plans_mutex_);
@@ -642,6 +645,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         }
         execution_launch = it->second.execution_launch;
         production_baseline = it->second.response.production_baseline;
+        input_quality = it->second.response.input_quality;
     }
 
     Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest runtime_request;
@@ -650,6 +654,9 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     runtime_request.plan_fingerprint = request.plan_fingerprint;
     runtime_request.target_count = request.target_count;
     runtime_request.cycle_advance_mode = request.cycle_advance_mode;
+    runtime_request.production_baseline.baseline_id = production_baseline.baseline_id;
+    runtime_request.production_baseline.baseline_fingerprint = production_baseline.baseline_fingerprint;
+    runtime_request.input_quality = input_quality;
     auto execution_validation = runtime_request.execution_request.Validate();
     if (execution_validation.IsError()) {
         return Result<StartJobResponse>::Failure(execution_validation.GetError());
@@ -687,13 +694,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         response.execution_budget_s = response.execution_budget_breakdown.total_budget_s;
     }
     response.production_baseline = production_baseline;
-    {
-        std::lock_guard<std::mutex> lock(plans_mutex_);
-        auto it = plans_.find(request.plan_id);
-        if (it != plans_.end() && it->second.latest) {
-            response.input_quality = it->second.response.input_quality;
-        }
-    }
+    response.input_quality = input_quality;
     response.performance_profile.execution_cache_hit = execution_resolution.cache_hit;
     response.performance_profile.execution_joined_inflight = execution_resolution.joined_inflight;
     response.performance_profile.execution_wait_ms = execution_resolution.wait_ms;
