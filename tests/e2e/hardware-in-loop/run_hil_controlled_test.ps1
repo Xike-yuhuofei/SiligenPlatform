@@ -15,7 +15,7 @@ param(
     [switch]$IncludeHilCaseMatrix = $true,
     [switch]$ReuseExistingGateway,
     [string]$OfflinePrereqReport = "",
-    [bool]$PublishLatestOnPass = $false,
+    [string]$PublishLatestOnPass = "false",
     [string]$PublishLatestReportDir = "tests\\reports\\hil-controlled-test",
     [string]$PythonExe = "python",
     [string]$Executor = "",
@@ -88,6 +88,24 @@ function Copy-PathIfPresent {
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
+function Convert-StrictBooleanArgument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArgumentName,
+        [Parameter(Mandatory = $true)]
+        [string]$ArgumentValue
+    )
+
+    $trimmedValue = $ArgumentValue.Trim().TrimStart('$')
+    if ($trimmedValue -ieq "true") {
+        return $true
+    }
+    if ($trimmedValue -ieq "false") {
+        return $false
+    }
+    throw "$ArgumentName 必须显式为 true 或 false；当前值为 '$ArgumentValue'。"
+}
+
 $workspaceRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 $buildScript = Join-Path $workspaceRoot "build.ps1"
 $testScript = Join-Path $workspaceRoot "test.ps1"
@@ -140,6 +158,7 @@ $gateSummaryJsonPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary
 $gateSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-gate-summary.md"
 $releaseSummaryMdPath = Join-Path $resolvedReportDir "hil-controlled-release-summary.md"
 $resolvedOfflinePrereqReport = if ([string]::IsNullOrWhiteSpace($OfflinePrereqReport)) { "" } else { Resolve-AbsolutePath -WorkspaceRoot $workspaceRoot -PathValue $OfflinePrereqReport }
+$publishLatestOnPassEnabled = Convert-StrictBooleanArgument -ArgumentName "PublishLatestOnPass" -ArgumentValue $PublishLatestOnPass
 
 New-Item -ItemType Directory -Path $resolvedReportDir -Force | Out-Null
 
@@ -157,7 +176,7 @@ Write-Output "  allow_skip_on_missing_hardware=$([bool]$AllowSkipOnMissingHardwa
 Write-Output "  include_hil_case_matrix=$([bool]$IncludeHilCaseMatrix)"
 Write-Output "  reuse_existing_gateway=$([bool]$ReuseExistingGateway)"
 Write-Output "  offline_prereq_report=$resolvedOfflinePrereqReport"
-Write-Output "  publish_latest_on_pass=$PublishLatestOnPass"
+Write-Output "  publish_latest_on_pass=$publishLatestOnPassEnabled"
 Write-Output "  publish_latest_report_dir=$resolvedPublishLatestReportDir"
 Write-Output "  executor=$Executor"
 Write-Output "  operator_override_reason=$OperatorOverrideReason"
@@ -166,7 +185,7 @@ if ($HilDurationSeconds -ne $quickGateDurationSeconds) {
     throw "formal HIL gate 已禁用；HilDurationSeconds 只能为 $quickGateDurationSeconds 秒。"
 }
 
-if ($PublishLatestOnPass) {
+if ($publishLatestOnPassEnabled) {
     throw "formal latest publish 已禁用；PublishLatestOnPass 必须为 false。"
 }
 
@@ -370,7 +389,7 @@ if ($hardwareSmokeExitCode -ne 0) {
     exit $hardwareSmokeExitCode
 }
 
-if (-not $PublishLatestOnPass) {
+if (-not $publishLatestOnPassEnabled) {
     Write-Output "skip publishing latest reports: PublishLatestOnPass=false"
     exit 0
 }

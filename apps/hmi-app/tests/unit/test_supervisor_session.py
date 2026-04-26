@@ -1,7 +1,6 @@
 import sys
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -10,7 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from hmi_client.client.backend_manager import BackendStepResult
 from hmi_client.client.launch_supervision_contract import RuntimeIdentity, SessionSnapshot
 from hmi_client.client.launch_supervision_session import SupervisorPolicy, SupervisorSession
-from hmi_client.client.protocol import RuntimeIdentityStatus, StatusQueryResult
+from hmi_client.client.protocol import MachineStatus, RuntimeIdentityStatus, StatusQueryResult
 
 
 EXPECTED_RUNTIME_IDENTITY = RuntimeIdentity(
@@ -78,7 +77,7 @@ class _FakeRuntimeProbe:
     def __init__(self, status_result: StatusQueryResult | None = None) -> None:
         self.status_result = status_result or StatusQueryResult(
             ok=True,
-            status=SimpleNamespace(
+            status=MachineStatus(
                 runtime_identity=RuntimeIdentityStatus(
                     executable_path=EXPECTED_RUNTIME_IDENTITY.executable_path,
                     working_directory=EXPECTED_RUNTIME_IDENTITY.working_directory,
