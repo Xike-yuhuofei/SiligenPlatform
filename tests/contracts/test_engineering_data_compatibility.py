@@ -211,12 +211,16 @@ class EngineeringDataCompatibilityTest(unittest.TestCase):
             Path(__file__),
         }
         completed = subprocess.run(
-            ["git", "ls-files"],
-            cwd=WORKSPACE_ROOT,
-            check=True,
+            ["git", "-c", f"safe.directory={WORKSPACE_ROOT}", "-C", str(WORKSPACE_ROOT), "ls-files"],
+            check=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
+        )
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"git ls-files failed\nstdout={completed.stdout}\nstderr={completed.stderr}",
         )
         searchable_suffixes = {".cpp", ".h", ".hpp", ".py", ".json", ".txt", ".ini", ".md"}
         violations: list[str] = []

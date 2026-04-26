@@ -138,6 +138,8 @@ class LaunchSupervisionFlow:
                 recoverable=True,
                 last_error_message="Offline mode active: startup sequence skipped.",
                 updated_at=snapshot_timestamp(),
+                runtime_contract_verified=False,
+                runtime_identity=None,
             )
             return self._emit_snapshot(snapshot, snapshot_callback)
 

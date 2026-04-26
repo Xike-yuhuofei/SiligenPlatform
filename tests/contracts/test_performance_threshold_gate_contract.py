@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,10 @@ from collect_dxf_preview_profiles import (
     summarize_control_cycle_records,
     summarize_long_run_records,
 )
+
+
+def _canonical_path_text(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(os.path.realpath(str(path))))
 
 
 def _payload() -> dict[str, object]:
@@ -231,7 +236,7 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
                 control_apps_build_root=control_apps_build_root,
             )
 
-        self.assertEqual(actual_path, expected_path)
+        self.assertEqual(_canonical_path_text(actual_path), _canonical_path_text(expected_path))
 
     def test_default_gateway_executable_does_not_fallback_to_hmi_home_fix(self) -> None:
         with tempfile.TemporaryDirectory() as workspace_dir:
@@ -246,8 +251,8 @@ class PerformanceThresholdGateContractTest(unittest.TestCase):
             )
 
         self.assertEqual(
-            actual_path,
-            workspace_root / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe",
+            _canonical_path_text(actual_path),
+            _canonical_path_text(workspace_root / "build" / "ca" / "bin" / "Debug" / "siligen_runtime_gateway.exe"),
         )
 
     def test_missing_threshold_config_fails_nightly_gate(self) -> None:

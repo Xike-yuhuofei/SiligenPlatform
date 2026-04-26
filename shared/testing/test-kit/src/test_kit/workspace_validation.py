@@ -896,6 +896,8 @@ def build_cases(
                         "-ExerciseRuntimeActions",
                         "-RuntimeActionProfile",
                         "home_move",
+                        "-DxfBrowsePath",
+                        str(WORKSPACE_ROOT / "samples" / "dxf" / "rect_diag.dxf"),
                     ),
                     cwd=WORKSPACE_ROOT,
                 ),

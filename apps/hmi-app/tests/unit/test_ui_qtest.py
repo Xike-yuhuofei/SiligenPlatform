@@ -41,20 +41,21 @@ def _operator_context(**overrides: object) -> dict[str, object]:
 
 
 def _make_export_runner(context: dict[str, object]) -> GuiContractRunner:
-    runner = cast(Any, object.__new__(GuiContractRunner))
-    runner.failed = False
-    runner.timed_out = False
-    runner.timeout_ms = 1000
-    runner.window = SimpleNamespace(
+    runner = object.__new__(GuiContractRunner)
+    runner_fake = cast(Any, runner)
+    runner_fake.failed = False
+    runner_fake.timed_out = False
+    runner_fake.timeout_ms = 1000
+    runner_fake.window = SimpleNamespace(
         build_operator_context_snapshot=lambda: dict(context),
         _current_plan_fingerprint="fp-1",
         _preview_gate=SimpleNamespace(last_error_message="", state="ready"),
     )
-    runner._switch_to_production_tab = lambda: None
-    runner._click_button = lambda testid: None
-    runner._wait_for = lambda *_args, **_kwargs: True
-    runner._status_message = lambda: ""
-    runner._capture_screenshot = lambda *_args, **_kwargs: None
+    runner_fake._switch_to_production_tab = lambda: None
+    runner_fake._click_button = lambda _testid: None
+    runner_fake._wait_for = lambda *_args, **_kwargs: True
+    runner_fake._status_message = lambda: ""
+    runner_fake._capture_screenshot = lambda *_args, **_kwargs: None
     return cast(GuiContractRunner, runner)
 
 
@@ -210,20 +211,20 @@ class _ExclusiveWindowRunner(GuiContractRunner):
             preview_state_resync_pending=bool(context.get("preview_resync_pending", False)),
             preview_refresh_inflight=bool(context.get("preview_refresh_inflight", False)),
         )
-        window = cast(Any, self.window)
-        window._preview_session = SimpleNamespace(state=preview_state)
-        window._target_count = int(cast(Any, context.get("target_count", 0) or 0))
+        window_fake = cast(Any, self.window)
+        window_fake._preview_session = SimpleNamespace(state=preview_state)
+        window_fake._target_count = int(cast(Any, context.get("target_count", 0)) or 0)
         completed_count = str(context.get("completed_count", "0/0")).replace(" ", "").split("/")[0]
-        window._completed_count = int(completed_count or 0)
-        window._current_job_id = str(context.get("job_id", "") or "")
-        window._global_progress = _ValueBox(int(cast(Any, context.get("global_progress_percent", 0) or 0)))
-        window._operation_status = _TextBox(str(context.get("current_operation", "") or ""))
+        window_fake._completed_count = int(completed_count or 0)
+        window_fake._current_job_id = str(context.get("job_id", "") or "")
+        window_fake._global_progress = _ValueBox(int(cast(Any, context.get("global_progress_percent", 0)) or 0))
+        window_fake._operation_status = _TextBox(str(context.get("current_operation", "") or ""))
         self.sync_calls = 0
 
         def _sync_preview_state_from_runtime() -> None:
             self.sync_calls += 1
 
-        window._sync_preview_state_from_runtime = _sync_preview_state_from_runtime
+        window_fake._sync_preview_state_from_runtime = _sync_preview_state_from_runtime
 
     def _emit_operator_exclusive_window(self, *, kind: str, state: str) -> None:
         self.emitted_windows.append((kind, state))

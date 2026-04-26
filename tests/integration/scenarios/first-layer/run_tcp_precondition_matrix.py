@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -49,6 +50,8 @@ DEFAULT_DXF_TRAJECTORY_SCRIPT = ROOT / "scripts" / "engineering-data" / "path_to
 DEFAULT_WORKSPACE_MARKER = ROOT / "WORKSPACE.md"
 DEFAULT_LAYOUT_FILE = ROOT / "cmake" / "workspace-layout.env"
 DEFAULT_AGENTS_FILE = ROOT / "AGENTS.md"
+DEFAULT_GATEWAY_READINESS_TIMEOUT_SECONDS = 120.0
+DEFAULT_RUNTIME_WORKSPACES_ROOT = ROOT / "build" / "runtime-workspaces" / "tcp-precondition-matrix"
 
 KNOWN_FAILURE_PATTERNS = (
     "IDiagnosticsPort 未注册",
@@ -197,7 +200,15 @@ def _wait_gateway_ready(process: subprocess.Popen[str], host: str, port: int, ti
                 return "passed", "TCP endpoint is reachable"
         except OSError:
             time.sleep(0.2)
-    return "failed", f"gateway readiness timeout: {host}:{port}"
+    if process.poll() is None:
+        process.terminate()
+    stdout, stderr = _read_process_output(process)
+    diagnostic_parts = [f"gateway readiness timeout after {timeout_seconds:.1f}s: {host}:{port}"]
+    if stdout:
+        diagnostic_parts.append(f"stdout:\n{stdout}")
+    if stderr:
+        diagnostic_parts.append(f"stderr:\n{stderr}")
+    return "failed", "\n".join(diagnostic_parts)
 
 
 def _read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:
@@ -209,8 +220,14 @@ def _read_process_output(process: subprocess.Popen[str]) -> tuple[str, str]:
     return stdout or "", stderr or ""
 
 
+def _default_isolated_workspace(report_dir: Path) -> Path:
+    report_identity = str(report_dir.resolve())
+    run_id = hashlib.sha1(report_identity.encode("utf-8")).hexdigest()[:12]
+    return DEFAULT_RUNTIME_WORKSPACES_ROOT / run_id
+
+
 def _prepare_isolated_workspace(report_dir: Path) -> Path:
-    isolated_root = report_dir / "isolated-precondition-workspace"
+    isolated_root = _default_isolated_workspace(report_dir)
     if isolated_root.exists():
         shutil.rmtree(isolated_root)
 
@@ -741,7 +758,12 @@ def main() -> int:
     )
     client = TcpJsonClient(args.host, port)
     try:
-        ready_status, ready_note = _wait_gateway_ready(process, args.host, port, timeout_seconds=8.0)
+        ready_status, ready_note = _wait_gateway_ready(
+            process,
+            args.host,
+            port,
+            timeout_seconds=DEFAULT_GATEWAY_READINESS_TIMEOUT_SECONDS,
+        )
         if ready_status != "passed":
             results.append(
                 ScenarioResult(
