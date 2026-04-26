@@ -583,6 +583,27 @@ function Write-GateSummary {
     Set-Content -Path $SummaryMarkdownPath -Value $lines -Encoding UTF8
 }
 
+function Get-ChangedScopeFromGitRange {
+    param(
+        [Parameter(Mandatory = $true)][string]$RangeBaseSha,
+        [Parameter(Mandatory = $true)][string]$RangeHeadSha,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+
+    $gitOutput = @(& git diff --name-only $RangeBaseSha $RangeHeadSha 2>&1)
+    $gitExitCode = $LASTEXITCODE
+    if ($gitExitCode -ne 0) {
+        $gitMessage = ($gitOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "; "
+        if ([string]::IsNullOrWhiteSpace($gitMessage)) {
+            $gitMessage = "git diff exited with $gitExitCode"
+        }
+        throw "$FailureMessage ($RangeBaseSha..$RangeHeadSha): $gitMessage"
+    }
+
+    $global:LASTEXITCODE = 0
+    return @($gitOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
 if (-not (Test-Path -LiteralPath $configPath)) {
     throw "Gate configuration not found: $configPath"
 }
@@ -591,11 +612,10 @@ $SelectedStep = Expand-CommaSeparatedValues -Values $SelectedStep
 $SkipStep = Expand-CommaSeparatedValues -Values $SkipStep
 $SkipLayer = Expand-CommaSeparatedValues -Values $SkipLayer
 if ($ChangedScope.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($BaseSha) -and -not [string]::IsNullOrWhiteSpace($HeadSha)) {
-    try {
-        $ChangedScope = @(& git diff --name-only $BaseSha $HeadSha | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    } catch {
-        throw "Unable to derive changed scope from BaseSha/HeadSha: $BaseSha..$HeadSha"
-    }
+    $ChangedScope = Get-ChangedScopeFromGitRange `
+        -RangeBaseSha $BaseSha `
+        -RangeHeadSha $HeadSha `
+        -FailureMessage "Unable to derive changed scope from BaseSha/HeadSha"
 }
 if ($SkipStep.Count -gt 0 -and [string]::IsNullOrWhiteSpace($SkipJustification)) {
     throw "SkipJustification is required when SkipStep is not empty."

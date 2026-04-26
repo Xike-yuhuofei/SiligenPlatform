@@ -72,6 +72,10 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn('"logs"', orchestrator)
         self.assertIn('"$stepId.log"', orchestrator)
         self.assertIn('($changedFiles -join ",")', orchestrator)
+        self.assertIn("Get-ChangedScopeFromGitRange", orchestrator)
+        self.assertIn("$gitExitCode = $LASTEXITCODE", orchestrator)
+        self.assertIn("Unable to derive changed scope from BaseSha/HeadSha", orchestrator)
+        self.assertIn("$global:LASTEXITCODE = 0", orchestrator)
 
         for gate_id in self.gates:
             gate = self._resolved_gate(gate_id)
@@ -149,6 +153,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("-Gate pr", workflow)
         self.assertIn("-BaseSha", workflow)
         self.assertIn("-HeadSha", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
 
     def test_pre_push_default_wrapper_uses_quick_semantics(self) -> None:
         wrapper = _read(INVOKE_PRE_PUSH_GATE)

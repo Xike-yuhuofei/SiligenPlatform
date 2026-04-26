@@ -108,6 +108,15 @@ class StrictRunnerGateContractTest(unittest.TestCase):
         self.assertIn("-BaseSha $env:BASE_SHA", workflow)
         self.assertIn("-HeadSha $env:HEAD_SHA", workflow)
 
+    def test_strict_pr_gate_fetches_full_pr_range(self) -> None:
+        workflow = _read(STRICT_PR_WORKFLOW)
+
+        self.assertIn("BASE_SHA:", workflow)
+        self.assertIn("HEAD_SHA:", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("-BaseSha $env:BASE_SHA", workflow)
+        self.assertIn("-HeadSha $env:HEAD_SHA", workflow)
+
     def test_strict_pr_gate_delegates_execution_to_orchestrator(self) -> None:
         workflow = _read(STRICT_PR_WORKFLOW)
 
