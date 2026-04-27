@@ -301,6 +301,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("schema compatibility registry missing", quick_check)
         self.assertIn("test_real_dxf_machine_dryrun_observation_contract.py", quick_check)
         self.assertIn("Offline dry-run observation contract passed", quick_check)
+        self.assertIn("modules/runtime-execution/adapters/device", quick_check)
 
     def test_classify_change_outputs_pre_push_contract_shape_for_representative_paths(self) -> None:
         cases = {
