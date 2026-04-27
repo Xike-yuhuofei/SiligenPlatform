@@ -783,8 +783,10 @@ class MockState:
                 return {"result": {"supply_open": False}}
             if method == "dxf.artifact.create":
                 self.dxf.loaded = True
-                self.dxf.artifact_id = f"artifact-{int(time.time() * 1000)}"
                 self.dxf.filepath = params.get("filename", "mock.dxf")
+                source_hash = hashlib.sha256(self.dxf.filepath.encode("utf-8")).hexdigest()
+                source_drawing_ref = f"sha256:{source_hash}"
+                self.dxf.artifact_id = source_drawing_ref
                 self.dxf.segment_count = 120
                 self.dxf.total_length = 256.0
                 self.dxf.preview_snapshot_hash = ""
@@ -804,24 +806,25 @@ class MockState:
                     "result": {
                         "created": True,
                         "artifact_id": self.dxf.artifact_id,
+                        "source_drawing_ref": source_drawing_ref,
                         "filepath": self.dxf.filepath,
-                        "prepared_filepath": self.dxf.filepath.replace(".dxf", ".pb"),
-                        "input_quality": {
-                            "report_id": "mock-report",
-                            "report_path": self.dxf.filepath.replace(".dxf", ".validation.json"),
+                        "source_hash": source_hash,
+                        "size": len(self.dxf.filepath.encode("utf-8")),
+                        "validation_report": {
                             "schema_version": "DXFValidationReport.v1",
-                            "dxf_hash": "mock-dxf-hash",
-                            "source_drawing_ref": "sha256:mock-dxf-hash",
+                            "stage_id": "S1",
+                            "owner_module": "M1",
+                            "source_ref": source_drawing_ref,
+                            "source_hash": source_hash,
                             "gate_result": "PASS",
-                            "classification": "success",
-                            "preview_ready": True,
-                            "production_ready": True,
-                            "summary": "DXF import succeeded and is ready for production.",
-                            "primary_code": "",
+                            "result_classification": "source_drawing_accepted",
+                            "preview_ready": False,
+                            "production_ready": False,
+                            "summary": "Source drawing accepted and archived for downstream processing.",
                             "warning_codes": [],
                             "error_codes": [],
-                            "resolved_units": "mm",
-                            "resolved_unit_scale": 1.0,
+                            "resolved_units": "",
+                            "resolved_unit_scale": 0.0,
                         },
                         "segment_count": self.dxf.segment_count,
                     }

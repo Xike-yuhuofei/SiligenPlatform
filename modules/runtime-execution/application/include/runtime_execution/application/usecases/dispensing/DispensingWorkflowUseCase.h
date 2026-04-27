@@ -4,6 +4,7 @@
 #include "runtime_execution/application/usecases/dispensing/IProductionBaselinePort.h"
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 #include "application/services/dispensing/PreviewSnapshotService.h"
+#include "engineering/contracts/DxfValidationReport.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/machine/MachineMode.h"
@@ -36,22 +37,24 @@ using JobID = std::string;
 using PlanID = std::string;
 using Siligen::Domain::Dispensing::Contracts::ExecutionBudgetBreakdown;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPlanSummary;
+using Siligen::Engineering::Contracts::DxfValidationReport;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::JobIngest::Contracts::DxfInputQuality;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 
 struct CreateArtifactResponse {
     bool success = false;
     ArtifactID artifact_id;
+    std::string source_drawing_ref;
     std::string filepath;
-    std::string prepared_filepath;
+    std::string source_hash;
     std::string original_name;
     std::string generated_filename;
     std::size_t size = 0;
     int64_t timestamp = 0;
-    DxfInputQuality input_quality;
+    DxfValidationReport validation_report;
 };
 
 struct PreparePlanRuntimeOverrides {
@@ -277,7 +280,7 @@ class DispensingWorkflowUseCase {
    private:
     struct ArtifactRecord {
         CreateArtifactResponse response;
-        UploadResponse upload_response;
+        SourceDrawing source_drawing;
     };
 
     struct PlanExecutionLaunch {

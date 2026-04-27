@@ -9,15 +9,15 @@
 namespace {
 
 using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Shared::Types::Result;
 
 static_assert(std::is_default_constructible_v<UploadRequest>);
-static_assert(std::is_default_constructible_v<UploadResponse>);
+static_assert(std::is_default_constructible_v<SourceDrawing>);
 static_assert(std::is_abstract_v<IUploadFilePort>);
 static_assert(std::is_same_v<decltype(std::declval<IUploadFilePort&>().Execute(std::declval<const UploadRequest&>())),
-                             Result<UploadResponse>>);
+                             Result<SourceDrawing>>);
 
 TEST(UploadContractsTest, UploadRequestValidateRequiresCanonicalFields) {
     UploadRequest request;
@@ -32,19 +32,20 @@ TEST(UploadContractsTest, UploadRequestValidateRequiresCanonicalFields) {
     EXPECT_FALSE(request.Validate());
 }
 
-TEST(UploadContractsTest, UploadResponseDefaultsRemainNeutral) {
-    const UploadResponse response;
+TEST(UploadContractsTest, SourceDrawingDefaultsRemainNeutral) {
+    const SourceDrawing response;
 
-    EXPECT_FALSE(response.success);
+    EXPECT_TRUE(response.source_drawing_ref.empty());
     EXPECT_TRUE(response.filepath.empty());
-    EXPECT_TRUE(response.prepared_filepath.empty());
     EXPECT_TRUE(response.original_name.empty());
     EXPECT_EQ(response.size, 0u);
     EXPECT_TRUE(response.generated_filename.empty());
     EXPECT_EQ(response.timestamp, 0);
-    EXPECT_TRUE(response.input_quality.classification.empty());
-    EXPECT_FALSE(response.input_quality.preview_ready);
-    EXPECT_FALSE(response.input_quality.production_ready);
+    EXPECT_TRUE(response.source_hash.empty());
+    EXPECT_EQ(response.validation_report.schema_version, "DXFValidationReport.v1");
+    EXPECT_EQ(response.validation_report.gate_result, "PASS");
+    EXPECT_FALSE(response.validation_report.preview_ready);
+    EXPECT_FALSE(response.validation_report.production_ready);
 }
 
 }  // namespace

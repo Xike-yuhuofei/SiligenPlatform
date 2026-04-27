@@ -298,6 +298,13 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert 'ReadJsonBool(params, "use_hardware_trigger", true)' not in dispatcher_source
     assert "std::string production_baseline_id;" in dispatcher_header
     assert "std::string production_baseline_fingerprint;" in dispatcher_header
+    artifact_create_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.artifact.create")
+    assert {"validation_report", "source_drawing_ref", "source_hash"}.issubset(
+        set(artifact_create_operation["resultSchema"]["required"])
+    )
+    assert "prepared_filepath" not in artifact_create_operation["resultSchema"]["required"]
+    assert "input_quality" not in artifact_create_operation["resultSchema"]["required"]
+    assert 'result["validation_report"] = BuildValidationReportJson(artifact.validation_report);' in dispatcher_source
 
 
 def test_dxf_job_continue_contract_freezes_wait_for_continue_semantics():

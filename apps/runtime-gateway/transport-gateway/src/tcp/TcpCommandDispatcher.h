@@ -80,7 +80,9 @@ private:
     struct DxfCache {
         bool loaded = false;
         std::string artifact_id;
+        std::string source_drawing_ref;
         std::string filepath;
+        std::string source_hash;
         std::string prepared_filepath;
         std::string input_quality_report_id;
         std::string input_quality_report_path;

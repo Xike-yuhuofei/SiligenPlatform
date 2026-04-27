@@ -6,6 +6,12 @@ if(NOT TARGET siligen_dispense_packaging_contracts_public)
         "${CMAKE_BINARY_DIR}/_p/jic_dpc"
     )
 endif()
+if(NOT TARGET siligen_engineering_contracts)
+    add_subdirectory(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../shared/contracts"
+        "${CMAKE_BINARY_DIR}/_p/jic_shc"
+    )
+endif()
 
 set(SILIGEN_JOB_INGEST_CONTRACTS_PUBLIC_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 if(NOT EXISTS "${SILIGEN_JOB_INGEST_CONTRACTS_PUBLIC_INCLUDE_DIR}/job_ingest/contracts/dispensing/UploadContracts.h")
@@ -29,5 +35,6 @@ if(TARGET siligen_application_contracts)
 endif()
 target_link_libraries(siligen_job_ingest_contracts INTERFACE
     siligen_dispense_packaging_contracts_public
+    siligen_engineering_contracts
 )
 target_compile_features(siligen_job_ingest_contracts INTERFACE cxx_std_17)

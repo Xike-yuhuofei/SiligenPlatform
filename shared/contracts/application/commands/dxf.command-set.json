@@ -25,6 +25,28 @@
       },
       "additionalProperties": false
     },
+    "validationReport": {
+      "type": "object",
+      "required": ["schema_version", "stage_id", "owner_module", "source_ref", "source_hash", "gate_result", "result_classification", "preview_ready", "production_ready", "summary", "primary_code", "warning_codes", "error_codes", "resolved_units", "resolved_unit_scale"],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "owner_module": { "type": "string" },
+        "source_ref": { "type": "string" },
+        "source_hash": { "type": "string" },
+        "gate_result": { "type": "string", "enum": ["PASS", "PASS_WITH_WARNINGS", "FAIL"] },
+        "result_classification": { "type": "string" },
+        "preview_ready": { "type": "boolean" },
+        "production_ready": { "type": "boolean" },
+        "summary": { "type": "string" },
+        "primary_code": { "type": "string" },
+        "warning_codes": { "type": "array", "items": { "type": "string" } },
+        "error_codes": { "type": "array", "items": { "type": "string" } },
+        "resolved_units": { "type": "string" },
+        "resolved_unit_scale": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
     "formalCompareGate": {
       "type": ["object", "null"],
       "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
@@ -86,17 +108,18 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["created", "artifact_id", "filepath", "prepared_filepath", "original_name", "generated_filename", "size", "timestamp", "input_quality"],
+        "required": ["created", "artifact_id", "source_drawing_ref", "filepath", "source_hash", "original_name", "generated_filename", "size", "timestamp", "validation_report"],
         "properties": {
           "created": { "type": "boolean" },
           "artifact_id": { "type": "string" },
+          "source_drawing_ref": { "type": "string" },
           "filepath": { "type": "string" },
-          "prepared_filepath": { "type": "string" },
+          "source_hash": { "type": "string" },
           "original_name": { "type": "string" },
           "generated_filename": { "type": "string" },
           "size": { "type": "integer" },
           "timestamp": { "type": "integer" },
-          "input_quality": { "$ref": "#/definitions/inputQuality" }
+          "validation_report": { "$ref": "#/definitions/validationReport" }
         },
         "additionalProperties": false
       },

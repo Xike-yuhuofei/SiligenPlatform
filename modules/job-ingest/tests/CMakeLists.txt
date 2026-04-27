@@ -47,7 +47,7 @@ target_link_libraries(siligen_job_ingest_unit_tests PRIVATE
 
 siligen_job_ingest_add_test(
     siligen_job_ingest_golden_tests
-    golden/UploadResponseGoldenTest.cpp
+    golden/SourceDrawingGoldenTest.cpp
 )
 target_link_libraries(siligen_job_ingest_golden_tests PRIVATE
     siligen_job_ingest_application_public
@@ -59,5 +59,4 @@ siligen_job_ingest_add_test(
 )
 target_link_libraries(siligen_job_ingest_integration_tests PRIVATE
     siligen_job_ingest_application_public
-    siligen_dxf_geometry_application_public
 )

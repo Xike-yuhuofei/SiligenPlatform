@@ -48,6 +48,7 @@ add_library(siligen_utils STATIC
     src/shared/encoding/EncodingCodec.cpp
     src/shared/errors/ErrorHandler.cpp
     src/shared/hashing/HashCalculator.cpp
+    src/shared/hashing/Sha256.cpp
     src/shared/paths/PathOperations.cpp
     src/shared/strings/StringFormatter.cpp
     src/shared/strings/StringManipulator.cpp
@@ -73,6 +74,9 @@ target_link_libraries(siligen_utils PUBLIC
     siligen_types
     siligen_shared_kernel
 )
+if(WIN32)
+    target_link_libraries(siligen_utils PUBLIC bcrypt)
+endif()
 
 target_compile_features(siligen_utils PUBLIC cxx_std_17)
 

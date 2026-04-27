@@ -1,0 +1,13 @@
+source_drawing_ref_prefix=sha256:
+source_hash_size=64
+original_name=golden upload.dxf
+size=64
+generated_filename=<uuid>_<timestamp>_goldenupload.dxf
+stored_filename=<uuid>_<timestamp>_goldenupload.dxf
+validation_schema_version=DXFValidationReport.v1
+validation_stage_id=S1
+validation_owner_module=M1
+validation_gate_result=PASS
+validation_result_classification=source_drawing_accepted
+validation_preview_ready=false
+validation_production_ready=false

@@ -895,7 +895,9 @@ std::string PlanningUseCase::BuildAuthorityCacheKey(const PlanningRequest& reque
     }
 
     std::ostringstream oss;
-    oss << request.dxf_filepath << '|'
+    oss << request.source_drawing_ref << '|'
+        << request.source_hash << '|'
+        << request.dxf_filepath << '|'
         << request.baseline_fingerprint << '|'
         << request.optimize_path << '|'
         << request.start_x << '|'
@@ -957,13 +959,17 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     }
 
     const auto pb_start = std::chrono::steady_clock::now();
-    auto pb_result = planning_input_preparation_port_->EnsurePreparedInput(request.dxf_filepath);
+    Siligen::Application::Ports::Dispensing::PlanningInputPreparationRequest input_request;
+    input_request.source_path = request.dxf_filepath;
+    input_request.source_ref = request.source_drawing_ref;
+    input_request.source_hash = request.source_hash;
+    auto pb_result = planning_input_preparation_port_->EnsurePreparedInput(input_request);
     if (pb_result.IsError()) {
         return Result<PreparedAuthorityPreview>::Failure(pb_result.GetError());
     }
     const auto pb_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - pb_start).count();
-    const std::string prepared_pb_path = pb_result.Value();
+    const std::string prepared_pb_path = pb_result.Value().prepared_path;
 
     const auto load_start = std::chrono::steady_clock::now();
     auto path_result = path_source_->LoadFromFile(prepared_pb_path);
@@ -1015,12 +1021,15 @@ Result<PreparedAuthorityPreview> PlanningUseCase::PrepareAuthorityPreview(const 
     PreparedAuthorityPreview prepared;
     prepared.success = true;
     prepared.source_path = request.dxf_filepath;
+    prepared.source_drawing_ref = request.source_drawing_ref;
+    prepared.source_hash = request.source_hash;
     prepared.prepared_pb_path = prepared_pb_path;
+    prepared.input_quality_projection = pb_result.Value().input_quality_projection;
     prepared.authority_process_path = process_path_result.shaped_path;
     prepared.canonical_execution_process_path = authority_result.Value().canonical_execution_process_path;
     prepared.discontinuity_count = process_path_result.normalized.report.discontinuity_count;
-    prepared.preview_diagnostic_code =
-        process_path_result.topology_diagnostics.fragmentation_suspected ? "process_path_fragmentation" : "";
+    prepared.fragmentation_suspected = process_path_result.topology_diagnostics.fragmentation_suspected;
+    prepared.preview_diagnostic_code = prepared.fragmentation_suspected ? "process_path_fragmentation" : "";
     prepared.artifacts = authority_result.Value();
     prepared.authority_profile.pb_prepare_ms = static_cast<std::uint32_t>(pb_elapsed_ms);
     prepared.authority_profile.path_load_ms = static_cast<std::uint32_t>(load_elapsed_ms);
