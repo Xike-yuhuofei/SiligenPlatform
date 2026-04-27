@@ -692,7 +692,7 @@ $logsDir = Join-Path $gateReportDir "logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
 if ($Gate -eq "pre-push") {
-    if ($ChangedScope.Count -eq 0 -and [string]::IsNullOrWhiteSpace($BaseSha)) {
+    if ($SelectedStep.Count -eq 0 -and $ChangedScope.Count -eq 0 -and [string]::IsNullOrWhiteSpace($BaseSha)) {
         try {
             $BaseSha = (& git rev-parse "HEAD~1").Trim()
             $HeadSha = "HEAD"
@@ -701,7 +701,7 @@ if ($Gate -eq "pre-push") {
             throw "Unable to derive direct pre-push smoke range. Run invoke-pre-push-gate.ps1 for push-hook validation or pass -ChangedScope/-BaseSha/-HeadSha explicitly."
         }
     }
-    if ([string]::IsNullOrWhiteSpace($ClassificationPath)) {
+    if ($SelectedStep.Count -eq 0 -and [string]::IsNullOrWhiteSpace($ClassificationPath)) {
         $ClassificationPath = Join-Path $gateReportDir "pre-push-classification.json"
         $classifyChangeScript = Join-Path $PSScriptRoot "classify-change.ps1"
         $changedFileArgument = if ($ChangedScope.Count -gt 0) { $ChangedScope -join "," } else { "" }

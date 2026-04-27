@@ -65,7 +65,7 @@ function Get-StashBranches {
     $branches = New-Object System.Collections.Generic.List[string]
     foreach ($line in @(git stash list)) {
         $text = [string]$line
-        if ($text -match ':\s+On\s+([^:]+):') {
+        if ($text -match ':\s+(?:WIP\s+on|On)\s+([^:]+):') {
             $branch = $Matches[1].Trim()
             if (-not [string]::IsNullOrWhiteSpace($branch)) {
                 $branches.Add($branch) | Out-Null
@@ -187,12 +187,84 @@ function Get-PullRequestState {
     }
 }
 
+function Write-DeleteSafetyReport {
+    param(
+        [string]$JsonPath,
+        [string]$MarkdownPath,
+        [string]$Status,
+        [string]$ManifestPath,
+        [string]$WhitelistPath,
+        [string]$RemoteName,
+        [string]$BaseBranch,
+        [string]$CurrentBranch,
+        [string]$DefaultBranch,
+        [string[]]$ProtectedBranchPatterns,
+        [string[]]$WorktreeBranches,
+        [string[]]$StashBranches,
+        [object[]]$Operations,
+        [object[]]$Issues
+    )
+
+    $summary = [ordered]@{
+        schemaVersion = 1
+        generated_at = (Get-Date).ToString("o")
+        status = $Status
+        manifest_path = $ManifestPath
+        whitelist_path = $WhitelistPath
+        remote_name = $RemoteName
+        base_branch = $BaseBranch
+        current_branch = $CurrentBranch
+        default_branch = $DefaultBranch
+        protected_branch_patterns = @($ProtectedBranchPatterns)
+        worktree_branches = @($WorktreeBranches)
+        stash_branches = @($StashBranches)
+        operations = @($Operations)
+        issues = @($Issues)
+    }
+    $summary | ConvertTo-Json -Depth 16 | Set-Content -Path $JsonPath -Encoding UTF8
+
+    $lines = @(
+        "# Remote Branch Delete Safety",
+        "",
+        "- status: ``$Status``",
+        "- remote_name: ``$RemoteName``",
+        "- base_branch: ``$BaseBranch``",
+        "- current_branch: ``$CurrentBranch``",
+        "- default_branch: ``$DefaultBranch``",
+        ""
+    )
+    if ($Issues.Count -eq 0) {
+        $lines += "- no issues"
+    } else {
+        $lines += "| Severity | Branch | Check | Message | Hint |"
+        $lines += "|---|---|---|---|---|"
+        foreach ($issue in $Issues) {
+            $lines += "| $($issue.severity) | ``$($issue.branch)`` | $($issue.id) | $($issue.message) | $($issue.hint) |"
+        }
+    }
+    $lines | Set-Content -Path $MarkdownPath -Encoding UTF8
+}
+
 $reportDirPath = Resolve-WorkspacePath -PathValue $ReportDir
 New-Item -ItemType Directory -Force -Path $reportDirPath | Out-Null
 $jsonPath = Join-Path $reportDirPath "remote-branch-delete-safety.json"
 $mdPath = Join-Path $reportDirPath "remote-branch-delete-safety.md"
 $manifestPath = Join-Path (Split-Path $reportDirPath -Parent) "pre-push-gate-manifest.json"
 
+$manifest = $null
+$deleteOps = @()
+$whitelist = $null
+$remoteName = "origin"
+$baseBranch = "origin/main"
+$protectedPatterns = @($defaultProtectedPatterns)
+$defaultBranchName = ""
+$currentBranch = ""
+$worktreeBranches = @()
+$stashBranches = @()
+$issues = [System.Collections.Generic.List[object]]::new()
+$operationResults = @()
+
+try {
 if (-not (Test-Path -LiteralPath $manifestPath)) {
     throw "pre-push manifest missing: $manifestPath"
 }
@@ -203,7 +275,6 @@ if ($deleteOps.Count -eq 0) {
     throw "delete-ref operations missing from pre-push manifest: $manifestPath"
 }
 
-$whitelist = $null
 if (Test-Path -LiteralPath $whitelistPath) {
     $whitelist = Get-Content -Raw -Path $whitelistPath | ConvertFrom-Json
 }
@@ -226,11 +297,14 @@ $protectedPatterns = if ($null -ne $whitelist -and $null -ne $whitelist.protecte
     @($defaultProtectedPatterns)
 }
 $defaultBranchName = Get-DefaultBranchName -RemoteName $remoteName -BaseBranch $baseBranch
-$currentBranch = (git branch --show-current).Trim()
+$currentBranchOutput = @(git branch --show-current 2>$null | Select-Object -First 1)
+$currentBranch = if ($currentBranchOutput.Count -gt 0 -and $null -ne $currentBranchOutput[0]) {
+    ([string]$currentBranchOutput[0]).Trim()
+} else {
+    ""
+}
 $worktreeBranches = @(Get-CurrentWorktreeBranches)
 $stashBranches = @(Get-StashBranches)
-$issues = [System.Collections.Generic.List[object]]::new()
-$operationResults = @()
 
 foreach ($operation in $deleteOps) {
     $remoteRef = [string]$operation.remote_ref
@@ -305,44 +379,26 @@ foreach ($operation in $deleteOps) {
 }
 
 $status = if (($issues | Where-Object { $_.severity -eq "error" }).Count -eq 0) { "passed" } else { "failed" }
-$summary = [ordered]@{
-    schemaVersion = 1
-    generated_at = (Get-Date).ToString("o")
-    status = $status
-    manifest_path = $manifestPath
-    whitelist_path = $whitelistPath
-    remote_name = $remoteName
-    base_branch = $baseBranch
-    current_branch = $currentBranch
-    default_branch = $defaultBranchName
-    protected_branch_patterns = @($protectedPatterns)
-    worktree_branches = @($worktreeBranches)
-    stash_branches = @($stashBranches)
-    operations = @($operationResults)
-    issues = @($issues)
+} catch {
+    Add-Issue -Issues $issues -Id "script-exception" -Severity "error" -Branch "" -Message $_.Exception.Message -Hint "Inspect the script exception and restore fail-closed probe handling."
+    $status = "failed"
 }
-$summary | ConvertTo-Json -Depth 16 | Set-Content -Path $jsonPath -Encoding UTF8
 
-$lines = @(
-    "# Remote Branch Delete Safety",
-    "",
-    "- status: ``$status``",
-    "- remote_name: ``$remoteName``",
-    "- base_branch: ``$baseBranch``",
-    "- current_branch: ``$currentBranch``",
-    "- default_branch: ``$defaultBranchName``",
-    ""
-)
-if ($issues.Count -eq 0) {
-    $lines += "- no issues"
-} else {
-    $lines += "| Severity | Branch | Check | Message | Hint |"
-    $lines += "|---|---|---|---|---|"
-    foreach ($issue in $issues) {
-        $lines += "| $($issue.severity) | ``$($issue.branch)`` | $($issue.id) | $($issue.message) | $($issue.hint) |"
-    }
-}
-$lines | Set-Content -Path $mdPath -Encoding UTF8
+Write-DeleteSafetyReport `
+    -JsonPath $jsonPath `
+    -MarkdownPath $mdPath `
+    -Status $status `
+    -ManifestPath $manifestPath `
+    -WhitelistPath $whitelistPath `
+    -RemoteName $remoteName `
+    -BaseBranch $baseBranch `
+    -CurrentBranch $currentBranch `
+    -DefaultBranch $defaultBranchName `
+    -ProtectedBranchPatterns $protectedPatterns `
+    -WorktreeBranches $worktreeBranches `
+    -StashBranches $stashBranches `
+    -Operations $operationResults `
+    -Issues $issues
 
 Write-Output "remote-branch-delete-safety=$status report=$reportDirPath"
 if ($status -ne "passed") { exit 1 }

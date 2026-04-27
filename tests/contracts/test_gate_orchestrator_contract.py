@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -521,12 +522,15 @@ class GateOrchestratorContractTest(unittest.TestCase):
 
     def test_delete_only_hook_selects_remote_delete_safety_without_changed_file_steps(self) -> None:
         wrapper = _read(INVOKE_PRE_PUSH_GATE)
+        orchestrator = _read(INVOKE_GATE)
 
         self.assertIn('kind = "delete-ref"', wrapper)
         self.assertIn('$rangeSource = "delete-ref-only"', wrapper)
         self.assertIn('$selectedSteps += "remote-branch-delete-safety"', wrapper)
         self.assertIn('if ($updateOperations.Count -gt 0 -and $changedFiles.Count -eq 0)', wrapper)
         self.assertIn("operations = @($operations)", wrapper)
+        self.assertIn('if ($SelectedStep.Count -eq 0 -and $ChangedScope.Count -eq 0 -and [string]::IsNullOrWhiteSpace($BaseSha))', orchestrator)
+        self.assertIn('if ($SelectedStep.Count -eq 0 -and [string]::IsNullOrWhiteSpace($ClassificationPath))', orchestrator)
 
     def test_remote_delete_safety_blocks_protected_branch_delete(self) -> None:
         with tempfile.TemporaryDirectory(prefix="pre-push-delete-protected-") as temp_dir:
@@ -574,6 +578,68 @@ class GateOrchestratorContractTest(unittest.TestCase):
             issue_ids = {issue["id"] for issue in summary["issues"]}
             self.assertIn("default-branch-delete", issue_ids)
             self.assertIn("protected-branch-pattern", issue_ids)
+
+    def test_remote_delete_safety_treats_default_wip_stash_as_branch_residue(self) -> None:
+        script = _read(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1")
+        self.assertIn("(?:WIP\\s+on|On)", script)
+
+    def test_remote_delete_safety_writes_summary_when_gh_is_unavailable(self) -> None:
+        powershell = shutil.which("powershell") or shutil.which("pwsh")
+        git = shutil.which("git")
+        self.assertIsNotNone(powershell)
+        self.assertIsNotNone(git)
+
+        with tempfile.TemporaryDirectory(prefix="pre-push-delete-gh-missing-") as temp_dir:
+            report_dir = Path(temp_dir) / "report"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = report_dir / "pre-push-gate-manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 3,
+                        "remote_name": "origin",
+                        "operations": [
+                            {
+                                "kind": "delete-ref",
+                                "remote_ref": "refs/heads/main",
+                                "remote_sha": "a" * 40,
+                                "local_ref": "(delete)",
+                                "local_sha": "0" * 40,
+                                "source": "pre-push-hook",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            path_entries = [str(Path(git).parent), str(Path(powershell).parent)]
+            env["PATH"] = os.pathsep.join(path_entries)
+
+            completed = subprocess.run(
+                [
+                    powershell,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1"),
+                    "-ReportDir",
+                    str(report_dir / "remote-branch-delete-safety"),
+                ],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertNotEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
+            summary_path = report_dir / "remote-branch-delete-safety" / "remote-branch-delete-safety.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
+            issue_ids = {issue["id"] for issue in summary["issues"]}
+            self.assertIn("default-branch-delete", issue_ids)
+            self.assertIn("protected-branch-pattern", issue_ids)
+            self.assertIn("script-exception", issue_ids)
 
     def test_gate_orchestrator_is_published_as_authoritative_developer_doc(self) -> None:
         doc = _read(GATE_ORCHESTRATOR_DOC)
