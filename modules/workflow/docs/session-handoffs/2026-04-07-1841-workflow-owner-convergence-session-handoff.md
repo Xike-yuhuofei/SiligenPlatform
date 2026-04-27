@@ -40,7 +40,7 @@
   - `modules/workflow/adapters/infrastructure/adapters/planning/dxf/DXFMigrationValidator.h`
 - 会话中已同步修改以下文档：
   - `D:/Projects/SiligenSuite/docs/decisions/process-path-legacy-compat-freeze.md`
-  - `D:/Projects/SiligenSuite/docs/architecture-audits/DXF_full_analysis_compare.md`
+  - `D:/Projects/SiligenSuite/docs/architecture/history/audits/architecture-audits/DXF_full_analysis_compare.md`
   - `D:/Projects/SiligenSuite/modules/MODULES_BUSINESS_FILE_TREE_AND_TABLES.md`
 - 为了让 tests-on 构建通过，本会话还修正了 redundancy 相关 include：
   - `modules/workflow/application/services/redundancy/CandidateScoringService.cpp`
@@ -107,7 +107,7 @@
 - 文档：
   - `D:/Projects/SiligenSuite/modules/workflow/application/usecases/dispensing/README.md`
   - `D:/Projects/SiligenSuite/docs/decisions/process-path-legacy-compat-freeze.md`
-  - `D:/Projects/SiligenSuite/docs/architecture-audits/DXF_full_analysis_compare.md`
+  - `D:/Projects/SiligenSuite/docs/architecture/history/audits/architecture-audits/DXF_full_analysis_compare.md`
   - `D:/Projects/SiligenSuite/modules/MODULES_BUSINESS_FILE_TREE_AND_TABLES.md`
 - 构建阻塞修复：
   - `D:/Projects/SiligenSuite/modules/workflow/application/services/redundancy/CandidateScoringService.cpp`
