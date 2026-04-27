@@ -504,14 +504,25 @@ function Test-StepTools {
 function Test-RequiredArtifact {
     param([string]$Pattern)
 
-    $resolvedPattern = Resolve-WorkspacePath -PathValue ($Pattern.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
-    if ($resolvedPattern -notmatch '[*?]') {
+    $localPattern = $Pattern.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    if ($localPattern -notmatch '[*?]') {
+        $resolvedPattern = Resolve-WorkspacePath -PathValue $localPattern
         return (Test-Path -LiteralPath $resolvedPattern)
     }
 
-    $firstWildcard = $resolvedPattern.IndexOfAny([char[]]@("*", "?"))
-    $staticPrefix = $resolvedPattern.Substring(0, $firstWildcard)
-    $root = $staticPrefix
+    $firstWildcard = $localPattern.IndexOfAny([char[]]@("*", "?"))
+    $staticPrefix = $localPattern.Substring(0, $firstWildcard)
+    $staticRoot = $staticPrefix
+    if (-not $staticRoot.EndsWith([string][System.IO.Path]::DirectorySeparatorChar)) {
+        $staticRoot = Split-Path -Path $staticRoot -Parent
+    }
+    if ([string]::IsNullOrWhiteSpace($staticRoot)) {
+        $staticRoot = "."
+    }
+
+    $root = Resolve-WorkspacePath -PathValue $staticRoot
+    $tail = $localPattern.Substring($staticRoot.Length).TrimStart([System.IO.Path]::DirectorySeparatorChar)
+    $resolvedPattern = (Join-Path $root $tail)
     while (-not [string]::IsNullOrWhiteSpace($root) -and -not (Test-Path -LiteralPath $root)) {
         $parent = Split-Path -Path $root -Parent
         if ($parent -eq $root) {

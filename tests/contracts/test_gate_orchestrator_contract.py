@@ -205,6 +205,16 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("{classificationPathArgs}", tool_readiness["command"])
         self.assertIn("{changedFileArgs}", tool_readiness["command"])
         self.assertIn("{stepReportDir}/pre-push-tool-readiness.json", tool_readiness["requiredArtifacts"])
+        delete_safety = steps["remote-branch-delete-safety"]
+        self.assertIn("invoke-pre-push-remote-branch-delete-safety.ps1", " ".join(delete_safety["command"]))
+        self.assertIn(
+            "{stepReportDir}/remote-branch-delete-safety.json",
+            delete_safety["requiredArtifacts"],
+        )
+        self.assertIn(
+            "{stepReportDir}/remote-branch-delete-safety.md",
+            delete_safety["requiredArtifacts"],
+        )
 
         self.assertEqual(
             {tool["id"] for tool in steps["pyright-static"].get("requiresTool", [])},
@@ -347,8 +357,9 @@ class GateOrchestratorContractTest(unittest.TestCase):
                 self.assertTrue(steps["cppcheck"]["blocking"])
                 self.assertIn("-FailOnIssues", steps["cppcheck"]["command"])
                 self.assertIn("-Scope", steps["cppcheck"]["command"])
-                self.assertIn("ChangedFiles", steps["cppcheck"]["command"])
-                self.assertIn("{changedFileArgs}", steps["cppcheck"]["command"])
+                self.assertIn("Project", steps["cppcheck"]["command"])
+                self.assertNotIn("ChangedFiles", steps["cppcheck"]["command"])
+                self.assertNotIn("{changedFileArgs}", steps["cppcheck"]["command"])
                 self.assertGreaterEqual(steps["cppcheck"]["timeoutSeconds"], 1800)
                 self.assertTrue(steps["dependency-graphs"]["blocking"])
                 self.assertNotIn("-SoftFail", steps["dependency-graphs"]["command"])
@@ -369,6 +380,10 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertNotIn('Join-Path $workspaceRoot "apps"', cppcheck_runner)
         self.assertNotIn('Join-Path $workspaceRoot "modules"', cppcheck_runner)
         self.assertNotIn('Join-Path $workspaceRoot "shared"', cppcheck_runner)
+        orchestrator = _read(INVOKE_GATE)
+        self.assertIn('$localPattern = $Pattern.Replace', orchestrator)
+        self.assertIn('$firstWildcard = $localPattern.IndexOfAny', orchestrator)
+        self.assertIn('$root = Resolve-WorkspacePath -PathValue $staticRoot', orchestrator)
         build_runner = _read(BUILD_VALIDATION)
         self.assertIn('"-G", "Ninja"', build_runner)
         self.assertIn('"-DCMAKE_BUILD_TYPE=Debug"', build_runner)

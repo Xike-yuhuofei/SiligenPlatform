@@ -150,6 +150,41 @@
           ]
         },
         {
+          "id": "remote-branch-delete-safety",
+          "name": "Validate remote branch delete safety",
+          "blocking": true,
+          "timeoutSeconds": 180,
+          "requiresTool": [
+            {
+              "id": "git",
+              "names": [
+                "git"
+              ]
+            },
+            {
+              "id": "powershell",
+              "names": [
+                "powershell",
+                "pwsh"
+              ]
+            }
+          ],
+          "command": [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "{workspaceRoot}/scripts/validation/invoke-pre-push-remote-branch-delete-safety.ps1",
+            "-ReportDir",
+            "{stepReportDir}"
+          ],
+          "requiredArtifacts": [
+            "{stepReportDir}/remote-branch-delete-safety.json",
+            "{stepReportDir}/remote-branch-delete-safety.md"
+          ]
+        },
+        {
           "id": "hmi-formal-gateway-contract",
           "name": "Validate HMI formal gateway launch contract",
           "blocking": true,
@@ -1268,8 +1303,7 @@
             "-ReportDir",
             "{stepReportDir}",
             "-Scope",
-            "ChangedFiles",
-            "{changedFileArgs}",
+            "Project",
             "-FailOnIssues"
           ],
           "requiredArtifacts": [
