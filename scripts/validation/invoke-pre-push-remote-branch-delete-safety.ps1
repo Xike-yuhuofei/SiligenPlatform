@@ -75,6 +75,11 @@ function Get-StashBranches {
     return @($branches | Select-Object -Unique)
 }
 
+function Test-CommandAvailable {
+    param([string]$CommandName)
+    return $null -ne (Get-Command $CommandName -ErrorAction SilentlyContinue)
+}
+
 function Get-DefaultBranchName {
     param(
         [string]$RemoteName,
@@ -143,22 +148,41 @@ function Get-LocalBranchMergeState {
 function Get-PullRequestState {
     param([string]$BranchName)
 
-    $ghOutput = @()
-    $ghOutput = @(gh pr list --state all --head $BranchName --json number,state,isDraft,headRefName,baseRefName,title 2>$null)
-    if ($LASTEXITCODE -ne 0) {
+    if (-not (Test-CommandAvailable -CommandName "gh")) {
         return [pscustomobject]@{
             known = $false
             state = "unknown"
             prs = @()
-            reason = "unable to query GitHub PR state"
+            reason = "gh CLI unavailable"
         }
     }
-    $json = $ghOutput -join [Environment]::NewLine
-    if ([string]::IsNullOrWhiteSpace($json)) {
-        $prs = @()
-    } else {
-        $prs = @((ConvertFrom-Json -InputObject $json))
+
+    try {
+        $ghOutput = @(gh pr list --state all --head $BranchName --json number,state,isDraft,headRefName,baseRefName,title 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            return [pscustomobject]@{
+                known = $false
+                state = "unknown"
+                prs = @()
+                reason = "unable to query GitHub PR state"
+            }
+        }
+
+        $json = $ghOutput -join [Environment]::NewLine
+        if ([string]::IsNullOrWhiteSpace($json)) {
+            $prs = @()
+        } else {
+            $prs = @((ConvertFrom-Json -InputObject $json))
+        }
+    } catch {
+        return [pscustomobject]@{
+            known = $false
+            state = "unknown"
+            prs = @()
+            reason = "unable to parse GitHub PR state"
+        }
     }
+
     if ($prs.Count -eq 0) {
         return [pscustomobject]@{
             known = $true

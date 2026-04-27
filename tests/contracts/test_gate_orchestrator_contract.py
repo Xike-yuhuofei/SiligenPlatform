@@ -578,6 +578,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
             issue_ids = {issue["id"] for issue in summary["issues"]}
             self.assertIn("default-branch-delete", issue_ids)
             self.assertIn("protected-branch-pattern", issue_ids)
+            self.assertNotIn("script-exception", issue_ids)
 
     def test_remote_delete_safety_treats_default_wip_stash_as_branch_residue(self) -> None:
         script = _read(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1")
@@ -641,7 +642,8 @@ class GateOrchestratorContractTest(unittest.TestCase):
             issue_ids = {issue["id"] for issue in summary["issues"]}
             self.assertIn("default-branch-delete", issue_ids)
             self.assertIn("protected-branch-pattern", issue_ids)
-            self.assertIn("script-exception", issue_ids)
+            self.assertIn("pr-state-unknown", issue_ids)
+            self.assertNotIn("script-exception", issue_ids)
 
     def test_gate_orchestrator_is_published_as_authoritative_developer_doc(self) -> None:
         doc = _read(GATE_ORCHESTRATOR_DOC)
