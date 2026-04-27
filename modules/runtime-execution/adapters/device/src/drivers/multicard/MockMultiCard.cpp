@@ -331,13 +331,9 @@ int MockMultiCard::MC_Reset() {
     std::lock_guard<std::mutex> lock(state_mutex_);
 
     reset_call_count_++;
-    bool any_open = false;
-    for (const auto& pair : card_states_) {
-        if (pair.second.is_open) {
-            any_open = true;
-            break;
-        }
-    }
+    const bool any_open = std::any_of(card_states_.begin(), card_states_.end(), [](const auto& pair) {
+        return pair.second.is_open;
+    });
     if (!any_open) {
         return -1;
     }
@@ -353,13 +349,9 @@ int MockMultiCard::MC_Reset() {
 int MockMultiCard::MC_ResetAllM() {
     std::lock_guard<std::mutex> lock(state_mutex_);
 
-    bool any_open = false;
-    for (const auto& pair : card_states_) {
-        if (pair.second.is_open) {
-            any_open = true;
-            break;
-        }
-    }
+    const bool any_open = std::any_of(card_states_.begin(), card_states_.end(), [](const auto& pair) {
+        return pair.second.is_open;
+    });
     if (!any_open) {
         return -1;
     }
@@ -1078,13 +1070,9 @@ int MockMultiCard::MC_GetClock(double* pClock) {
         return -1;
     }
 
-    bool any_open = false;
-    for (const auto& pair : card_states_) {
-        if (pair.second.is_open) {
-            any_open = true;
-            break;
-        }
-    }
+    const bool any_open = std::any_of(card_states_.begin(), card_states_.end(), [](const auto& pair) {
+        return pair.second.is_open;
+    });
     if (!any_open) {
         return -1;
     }

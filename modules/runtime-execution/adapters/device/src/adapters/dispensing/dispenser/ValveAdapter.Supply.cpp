@@ -79,28 +79,28 @@ Result<SupplyValveState> ValveAdapter::OpenSupply() noexcept {
     }
 }
 
-Result<SupplyValveState> ValveAdapter::CloseSupply() noexcept {
+Result<SupplyValveState> ValveAdapter::CloseSupplyInternal(const char* operation) noexcept {
     try {
         std::lock_guard<std::mutex> lock(supply_mutex_);
 
-        SILIGEN_LOG_INFO("CloseSupply: 开始关闭供胶阀 Y" + std::to_string(supply_config_.do_bit_index));
+        SILIGEN_LOG_INFO(std::string(operation) + ": 开始关闭供胶阀 Y" + std::to_string(supply_config_.do_bit_index));
 
         auto current_state = (supply_status_.state == SupplyValveState::Open ? "Open" :
-                             supply_status_.state == SupplyValveState::Closed ? "Closed" : "Error");
-        SILIGEN_LOG_INFO(std::string("CloseSupply: 当前状态: ") + current_state);
+                               supply_status_.state == SupplyValveState::Closed ? "Closed" : "Error");
+        SILIGEN_LOG_INFO(std::string(operation) + ": 当前状态: " + current_state);
 
-        SILIGEN_LOG_INFO("CloseSupply: 调用 MC_SetExtDoBit: cardIndex=" + std::to_string(supply_config_.do_card_index) +
+        SILIGEN_LOG_INFO(std::string(operation) + ": 调用 MC_SetExtDoBit: cardIndex=" + std::to_string(supply_config_.do_card_index) +
                          ", bitIndex=" + std::to_string(supply_config_.do_bit_index) + ", value=0 (低电平)");
 
         int result = CallMC_SetExtDoBit(0);  // value=0 (关闭)
 
-        SILIGEN_LOG_INFO("CloseSupply: MC_SetExtDoBit 返回码: " + std::to_string(result) +
+        SILIGEN_LOG_INFO(std::string(operation) + ": MC_SetExtDoBit 返回码: " + std::to_string(result) +
                          (result == 0 ? " (成功)" : " (失败)"));
 
         if (result != 0) {
-            std::string error_msg = CreateErrorMessage(result, "CloseSupply");
+            std::string error_msg = CreateErrorMessage(result, operation);
 
-            SILIGEN_LOG_ERROR("CloseSupply: 关闭供胶阀失败");
+            SILIGEN_LOG_ERROR(std::string(operation) + ": 关闭供胶阀失败");
             SILIGEN_LOG_ERROR(std::string("错误详情: ") + error_msg);
             SILIGEN_LOG_ERROR("硬件调用: MC_SetExtDoBit(cardIndex=" + std::to_string(supply_config_.do_card_index) +
                              ", bitIndex=" + std::to_string(supply_config_.do_bit_index) + ", value=0)");
@@ -121,19 +121,23 @@ Result<SupplyValveState> ValveAdapter::CloseSupply() noexcept {
             now.time_since_epoch()).count();
         supply_status_.lastChangeTime = static_cast<uint64>(timestamp);
 
-        SILIGEN_LOG_INFO("CloseSupply: 供胶阀 Y" + std::to_string(supply_config_.do_bit_index) + " 关闭成功");
-        SILIGEN_LOG_INFO("CloseSupply: 新状态: Closed, 时间戳: " + std::to_string(timestamp) + "ms");
+        SILIGEN_LOG_INFO(std::string(operation) + ": 供胶阀 Y" + std::to_string(supply_config_.do_bit_index) + " 关闭成功");
+        SILIGEN_LOG_INFO(std::string(operation) + ": 新状态: Closed, 时间戳: " + std::to_string(timestamp) + "ms");
 
         return Result<SupplyValveState>::Success(supply_status_.state);
     }
     catch (const std::exception& e) {
-        SILIGEN_LOG_ERROR(std::string("CloseSupply: 异常: ") + e.what());
+        SILIGEN_LOG_ERROR(std::string(operation) + ": 异常: " + e.what());
 
         supply_status_.state = SupplyValveState::Error;
         supply_status_.errorMessage = std::string("Exception: ") + e.what();
         return Result<SupplyValveState>::Failure(
             Shared::Types::Error(ErrorCode::UNKNOWN_ERROR, supply_status_.errorMessage));
     }
+}
+
+Result<SupplyValveState> ValveAdapter::CloseSupply() noexcept {
+    return CloseSupplyInternal("CloseSupply");
 }
 
 Result<SupplyValveStatusDetail> ValveAdapter::GetSupplyStatus() noexcept {

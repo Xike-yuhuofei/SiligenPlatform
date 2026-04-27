@@ -63,10 +63,8 @@ ValveAdapter::ValveAdapter(std::shared_ptr<Siligen::Infrastructure::Hardware::IM
 ValveAdapter::~ValveAdapter() {
     try {
         StopProfileCompareWorker();
-        // 停止点胶阀（忽略错误）
-        StopDispenser();
-        // 关闭供胶阀（忽略错误）
-        CloseSupply();
+        StopDispenserInternal("~ValveAdapter");
+        CloseSupplyInternal("~ValveAdapter");
     } catch (...) {
         // 析构函数中捕获所有异常
     }

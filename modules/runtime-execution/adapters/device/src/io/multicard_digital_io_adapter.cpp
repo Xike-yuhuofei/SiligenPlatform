@@ -51,7 +51,7 @@ Siligen::SharedKernel::VoidResult MultiCardDigitalIoAdapter::WriteOutput(
 }
 
 Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::DigitalIoState>
-MultiCardDigitalIoAdapter::ReadWordBit(unsigned long word, Siligen::SharedKernel::int32 channel, bool output) const {
+MultiCardDigitalIoAdapter::ReadWordBit(unsigned long word, Siligen::SharedKernel::int32 channel, bool output) {
     if (channel < 0 || channel >= 32) {
         return Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::DigitalIoState>::Failure(
             Siligen::SharedKernel::Error(

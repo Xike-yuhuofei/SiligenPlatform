@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <stdexcept>
 #include <thread>
 
 namespace Siligen {
@@ -437,7 +438,7 @@ Result<DispenserValveState> ValveAdapter::StartPositionTriggeredDispenser(
     }
 }
 
-Result<void> ValveAdapter::StopDispenser() noexcept {
+Result<void> ValveAdapter::StopDispenserInternal(const char* operation) noexcept {
     try {
         StopProfileCompareWorker();
         StopTimedDispenserThread();
@@ -453,14 +454,14 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
             path_trigger_next_index_ = 0;
             path_trigger_start_level_ = 0;
             path_trigger_pulse_width_ms_ = 0;
-            ResetDispenserHardwareState("StopDispenser", false);
+            ResetDispenserHardwareState(operation, false);
             ResetProfileCompareTrackingState();
             return Result<void>::Success();
         }
 
-        const int reset_result = ResetDispenserHardwareState("StopDispenser", false);
+        const int reset_result = ResetDispenserHardwareState(operation, false);
         if (reset_result != 0) {
-            SILIGEN_LOG_WARNING("StopDispenser: ResetDispenserHardwareState 返回非零值 " +
+            SILIGEN_LOG_WARNING(std::string(operation) + ": ResetDispenserHardwareState 返回非零值 " +
                                 std::to_string(reset_result) + ",继续执行");
         }
 
@@ -483,7 +484,7 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
         path_trigger_pulse_width_ms_ = 0;
         ResetProfileCompareTrackingState();
 
-        SILIGEN_LOG_INFO("StopDispenser: completedCount=" +
+        SILIGEN_LOG_INFO(std::string(operation) + ": completedCount=" +
                          std::to_string(dispenser_state_.completedCount) +
                          ", totalCount=" + std::to_string(dispenser_state_.totalCount));
 
@@ -493,6 +494,10 @@ Result<void> ValveAdapter::StopDispenser() noexcept {
         return Result<void>::Failure(
             Shared::Types::Error(ErrorCode::UNKNOWN_ERROR, std::string("Exception: ") + e.what()));
     }
+}
+
+Result<void> ValveAdapter::StopDispenser() noexcept {
+    return StopDispenserInternal("StopDispenser");
 }
 
 Result<void> ValveAdapter::PauseDispenser() noexcept {
@@ -853,12 +858,16 @@ void ValveAdapter::PathTriggeredDispenserLoop() noexcept {
 
             {
                 std::lock_guard<std::mutex> lock(dispenser_mutex_);
-                if (dispenser_run_mode_ != DispenserRunMode::PositionTriggered ||
-                    dispenser_state_.status != DispenserValveStatus::Running ||
+                bool has_same_pending_event = false;
+                try {
+                    has_same_pending_event = path_trigger_events_.at(path_trigger_next_index_) == next_event;
+                } catch (const std::out_of_range&) {
+                    break;
+                }
+                if (dispenser_state_.status != DispenserValveStatus::Running ||
                     path_trigger_pause_requested_ ||
                     path_trigger_stop_requested_ ||
-                    path_trigger_next_index_ >= path_trigger_events_.size() ||
-                    !(path_trigger_events_[path_trigger_next_index_] == next_event)) {
+                    !has_same_pending_event) {
                     break;
                 }
 

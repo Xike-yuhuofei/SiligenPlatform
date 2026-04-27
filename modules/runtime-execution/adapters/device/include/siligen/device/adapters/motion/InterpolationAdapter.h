@@ -89,7 +89,7 @@ class InterpolationAdapter : public Siligen::RuntimeExecution::Contracts::Motion
      * @param error_code MultiCard API 返回的错误码
      * @param operation 操作描述
      */
-    Result<void> ConvertError(int error_code, const std::string& operation);
+    static Result<void> ConvertError(int error_code, const std::string& operation);
 
     BufferedPosition ResolveBufferedStartPosition(int16 coord_sys) const;
 

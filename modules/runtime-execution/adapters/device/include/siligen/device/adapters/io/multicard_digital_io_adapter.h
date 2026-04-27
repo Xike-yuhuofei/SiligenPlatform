@@ -18,10 +18,10 @@ class MultiCardDigitalIoAdapter final : public Siligen::Device::Contracts::Ports
     Siligen::SharedKernel::VoidResult WriteOutput(Siligen::SharedKernel::int32 channel, bool value) override;
 
    private:
-    Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::DigitalIoState> ReadWordBit(
+    static Siligen::SharedKernel::Result<Siligen::Device::Contracts::State::DigitalIoState> ReadWordBit(
         unsigned long word,
         Siligen::SharedKernel::int32 channel,
-        bool output) const;
+        bool output);
 
     std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper> driver_;
 };

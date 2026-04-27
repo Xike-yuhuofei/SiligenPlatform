@@ -83,7 +83,7 @@ long BuildCoordinateMask(int16 coord_sys) {
     if (coord_sys <= 0 || coord_sys > 32) {
         return 0;
     }
-    return 1L << (coord_sys - 1);
+    return static_cast<long>(1UL << static_cast<unsigned>(coord_sys - 1));
 }
 
 int RetryCrdClear(const std::shared_ptr<Siligen::Infrastructure::Hardware::IMultiCardWrapper>& wrapper,
@@ -210,7 +210,7 @@ Result<void> InterpolationAdapter::ConfigureCoordinateSystem(
 
     // 0. 尝试停止并清空历史坐标系（防止上一次执行残留导致SetCrdPrm失败）
     if (coord_sys > 0 && coord_sys <= 32) {
-        const long crd_mask = 1L << (coord_sys - 1);
+        const long crd_mask = BuildCoordinateMask(coord_sys);
         int stop_result = wrapper_->MC_StopEx(crd_mask, 0);
         if (stop_result != 0) {
             SILIGEN_LOG_WARNING("MC_StopEx 返回: " + std::to_string(stop_result));
