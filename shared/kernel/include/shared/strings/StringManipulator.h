@@ -27,11 +27,6 @@ class StringManipulator {
     static std::string PadLeft(const std::string& str, int32 width, char fill_char = ' ');
     static std::string PadRight(const std::string& str, int32 width, char fill_char = ' ');
 
-   private:
-    static std::string InternalTrim(const std::string& str, bool left, bool right);
-    static std::vector<std::string> InternalSplit(const std::string& str,
-                                                  const std::string& delimiter,
-                                                  int32 max_split);
 };
 
 }  // namespace Siligen
