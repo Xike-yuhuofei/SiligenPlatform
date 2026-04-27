@@ -1,17 +1,17 @@
 module_id: M1
 module_name: job-ingest
-owner_artifact: UploadResponse
+owner_artifact: SourceDrawing
 group: upstream
 target_root: modules/job-ingest
 allowed_dependencies:
   - shared
 uniform_skeleton_ready: true
 notes: >
-  owner_artifact UploadResponse 表示 M1 已完成接入并向下游交接后的
-  authority fact；UploadRequest 仅是 ingress DTO。当前稳定 include path 为
-  job_ingest/contracts/... 与 job_ingest/application/...。contracts
-  namespace 已统一为 Siligen::JobIngest::Contracts，UploadFileUseCase
-  public seam 仅暴露 module-owned upload ports IUploadStoragePort /
-  IUploadPreparationPort。producer target 已回到 shared-only truth；
-  foreign storage / PB preparation owner 不在本批次内迁回 M1，只允许存在于
-  runtime-service 组合根与 integration tests 的本地适配。
+  owner_artifact SourceDrawing 表示 M1 已完成 source drawing 接入、归档与向
+  下游交接后的 authority fact；UploadRequest 仅是 ingress DTO。当前稳定
+  include path 为 job_ingest/contracts/... 与 job_ingest/application/...。
+  contracts namespace 已统一为 Siligen::JobIngest::Contracts，
+  UploadFileUseCase public seam 仅暴露 module-owned storage port
+  IUploadStoragePort。producer target 已回到 shared-only truth；`.pb`
+  preparation / cleanup 不属于 M1 owner，只允许停留在 planning/runtime
+  内部实现或 runtime-service 组合根外部适配。

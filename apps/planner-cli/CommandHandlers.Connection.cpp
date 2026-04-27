@@ -40,6 +40,10 @@ Result<void> CLICommandHandlers::ConnectHardware(const CommandLineConfig& config
     request.auto_connect_hardware = config.auto_connect;
     request.start_heartbeat = config.start_heartbeat;
     request.start_status_monitoring = config.start_status_monitoring;
+    request.start_hard_limit_monitoring = true;
+    request.require_hard_limit_monitoring = true;
+    request.start_soft_limit_monitoring = true;
+    request.require_soft_limit_monitoring = true;
     request.auto_home_axes = config.auto_home_axes;
     request.status_monitor_interval_ms = static_cast<uint32>(config.status_monitor_interval_ms);
     request.heartbeat_config.interval_ms = static_cast<uint32>(config.heartbeat_interval_ms);

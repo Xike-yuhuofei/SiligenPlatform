@@ -16,9 +16,12 @@
 #include "domain/motion/domain-services/ReadyZeroDecisionService.h"
 #include "application/services/motion_planning/VelocityProfileService.h"
 #include "services/motion/HardLimitMonitorService.h"
+#include "services/motion/SoftLimitMonitorService.h"
+#include "runtime/system/MachineExecutionStatePortFactory.h"
 #include "shared/interfaces/ILoggingService.h"
 
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 
 #ifdef MODULE_NAME
@@ -99,6 +102,41 @@ void ApplicationContainer::ConfigureMotionServices() {
     } else {
         SILIGEN_LOG_WARNING("HardLimitMonitorService not registered: IO or position control port missing");
     }
+
+    if (!motion_state_port || !position_control_port || !event_port_ || !trigger_port_) {
+        std::ostringstream missing_ports;
+        missing_ports << "SoftLimitMonitorService registration failed: missing";
+        if (!motion_state_port) {
+            missing_ports << " IMotionStatePort";
+        }
+        if (!position_control_port) {
+            missing_ports << " IPositionControlPort";
+        }
+        if (!event_port_) {
+            missing_ports << " IEventPublisherPort";
+        }
+        if (!trigger_port_) {
+            missing_ports << " ITriggerControllerPort";
+        }
+        throw std::runtime_error(missing_ports.str());
+    }
+
+    if (!machine_execution_state_port_) {
+        RegisterPort<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>(
+            Siligen::RuntimeExecution::Host::System::CreateMachineExecutionStatePort());
+    }
+
+    Siligen::Application::Services::Motion::SoftLimitMonitorConfig soft_limit_config;
+    soft_limit_config.emergency_stop_on_trigger = true;
+    soft_limit_monitor_ =
+        std::make_shared<Siligen::Application::Services::Motion::SoftLimitMonitorService>(
+            motion_state_port,
+            event_port_,
+            position_control_port,
+            trigger_port_,
+            machine_execution_state_port_,
+            soft_limit_config);
+    SILIGEN_LOG_INFO("SoftLimitMonitorService registered");
 }
 
 template<>

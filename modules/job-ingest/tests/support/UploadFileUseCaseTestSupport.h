@@ -9,21 +9,21 @@
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <functional>
+#include <iomanip>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace Siligen::JobIngest::Tests::Support {
 
-using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
 using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
-using Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -91,24 +91,6 @@ class ScopedTempDir {
     std::filesystem::path path_;
 };
 
-inline std::string QuoteArg(const std::string& value) {
-    if (value.find_first_of(" \t\"") == std::string::npos) {
-        return value;
-    }
-
-    std::string out;
-    out.reserve(value.size() + 2);
-    out.push_back('"');
-    for (char c : value) {
-        if (c == '"') {
-            out.push_back('\\');
-        }
-        out.push_back(c);
-    }
-    out.push_back('"');
-    return out;
-}
-
 inline std::string MinimalDxf() {
     return "0\nSECTION\n2\nENTITIES\n0\nLINE\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n";
 }
@@ -128,11 +110,6 @@ inline std::string ReadTextFile(const std::filesystem::path& path) {
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-inline std::filesystem::path PbPathFor(std::filesystem::path dxf_path) {
-    dxf_path.replace_extension(".pb");
-    return dxf_path;
-}
-
 inline std::string NormalizeExtension(std::string extension) {
     if (!extension.empty() && extension.front() == '.') {
         extension.erase(extension.begin());
@@ -143,6 +120,25 @@ inline std::string NormalizeExtension(std::string extension) {
     return extension;
 }
 
+inline std::uint64_t Fnv1a64(const std::vector<std::uint8_t>& payload) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (std::uint8_t byte : payload) {
+        hash ^= static_cast<std::uint64_t>(byte);
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+inline std::string HexEncodeUint64(std::uint64_t value) {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << value;
+    return oss.str();
+}
+
+inline std::string ComputeExpectedSourceHash(const UploadRequest& request) {
+    return HexEncodeUint64(Fnv1a64(request.file_content));
+}
+
 class TestUploadStoragePort final : public IUploadStoragePort {
    public:
     explicit TestUploadStoragePort(std::filesystem::path base_dir) : base_dir_(std::move(base_dir)) {
@@ -151,9 +147,10 @@ class TestUploadStoragePort final : public IUploadStoragePort {
 
     [[nodiscard]] const std::filesystem::path& BaseDir() const { return base_dir_; }
 
-    Result<void> Validate(const UploadRequest& request,
-                          size_t max_size_mb,
-                          const std::vector<std::string>& allowed_extensions) const override {
+    Result<void> Validate(
+        const UploadRequest& request,
+        size_t max_size_mb,
+        const std::vector<std::string>& allowed_extensions) const override {
         if (request.file_content.empty() || request.file_size == 0 || request.file_size != request.file_content.size()) {
             return Result<void>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "invalid file metadata", "TestUploadStoragePort"));
@@ -168,11 +165,12 @@ class TestUploadStoragePort final : public IUploadStoragePort {
         }
 
         if (!allowed_extensions.empty()) {
-            const std::string extension = NormalizeExtension(std::filesystem::path(request.original_filename).extension().string());
+            const std::string extension =
+                NormalizeExtension(std::filesystem::path(request.original_filename).extension().string());
             const bool allowed = std::any_of(
-                allowed_extensions.begin(), allowed_extensions.end(), [&extension](const std::string& candidate) {
-                    return NormalizeExtension(candidate) == extension;
-                });
+                allowed_extensions.begin(),
+                allowed_extensions.end(),
+                [&extension](const std::string& candidate) { return NormalizeExtension(candidate) == extension; });
             if (!allowed) {
                 return Result<void>::Failure(
                     Error(ErrorCode::FILE_FORMAT_INVALID, "extension not allowed", "TestUploadStoragePort"));
@@ -188,7 +186,7 @@ class TestUploadStoragePort final : public IUploadStoragePort {
                 Error(ErrorCode::INVALID_PARAMETER, "file content empty", "TestUploadStoragePort"));
         }
 
-        std::filesystem::path full_path = base_dir_ / filename;
+        const std::filesystem::path full_path = base_dir_ / filename;
         std::error_code ec;
         std::filesystem::create_directories(full_path.parent_path(), ec);
 
@@ -197,8 +195,9 @@ class TestUploadStoragePort final : public IUploadStoragePort {
             return Result<std::string>::Failure(
                 Error(ErrorCode::FILE_IO_ERROR, "failed to open file", "TestUploadStoragePort"));
         }
-        out.write(reinterpret_cast<const char*>(request.file_content.data()),
-                  static_cast<std::streamsize>(request.file_content.size()));
+        out.write(
+            reinterpret_cast<const char*>(request.file_content.data()),
+            static_cast<std::streamsize>(request.file_content.size()));
         out.close();
         return Result<std::string>::Success(full_path.string());
     }
@@ -217,52 +216,6 @@ class TestUploadStoragePort final : public IUploadStoragePort {
     std::filesystem::path base_dir_;
 };
 
-class FakeUploadPreparationPort final : public IUploadPreparationPort {
-   public:
-    using EnsureHandler = std::function<Result<PreparedInputArtifact>(const std::string&)>;
-    using CleanupHandler = std::function<Result<void>(const std::string&)>;
-
-    FakeUploadPreparationPort(EnsureHandler ensure_handler = {}, CleanupHandler cleanup_handler = {})
-        : ensure_handler_(std::move(ensure_handler)),
-          cleanup_handler_(std::move(cleanup_handler)) {}
-
-    Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const override {
-        if (ensure_handler_) {
-            return ensure_handler_(source_path);
-        }
-
-        const auto pb_path = PbPathFor(source_path);
-        WriteTextFile(pb_path, "pb");
-        PreparedInputArtifact artifact;
-        artifact.prepared_path = pb_path.string();
-        artifact.import_diagnostics.result_classification = "success";
-        artifact.import_diagnostics.preview_ready = true;
-        artifact.import_diagnostics.production_ready = true;
-        artifact.import_diagnostics.summary = "DXF import succeeded and is ready for production.";
-        artifact.import_diagnostics.resolved_units = "mm";
-        artifact.import_diagnostics.resolved_unit_scale = 1.0;
-        return Result<PreparedInputArtifact>::Success(std::move(artifact));
-    }
-
-    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
-        if (cleanup_handler_) {
-            return cleanup_handler_(source_path);
-        }
-
-        std::error_code ec;
-        std::filesystem::remove(PbPathFor(source_path), ec);
-        if (ec) {
-            return Result<void>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "cleanup failed", "FakeUploadPreparationPort"));
-        }
-        return Result<void>::Success();
-    }
-
-   private:
-    EnsureHandler ensure_handler_;
-    CleanupHandler cleanup_handler_;
-};
-
 inline UploadRequest MakeUploadRequest(const std::string& original_filename = "unit_test.dxf") {
     UploadRequest request;
     request.original_filename = original_filename;
@@ -271,6 +224,23 @@ inline UploadRequest MakeUploadRequest(const std::string& original_filename = "u
     request.file_content.assign(minimal_dxf.begin(), minimal_dxf.end());
     request.file_size = request.file_content.size();
     return request;
+}
+
+inline bool HasAnyFiles(const std::filesystem::path& path) {
+    return std::filesystem::exists(path) &&
+           std::filesystem::directory_iterator(path) != std::filesystem::directory_iterator();
+}
+
+inline bool HasExtensionFile(const std::filesystem::path& path, const std::string& extension) {
+    if (!std::filesystem::exists(path)) {
+        return false;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(path)) {
+        if (NormalizeExtension(entry.path().extension().string()) == NormalizeExtension(extension)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace Siligen::JobIngest::Tests::Support

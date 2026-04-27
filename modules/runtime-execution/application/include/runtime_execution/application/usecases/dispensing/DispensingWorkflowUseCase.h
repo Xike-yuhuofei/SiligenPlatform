@@ -4,6 +4,7 @@
 #include "runtime_execution/application/usecases/dispensing/IProductionBaselinePort.h"
 #include "dispense_packaging/application/usecases/dispensing/PlanningUseCase.h"
 #include "application/services/dispensing/PreviewSnapshotService.h"
+#include "engineering/contracts/PathQuality.h"
 #include "job_ingest/contracts/dispensing/UploadContracts.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime_execution/contracts/machine/MachineMode.h"
@@ -34,22 +35,24 @@ using JobID = std::string;
 using PlanID = std::string;
 using Siligen::Domain::Dispensing::Contracts::ExecutionBudgetBreakdown;
 using Siligen::Domain::Dispensing::Contracts::ExecutionPlanSummary;
+using Siligen::Engineering::Contracts::DxfValidationReport;
+using Siligen::Engineering::Contracts::PathQuality;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
-using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 
 struct CreateArtifactResponse {
     bool success = false;
     ArtifactID artifact_id;
+    std::string source_drawing_ref;
     std::string filepath;
-    std::string prepared_filepath;
+    std::string source_hash;
     std::string original_name;
     std::string generated_filename;
     std::size_t size = 0;
     int64_t timestamp = 0;
-    DxfImportDiagnostics import_diagnostics;
+    DxfValidationReport validation_report;
 };
 
 struct PreparePlanRuntimeOverrides {
@@ -105,14 +108,17 @@ struct PreparePlanResponse {
     ArtifactID artifact_id;
     PlanID plan_id;
     std::string plan_fingerprint;
+    std::string source_drawing_ref;
+    std::string source_hash;
+    std::string canonical_geometry_ref;
     std::string filepath;
-    std::string prepared_filepath;
     std::uint32_t segment_count = 0;
     std::uint32_t point_count = 0;
     float32 total_length_mm = 0.0f;
     float32 execution_nominal_time_s = 0.0f;
     ExecutionPlanSummary execution_plan_summary;
-    DxfImportDiagnostics import_diagnostics;
+    DxfValidationReport validation_report;
+    PathQuality path_quality;
     std::string preview_validation_classification;
     std::string preview_exception_reason;
     std::string preview_failure_reason;
@@ -163,9 +169,12 @@ struct StartJobResponse {
     JobID job_id;
     PlanID plan_id;
     std::string plan_fingerprint;
+    std::string canonical_geometry_ref;
     std::uint32_t target_count = 0;
     float32 execution_budget_s = 0.0f;
     ExecutionBudgetBreakdown execution_budget_breakdown;
+    DxfValidationReport validation_report;
+    PathQuality path_quality;
     ProductionBaselineContext production_baseline;
     PerformanceProfile performance_profile;
 };
@@ -268,7 +277,7 @@ class DispensingWorkflowUseCase {
    private:
     struct ArtifactRecord {
         CreateArtifactResponse response;
-        UploadResponse upload_response;
+        SourceDrawing source_drawing;
     };
 
     struct PlanExecutionLaunch {
@@ -287,6 +296,12 @@ class DispensingWorkflowUseCase {
         PreparePlanResponse response;
         PlanExecutionLaunch execution_launch;
         ExecutionAssemblyResponse execution_assembly;
+        std::string prepared_pb_path;
+        std::string canonical_geometry_ref;
+        DxfValidationReport validation_report;
+        std::optional<PathQuality> path_quality;
+        int discontinuity_count = 0;
+        bool fragmentation_suspected = false;
         std::vector<TrajectoryPoint> execution_trajectory_points;
         std::vector<Siligen::Shared::Types::Point2D> glue_points;
         Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout authority_trigger_layout;
@@ -449,19 +464,23 @@ class DispensingWorkflowUseCase {
         const PlanID& plan_id) const;
     PreviewGateDiagnostic BuildPreviewGateDiagnostic(
         const PlanRecord& plan_record,
-        bool require_execution_binding) const;
+        bool require_execution_binding,
+        bool enforce_path_validation) const;
     ExecutionCapabilityDiagnostic EvaluateExecutionCapability(
         const PlanRecord& plan_record) const;
+    std::optional<PathQuality> BuildPathQuality(const PlanRecord& plan_record) const;
+    void RefreshPathQuality(PlanRecord& plan_record) const;
     std::string ResolveProductionGateFailure(const PlanRecord& plan_record) const;
     void RefreshProfileCompareSchedule(PlanRecord& plan_record) const;
     Siligen::Shared::Types::Result<void> MaterializeProfileCompareSchedule(PlanRecord& plan_record) const;
     Siligen::Shared::Types::Result<std::shared_ptr<const Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace>>
     BuildExpectedTrace(const PlanRecord& plan_record) const;
-    void RefreshPlanImportDiagnostics(PlanRecord& plan_record) const;
+    void RefreshPlanValidationReport(PlanRecord& plan_record) const;
     std::optional<Siligen::Shared::Types::Error> BuildPreviewGateError(
         PlanRecord& plan_record,
         bool mark_failed,
-        bool require_execution_binding) const;
+        bool require_execution_binding,
+        bool enforce_path_validation) const;
     std::string ResolvePreviewGateFailure(const PlanRecord& plan_record) const;
     std::string PreviewStateToString(PlanPreviewState state) const;
     void ReleaseRetainedExecutionState(PlanRecord& plan_record) const;

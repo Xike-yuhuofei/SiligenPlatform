@@ -8,6 +8,7 @@
 #pragma once
 
 #include "runtime_execution/application/usecases/system/IHardLimitMonitor.h"
+#include "runtime_execution/application/usecases/system/ISoftLimitMonitor.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
 #include "runtime/contracts/system/IEventPublisherPort.h"
 #include "trace_diagnostics/contracts/IDiagnosticsPort.h"
@@ -50,6 +51,10 @@ struct InitializeSystemRequest {
     bool start_hard_limit_monitoring = false;    // 是否启动硬限位监控
     bool require_hard_limit_monitoring = false;  // 监控启动失败是否视为错误
 
+    // 软限位监控
+    bool start_soft_limit_monitoring = false;    // 是否启动软限位监控
+    bool require_soft_limit_monitoring = false;  // 监控启动失败是否视为错误
+
     // 诊断与回零
     bool run_diagnostics = false;           // 是否执行健康检查
     bool require_healthy = false;           // 健康检查失败是否视为错误
@@ -81,6 +86,7 @@ struct InitializeSystemResponse {
     bool status_monitoring_started;  // 连接状态监控是否启动
     bool heartbeat_started;    // 心跳是否启动
     bool hard_limit_monitoring_started;  // 硬限位监控是否启动
+    bool soft_limit_monitoring_started;  // 软限位监控是否启动
     bool axes_homed;           // 轴是否回零成功
     bool diagnostics_performed; // 是否执行诊断
     bool diagnostics_ok;       // 诊断是否通过
@@ -97,6 +103,7 @@ struct InitializeSystemResponse {
           status_monitoring_started(false),
           heartbeat_started(false),
           hard_limit_monitoring_started(false),
+          soft_limit_monitoring_started(false),
           axes_homed(false),
           diagnostics_performed(false),
           diagnostics_ok(false),
@@ -128,7 +135,8 @@ class InitializeSystemUseCase {
         std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase,
         std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
         std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port = nullptr,
-        std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor = nullptr);
+        std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor = nullptr,
+        std::shared_ptr<Siligen::Application::UseCases::System::ISoftLimitMonitor> soft_limit_monitor = nullptr);
 
     ~InitializeSystemUseCase() = default;
 
@@ -150,6 +158,7 @@ class InitializeSystemUseCase {
     std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port_;
     std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port_;
     std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor_;
+    std::shared_ptr<Siligen::Application::UseCases::System::ISoftLimitMonitor> soft_limit_monitor_;
 };
 
 }  // namespace Siligen::Application::UseCases::System

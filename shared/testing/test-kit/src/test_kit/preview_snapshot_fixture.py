@@ -140,6 +140,60 @@ def load_preview_snapshot_success_result() -> dict[str, Any]:
     return copy.deepcopy(result)
 
 
+def _build_path_quality(
+    *,
+    preview_validation_classification: str,
+    preview_exception_reason: str,
+    preview_failure_reason: str,
+    preview_diagnostic_code: str,
+) -> dict[str, Any]:
+    reason_codes: list[str] = []
+    blocking = False
+    verdict = "pass"
+    summary = "path_quality passed"
+
+    if preview_diagnostic_code:
+        reason_codes.append(preview_diagnostic_code)
+    if preview_validation_classification == "fail":
+        verdict = "fail"
+        blocking = True
+        if "preview_validation_failed" not in reason_codes:
+            reason_codes.insert(0, "preview_validation_failed")
+        summary = preview_failure_reason or "preview validation failed"
+    elif preview_diagnostic_code == "process_path_fragmentation":
+        verdict = "fail"
+        blocking = True
+        summary = preview_failure_reason or "path_quality blocked"
+    elif preview_validation_classification == "pass_with_exception":
+        verdict = "pass_with_exception"
+        blocking = True
+        if "preview_exception_unallowlisted" not in reason_codes:
+            reason_codes.append("preview_exception_unallowlisted")
+        summary = (
+            preview_exception_reason
+            or "path_quality exception is not allowlisted for production"
+        )
+
+    if reason_codes:
+        summary = f"{summary} [{','.join(reason_codes)}]"
+
+    return {
+        "verdict": verdict,
+        "blocking": blocking,
+        "reason_codes": reason_codes,
+        "summary": summary,
+        "source": "runtime_authority_path_quality",
+        "inputs": {
+            "spacing_valid": preview_validation_classification != "fail",
+            "validation_classification": preview_validation_classification,
+            "formal_compare_gate": "",
+            "preview_diagnostic_code": preview_diagnostic_code,
+            "discontinuity_count": 0,
+        },
+        "thresholds_version": "runtime_path_quality.v1",
+    }
+
+
 def build_preview_snapshot_success_result(
     *,
     snapshot_id: str | None = None,
@@ -153,6 +207,7 @@ def build_preview_snapshot_success_result(
     preview_exception_reason: str | None = None,
     preview_failure_reason: str | None = None,
     preview_diagnostic_code: str | None = None,
+    path_quality: Mapping[str, object] | None = None,
     segment_count: int | None = None,
     glue_points: Sequence[PointLike] | None = None,
     glue_reveal_lengths_mm: Sequence[float] | None = None,
@@ -280,6 +335,16 @@ def build_preview_snapshot_success_result(
         preview_binding_failure_reason
         if preview_binding_failure_reason is not None
         else result["preview_failure_reason"]
+    )
+    result["path_quality"] = (
+        copy.deepcopy(dict(path_quality))
+        if path_quality is not None
+        else _build_path_quality(
+            preview_validation_classification=result["preview_validation_classification"],
+            preview_exception_reason=result["preview_exception_reason"],
+            preview_failure_reason=result["preview_failure_reason"],
+            preview_diagnostic_code=result["preview_diagnostic_code"],
+        )
     )
 
     return result

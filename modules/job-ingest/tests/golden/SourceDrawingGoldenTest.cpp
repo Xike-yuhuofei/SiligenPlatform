@@ -12,16 +12,14 @@
 namespace {
 
 using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
-using Siligen::JobIngest::Tests::Support::FakeUploadPreparationPort;
 using Siligen::JobIngest::Tests::Support::MakeUploadRequest;
-using Siligen::JobIngest::Tests::Support::PbPathFor;
 using Siligen::JobIngest::Tests::Support::ReadTextFile;
 using Siligen::JobIngest::Tests::Support::ScopedTempDir;
+using Siligen::JobIngest::Tests::Support::SourceDrawing;
 using Siligen::JobIngest::Tests::Support::TestUploadStoragePort;
-using Siligen::JobIngest::Tests::Support::UploadResponse;
 
 std::filesystem::path GoldenPath() {
-    return std::filesystem::path(__FILE__).parent_path() / "upload_response.summary.txt";
+    return std::filesystem::path(__FILE__).parent_path() / "source_drawing.summary.txt";
 }
 
 std::string ReadGoldenFile(const std::filesystem::path& path) {
@@ -45,39 +43,45 @@ std::string NormalizeDynamicFilename(const std::string& raw_value) {
     return std::string("<uuid>_<timestamp>") + filename.substr(second_separator);
 }
 
-std::string SerializeSummary(const UploadResponse& response, const std::filesystem::path& pb_path) {
+std::string NormalizeSourceDrawingRef(const std::string& raw_value) {
+    constexpr const char* prefix = "source-drawing:";
+    const std::string prefix_value(prefix);
+    if (raw_value.rfind(prefix_value, 0) != 0) {
+        return raw_value;
+    }
+    return prefix_value + NormalizeDynamicFilename(raw_value.substr(prefix_value.size()));
+}
+
+std::string SerializeSummary(const SourceDrawing& drawing) {
     std::ostringstream out;
     out << std::boolalpha;
-    out << "success=" << response.success << "\n";
-    out << "original_name=" << response.original_name << "\n";
-    out << "size=" << response.size << "\n";
-    out << "generated_filename=" << NormalizeDynamicFilename(response.generated_filename) << "\n";
-    out << "stored_filename=" << NormalizeDynamicFilename(response.filepath) << "\n";
-    out << "prepared_filename=" << NormalizeDynamicFilename(response.prepared_filepath) << "\n";
-    out << "import_result_classification=" << response.import_diagnostics.result_classification << "\n";
-    out << "import_preview_ready=" << response.import_diagnostics.preview_ready << "\n";
-    out << "import_production_ready=" << response.import_diagnostics.production_ready << "\n";
-    out << "import_primary_code=" << response.import_diagnostics.primary_code << "\n";
-    out << "import_summary=" << response.import_diagnostics.summary << "\n";
-    out << "pb_filename=" << NormalizeDynamicFilename(pb_path.string()) << "\n";
-    out << "pb_size=" << std::filesystem::file_size(pb_path) << "\n";
-    out << "pb_contents=" << ReadTextFile(pb_path) << "\n";
+    out << "source_drawing_ref=" << NormalizeSourceDrawingRef(drawing.source_drawing_ref) << "\n";
+    out << "original_name=" << drawing.original_name << "\n";
+    out << "size=" << drawing.size << "\n";
+    out << "generated_filename=" << NormalizeDynamicFilename(drawing.generated_filename) << "\n";
+    out << "stored_filename=" << NormalizeDynamicFilename(drawing.filepath) << "\n";
+    out << "source_hash=" << drawing.source_hash << "\n";
+    out << "validation_schema_version=" << drawing.validation_report.schema_version << "\n";
+    out << "validation_stage_id=" << drawing.validation_report.stage_id << "\n";
+    out << "validation_owner_module=" << drawing.validation_report.owner_module << "\n";
+    out << "validation_gate_result=" << drawing.validation_report.gate_result << "\n";
+    out << "validation_result_classification=" << drawing.validation_report.result_classification << "\n";
+    out << "validation_preview_ready=" << drawing.validation_report.preview_ready << "\n";
+    out << "validation_production_ready=" << drawing.validation_report.production_ready << "\n";
+    out << "validation_summary=" << drawing.validation_report.summary << "\n";
+    out << "stored_contents=" << ReadTextFile(drawing.filepath) << "\n";
     return out.str();
 }
 
-TEST(UploadResponseGoldenTest, SanitizedUploadSummaryMatchesGoldenSnapshot) {
+TEST(SourceDrawingGoldenTest, SanitizedUploadSummaryMatchesGoldenSnapshot) {
     ScopedTempDir workspace("upload_golden");
     auto storage = std::make_shared<TestUploadStoragePort>(workspace.Path() / "uploads");
-    auto preparation = std::make_shared<FakeUploadPreparationPort>();
-    UploadFileUseCase usecase(storage, preparation);
+    UploadFileUseCase usecase(storage);
 
     auto result = usecase.Execute(MakeUploadRequest("golden upload.dxf"));
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
 
-    const auto pb_path = PbPathFor(result.Value().filepath);
-    ASSERT_TRUE(std::filesystem::exists(pb_path));
-
-    const auto actual = SerializeSummary(result.Value(), pb_path);
+    const auto actual = SerializeSummary(result.Value());
     const auto expected = ReadGoldenFile(GoldenPath());
     EXPECT_EQ(actual, expected);
 }

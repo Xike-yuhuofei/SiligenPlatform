@@ -1,7 +1,15 @@
 #include "runtime_process_bootstrap/ContainerBootstrap.h"
+#include "bootstrap/InfrastructureBindings.h"
 #include "container/ApplicationContainer.h"
+#include "motion_planning/contracts/IVelocityProfilePort.h"
 #include "process_planning/contracts/configuration/IConfigurationPort.h"
+#include "process_path/contracts/IPathSourcePort.h"
+#include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
+#include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
 #include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
+#include "runtime_process_bootstrap/diagnostics/ports/ICMPTestPresetPort.h"
+#include "runtime_process_bootstrap/diagnostics/ports/ITestConfigurationPort.h"
+#include "runtime_process_bootstrap/diagnostics/ports/ITestRecordRepository.h"
 #include "siligen/device/adapters/drivers/multicard/MockMultiCardWrapper.h"
 #include "dispense_packaging/contracts/ITaskSchedulerPort.h"
 #include "runtime_execution/contracts/motion/IMotionRuntimePort.h"
@@ -23,6 +31,9 @@ namespace {
 
 using Siligen::Apps::Runtime::BuildContainer;
 using Siligen::Application::Container::LogMode;
+using Siligen::Bootstrap::CreateInfrastructureBindings;
+using Siligen::Bootstrap::InfrastructureBindings;
+using Siligen::Bootstrap::InfrastructureBootstrapConfig;
 using Siligen::Infrastructure::Configuration::CanonicalizeOrKeep;
 using Siligen::Infrastructure::Configuration::kCanonicalMachineConfigRelativePath;
 
@@ -242,6 +253,74 @@ std::string BuildMockMachineIni() {
     );
 }
 
+void ApplyBindingsForTest(
+    Siligen::Application::Container::ApplicationContainer& container,
+    const InfrastructureBindings& bindings) {
+    if (bindings.logging_service) {
+        container.SetLoggingService(bindings.logging_service);
+    }
+    if (bindings.multicard_instance) {
+        container.SetMultiCardInstance(bindings.multicard_instance);
+    }
+    if (bindings.config_port) {
+        container.RegisterPort<Siligen::Domain::Configuration::Ports::IConfigurationPort>(bindings.config_port);
+    }
+    if (bindings.device_connection_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::DeviceConnectionPort>(bindings.device_connection_port);
+    }
+    if (bindings.motion_device_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::MotionDevicePort>(bindings.motion_device_port);
+    }
+    if (bindings.dispenser_device_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::DispenserDevicePort>(bindings.dispenser_device_port);
+    }
+    if (bindings.trigger_port) {
+        container.RegisterPort<Siligen::Domain::Dispensing::Ports::ITriggerControllerPort>(bindings.trigger_port);
+    }
+    if (bindings.machine_health_port) {
+        container.RegisterPort<Siligen::Device::Contracts::Ports::MachineHealthPort>(bindings.machine_health_port);
+    }
+    if (bindings.diagnostics_port) {
+        container.RegisterPort<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort>(bindings.diagnostics_port);
+    }
+    if (bindings.test_record_repository) {
+        container.RegisterPort<Siligen::Domain::Diagnostics::Ports::ITestRecordRepository>(bindings.test_record_repository);
+    }
+    if (bindings.test_config_manager) {
+        container.RegisterPort<Siligen::Domain::Diagnostics::Ports::ITestConfigurationPort>(bindings.test_config_manager);
+    }
+    if (bindings.preset_port) {
+        container.RegisterPort<Siligen::Domain::Diagnostics::Ports::ICMPTestPresetPort>(bindings.preset_port);
+    }
+    if (bindings.valve_port) {
+        container.RegisterPort<Siligen::Domain::Dispensing::Ports::IValvePort>(bindings.valve_port);
+    }
+    if (bindings.file_storage_port) {
+        container.RegisterPort<Siligen::Domain::Configuration::Ports::IFileStoragePort>(bindings.file_storage_port);
+    }
+    if (bindings.interpolation_port) {
+        container.RegisterPort<Siligen::RuntimeExecution::Contracts::Motion::IInterpolationPort>(bindings.interpolation_port);
+    }
+    if (bindings.velocity_profile_port) {
+        container.RegisterPort<Siligen::Domain::Motion::Ports::IVelocityProfilePort>(bindings.velocity_profile_port);
+    }
+    if (bindings.motion_runtime_port) {
+        container.RegisterPort<Siligen::RuntimeExecution::Contracts::Motion::IMotionRuntimePort>(bindings.motion_runtime_port);
+    }
+    if (bindings.task_scheduler_port) {
+        container.RegisterPort<Siligen::Domain::Dispensing::Ports::ITaskSchedulerPort>(bindings.task_scheduler_port);
+    }
+    if (bindings.event_port) {
+        container.RegisterPort<Siligen::Domain::System::Ports::IEventPublisherPort>(bindings.event_port);
+    }
+    if (bindings.interlock_signal_port) {
+        container.RegisterPort<Siligen::Domain::Safety::Ports::IInterlockSignalPort>(bindings.interlock_signal_port);
+    }
+    if (bindings.path_source_port) {
+        container.RegisterPort<Siligen::ProcessPath::Contracts::IPathSourcePort>(bindings.path_source_port);
+    }
+}
+
 }  // namespace
 
 TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanonicalMockConfigWithoutHardware) {
@@ -327,6 +406,77 @@ TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, BuildsContainerFromCanon
 
     const auto disconnect_result = connection_port->Disconnect();
     ASSERT_TRUE(disconnect_result.IsSuccess()) << disconnect_result.GetError().GetMessage();
+}
+
+TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, InitializeSystemUseCaseStartsHardAndSoftSafetyMonitoring) {
+    using InitializeSystemRequest = Siligen::Application::UseCases::System::InitializeSystemRequest;
+    using InitializeSystemUseCase = Siligen::Application::UseCases::System::InitializeSystemUseCase;
+
+    ScopedTempWorkspace workspace("soft_limit_startup_chain");
+    workspace.WriteFile(kCanonicalMachineConfigRelativePath, BuildMockMachineIni());
+    const auto runtime_service_dir = workspace.root() / "apps" / "runtime-service";
+
+    ScopedCurrentPath scoped_cwd(runtime_service_dir);
+
+    auto container = BuildContainer(
+        kCanonicalMachineConfigRelativePath,
+        LogMode::Silent,
+        "runtime_host_smoke.log",
+        1);
+    ASSERT_NE(container, nullptr);
+
+    auto initialize_use_case = container->Resolve<InitializeSystemUseCase>();
+    ASSERT_NE(initialize_use_case, nullptr);
+
+    InitializeSystemRequest request;
+    request.load_configuration = false;
+    request.auto_connect_hardware = true;
+    request.start_heartbeat = false;
+    request.start_status_monitoring = false;
+    request.start_hard_limit_monitoring = true;
+    request.require_hard_limit_monitoring = true;
+    request.start_soft_limit_monitoring = true;
+    request.require_soft_limit_monitoring = true;
+    request.connection_config.local_ip = "192.168.10.10";
+    request.connection_config.card_ip = "192.168.10.20";
+    request.connection_config.local_port = 5000;
+    request.connection_config.card_port = 5000;
+    request.connection_config.timeout_ms = 3000;
+
+    auto result = initialize_use_case->Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& response = result.Value();
+    EXPECT_TRUE(response.hardware_connected);
+    EXPECT_TRUE(response.hard_limit_monitoring_started);
+    EXPECT_TRUE(response.soft_limit_monitoring_started);
+}
+
+TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, ConfigureFailsFastWhenSoftLimitMonitorEventPortIsMissing) {
+    ScopedTempWorkspace workspace("soft_limit_missing_event_port");
+    const auto config_path = workspace.WriteFile(kCanonicalMachineConfigRelativePath, BuildMockMachineIni());
+    const auto runtime_service_dir = workspace.root() / "apps" / "runtime-service";
+
+    ScopedCurrentPath scoped_cwd(runtime_service_dir);
+
+    InfrastructureBootstrapConfig bootstrap_config;
+    bootstrap_config.config_file_path = config_path.string();
+    bootstrap_config.log_config.min_level = Siligen::Shared::Types::LogLevel::INFO;
+    bootstrap_config.log_config.enable_console = false;
+    bootstrap_config.log_config.enable_file = false;
+    bootstrap_config.log_config.enable_timestamp = true;
+    bootstrap_config.task_scheduler_threads = 1;
+
+    auto bindings = CreateInfrastructureBindings(bootstrap_config);
+    bindings.event_port.reset();
+
+    Siligen::Application::Container::ApplicationContainer container(
+        config_path.string(),
+        LogMode::Silent,
+        "runtime_host_smoke.log");
+    ApplyBindingsForTest(container, bindings);
+
+    EXPECT_THROW(container.Configure(), std::runtime_error);
 }
 
 TEST(RuntimeExecutionIntegrationHostBootstrapSmokeTest, InterlockSignalsFollowConnectionLifecycle) {

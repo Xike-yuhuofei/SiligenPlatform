@@ -400,15 +400,21 @@ def extract_error_message(payload: dict[str, Any]) -> str:
     return str(error.get("message", "")).strip()
 
 
+def extract_validation_report(payload: dict[str, Any]) -> dict[str, Any]:
+    report = payload.get("validation_report", {}) if isinstance(payload, dict) else {}
+    return report if isinstance(report, dict) else {}
+
+
 def is_production_blocked_gate(gate: Any) -> bool:
     return isinstance(gate, dict) and str(gate.get("status", "")).strip() == "production_blocked"
 
 
 def resolve_validation_mode(plan_result: dict[str, Any]) -> str:
+    validation_report = extract_validation_report(plan_result)
     if (
-        bool(plan_result.get("import_preview_ready", False))
-        and not bool(plan_result.get("import_production_ready", True))
-        and is_production_blocked_gate(plan_result.get("formal_compare_gate"))
+        bool(validation_report.get("preview_ready", False))
+        and not bool(validation_report.get("production_ready", True))
+        and is_production_blocked_gate(validation_report.get("formal_compare_gate"))
     ):
         return "production_blocked"
     return "production_execution"
@@ -429,8 +435,9 @@ def build_checklist(
 ) -> dict[str, dict[str, Any]]:
     expected_trigger_count = int(parse_int(snapshot_result.get("glue_point_count")) or 0)
     job_start_error_message = extract_error_message(job_start_response)
-    import_summary = str(plan_result.get("import_summary", "")).strip()
-    formal_compare_gate = plan_result.get("formal_compare_gate")
+    validation_report = extract_validation_report(plan_result)
+    validation_summary = str(validation_report.get("summary", "")).strip()
+    formal_compare_gate = validation_report.get("formal_compare_gate")
 
     if validation_mode == "production_blocked":
         return {
@@ -443,11 +450,11 @@ def build_checklist(
             "expected_trigger_count_positive": {
                 "passed": expected_trigger_count > 0,
             },
-            "plan_import_preview_ready": {
-                "passed": bool(plan_result.get("import_preview_ready", False)),
+            "validation_report_preview_ready": {
+                "passed": bool(validation_report.get("preview_ready", False)),
             },
-            "plan_import_production_blocked": {
-                "passed": not bool(plan_result.get("import_production_ready", True)),
+            "validation_report_production_blocked": {
+                "passed": not bool(validation_report.get("production_ready", True)),
             },
             "formal_compare_gate_present": {
                 "passed": isinstance(formal_compare_gate, dict) and bool(formal_compare_gate),
@@ -458,8 +465,8 @@ def build_checklist(
             "job_start_rejected": {
                 "passed": bool(job_start_error_message),
             },
-            "job_start_matches_import_summary": {
-                "passed": bool(job_start_error_message) and job_start_error_message == import_summary,
+            "job_start_matches_validation_summary": {
+                "passed": bool(job_start_error_message) and job_start_error_message == validation_summary,
             },
             "post_block_observation_samples_collected": {
                 "passed": int(parse_int(blocked_motion_observation.get("sample_count")) or 0) > 0,
@@ -978,7 +985,7 @@ def main() -> int:
             ),
         )
         if validation_mode == "production_blocked":
-            gate = plan_result.get("formal_compare_gate", {})
+            gate = extract_validation_report(plan_result).get("formal_compare_gate", {})
             add_step(
                 steps,
                 "formal-compare-gate",
@@ -1070,7 +1077,7 @@ def main() -> int:
         if validation_mode == "production_blocked" and "error" not in job_start_response:
             job_id = str(job_result.get("job_id", "")).strip()
             raise RuntimeError(
-                "dxf.job.start unexpectedly succeeded while formal_compare_gate reported production_blocked"
+                "dxf.job.start unexpectedly succeeded while validation_report.formal_compare_gate reported production_blocked"
             )
         if validation_mode != "production_blocked":
             production_baseline = ensure_matching_production_baseline(

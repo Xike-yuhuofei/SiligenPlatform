@@ -9,15 +9,15 @@
 namespace {
 
 using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Shared::Types::Result;
 
 static_assert(std::is_default_constructible_v<UploadRequest>);
-static_assert(std::is_default_constructible_v<UploadResponse>);
+static_assert(std::is_default_constructible_v<SourceDrawing>);
 static_assert(std::is_abstract_v<IUploadFilePort>);
 static_assert(std::is_same_v<decltype(std::declval<IUploadFilePort&>().Execute(std::declval<const UploadRequest&>())),
-                             Result<UploadResponse>>);
+                             Result<SourceDrawing>>);
 
 TEST(UploadContractsTest, UploadRequestValidateRequiresCanonicalFields) {
     UploadRequest request;
@@ -32,20 +32,22 @@ TEST(UploadContractsTest, UploadRequestValidateRequiresCanonicalFields) {
     EXPECT_FALSE(request.Validate());
 }
 
-TEST(UploadContractsTest, UploadResponseDefaultsRemainNeutral) {
-    const UploadResponse response;
+TEST(UploadContractsTest, SourceDrawingDefaultsRemainNeutral) {
+    const SourceDrawing drawing;
 
-    EXPECT_FALSE(response.success);
-    EXPECT_TRUE(response.filepath.empty());
-    EXPECT_TRUE(response.prepared_filepath.empty());
-    EXPECT_TRUE(response.original_name.empty());
-    EXPECT_EQ(response.size, 0u);
-    EXPECT_TRUE(response.generated_filename.empty());
-    EXPECT_EQ(response.timestamp, 0);
-    EXPECT_TRUE(response.import_diagnostics.result_classification.empty());
-    EXPECT_FALSE(response.import_diagnostics.preview_ready);
-    EXPECT_FALSE(response.import_diagnostics.production_ready);
-    EXPECT_FALSE(response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(drawing.source_drawing_ref.empty());
+    EXPECT_TRUE(drawing.filepath.empty());
+    EXPECT_TRUE(drawing.original_name.empty());
+    EXPECT_EQ(drawing.size, 0u);
+    EXPECT_TRUE(drawing.generated_filename.empty());
+    EXPECT_EQ(drawing.timestamp, 0);
+    EXPECT_TRUE(drawing.source_hash.empty());
+    EXPECT_EQ(drawing.validation_report.schema_version, "DXFValidationReport.v1");
+    EXPECT_TRUE(drawing.validation_report.stage_id.empty());
+    EXPECT_TRUE(drawing.validation_report.owner_module.empty());
+    EXPECT_FALSE(drawing.validation_report.preview_ready);
+    EXPECT_FALSE(drawing.validation_report.production_ready);
+    EXPECT_FALSE(drawing.validation_report.formal_compare_gate.has_value);
 }
 
 }  // namespace

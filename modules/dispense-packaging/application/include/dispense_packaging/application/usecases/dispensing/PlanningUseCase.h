@@ -2,6 +2,7 @@
 
 #include "dispense_packaging/application/usecases/dispensing/PlanningPorts.h"
 #include "application/services/dispensing/WorkflowPlanningAssemblyTypes.h"
+#include "engineering/contracts/DxfValidationReport.h"
 #include "motion_planning/contracts/MotionPlanningReport.h"
 #include "motion_planning/contracts/InterpolationTypes.h"
 #include "domain/dispensing/value-objects/AuthorityTriggerLayout.h"
@@ -42,6 +43,7 @@ class IPlanningArtifactExportPort;
 namespace Siligen::Application::UseCases::Dispensing {
 
 using Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated;
+using Siligen::Engineering::Contracts::DxfValidationReport;
 using Siligen::MotionPlanning::Contracts::MotionPlanningReport;
 using Siligen::Shared::Types::PointFlyingCarrierPolicy;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
@@ -73,10 +75,15 @@ struct ExecutionProfile {
 struct PreparedAuthorityPreview {
     bool success = false;
     std::string source_path;
+    std::string source_drawing_ref;
+    std::string source_hash;
     std::string prepared_pb_path;
+    std::string canonical_geometry_ref;
+    DxfValidationReport validation_report;
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::ProcessPath::Contracts::ProcessPath canonical_execution_process_path;
     int discontinuity_count = 0;
+    bool fragmentation_suspected = false;
     std::string preview_diagnostic_code;
     Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewArtifacts artifacts;
     AuthorityProfile authority_profile;
@@ -130,6 +137,8 @@ struct ExecutionAssemblyArtifacts {
 
 struct PlanningRequest {
     std::string dxf_filepath;
+    std::string source_drawing_ref;
+    std::string source_hash;
     std::string baseline_fingerprint;
     TrajectoryConfig trajectory_config;
     bool optimize_path = true;
@@ -217,6 +226,10 @@ struct PlanningRequest {
 struct PlanningResponse {
     bool success = false;
     std::string error_message;
+    std::string source_drawing_ref;
+    std::string source_hash;
+    std::string canonical_geometry_ref;
+    DxfValidationReport validation_report;
 
     int segment_count = 0;
     float32 total_length = 0.0f;

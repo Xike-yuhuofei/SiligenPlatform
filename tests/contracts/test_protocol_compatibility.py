@@ -161,7 +161,9 @@ def test_dxf_preview_and_job_contract():
     assert "dxf.job.traceability" in operations
 
     artifact_create = operations["dxf.artifact.create"]
-    assert "formal_compare_gate" in artifact_create["resultSchema"]["required"]
+    assert {"artifact_id", "source_drawing_ref", "filepath", "source_hash", "validation_report"}.issubset(
+        set(artifact_create["resultSchema"]["required"])
+    )
 
     preview = operations["dxf.preview.snapshot"]
     preview_params = preview["paramsSchema"]
@@ -176,6 +178,7 @@ def test_dxf_preview_and_job_contract():
     preview_result_properties = preview["resultSchema"]["properties"]
     assert "preview_source" in preview_result_properties
     assert "motion_preview" in preview_result_properties
+    assert "path_quality" in preview["resultSchema"]["required"]
 
     preview_confirm = operations["dxf.preview.confirm"]
     assert {"plan_id", "snapshot_hash"}.issubset(set(preview_confirm["paramsSchema"]["required"]))
@@ -188,10 +191,10 @@ def test_dxf_preview_and_job_contract():
 
     plan_prepare = operations["dxf.plan.prepare"]
     assert "preview_request_signature" not in plan_prepare["resultSchema"]["required"]
-    assert "import_result_classification" in plan_prepare["resultSchema"]["required"]
-    assert "import_production_ready" in plan_prepare["resultSchema"]["required"]
-    assert "formal_compare_gate" in plan_prepare["resultSchema"]["required"]
-    assert "prepared_filepath" in plan_prepare["resultSchema"]["required"]
+    assert {"source_drawing_ref", "source_hash", "canonical_geometry_ref", "validation_report"}.issubset(
+        set(plan_prepare["resultSchema"]["required"])
+    )
+    assert "path_quality" in plan_prepare["resultSchema"]["required"]
     assert "execution_nominal_time_s" in plan_prepare["resultSchema"]["required"]
     assert "execution_plan_summary" in plan_prepare["resultSchema"]["required"]
     assert "estimated_time_s" not in plan_prepare["resultSchema"]["required"]
@@ -203,10 +206,10 @@ def test_dxf_preview_and_job_contract():
     assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
-    assert {"import_result_classification", "import_production_ready", "prepared_filepath"}.issubset(
+    assert {"canonical_geometry_ref", "validation_report"}.issubset(
         set(job_start["resultSchema"]["required"])
     )
-    assert "formal_compare_gate" in job_start["resultSchema"]["required"]
+    assert "path_quality" in job_start["resultSchema"]["required"]
     assert "task_id" not in job_start["resultSchema"]["required"]
     assert "task_id" not in job_start["resultSchema"]["properties"]
 
@@ -234,12 +237,21 @@ def test_dxf_preview_and_job_contract():
     artifact_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.artifact.create.success.json")
     prepare_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.plan.prepare.success.json")
     start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
-    assert artifact_fixture["result"]["formal_compare_gate"] is None
-    assert prepare_fixture["result"]["formal_compare_gate"] is None
+    assert artifact_fixture["result"]["artifact_id"] == artifact_fixture["result"]["source_drawing_ref"]
+    assert artifact_fixture["result"]["validation_report"]["formal_compare_gate"] is None
+    assert artifact_fixture["result"]["validation_report"]["source_hash"] == artifact_fixture["result"]["source_hash"]
+    assert prepare_fixture["result"]["validation_report"]["formal_compare_gate"] is None
+    assert prepare_fixture["result"]["validation_report"]["source_hash"] == prepare_fixture["result"]["source_hash"]
+    assert prepare_fixture["result"]["path_quality"]["verdict"] == "pass"
+    assert prepare_fixture["result"]["path_quality"]["blocking"] is False
+    assert prepare_fixture["result"]["canonical_geometry_ref"]
     assert "estimated_time_s" not in prepare_fixture["result"]
     assert "execution_nominal_time_s" in prepare_fixture["result"]
     assert "execution_plan_summary" in prepare_fixture["result"]
-    assert start_fixture["result"]["formal_compare_gate"] is None
+    assert start_fixture["result"]["validation_report"]["formal_compare_gate"] is None
+    assert start_fixture["result"]["path_quality"]["verdict"] == "pass"
+    assert start_fixture["result"]["path_quality"]["blocking"] is False
+    assert start_fixture["result"]["canonical_geometry_ref"]
     assert {"execution_budget_s", "execution_budget_breakdown"}.issubset(set(start_fixture["result"].keys()))
 
 

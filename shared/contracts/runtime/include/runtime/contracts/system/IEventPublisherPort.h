@@ -119,9 +119,12 @@ struct DXFExecutionCancelledEvent : public DomainEvent {
 
 struct SoftLimitTriggeredEvent : public DomainEvent {
     std::string task_id;
+    std::string job_id;
     LogicalAxisId axis = LogicalAxisId::X;
     float32 position = 0.0f;
     bool is_positive_limit = true;
+    int32 error_code = 0;
+    std::string reason_code;
 };
 
 struct SoftLimitViolationEvent : public DomainEvent {

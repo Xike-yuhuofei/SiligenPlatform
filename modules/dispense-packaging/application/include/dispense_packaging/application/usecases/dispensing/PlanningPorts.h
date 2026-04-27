@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engineering/contracts/DxfValidationReport.h"
 #include "motion_planning/contracts/MotionPlan.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/PathGenerationRequest.h"
@@ -14,10 +15,22 @@ namespace Siligen::Application::Ports::Dispensing {
 
 using MotionPlan = Siligen::MotionPlanning::Contracts::MotionPlan;
 using MotionPlanningConfig = Siligen::MotionPlanning::Contracts::TimePlanningConfig;
-using PreparedPlanningInputPath = std::string;
+using Siligen::Engineering::Contracts::DxfValidationReport;
 using ProcessPathBuildRequest = Siligen::ProcessPath::Contracts::PathGenerationRequest;
 using ProcessPathBuildResult = Siligen::ProcessPath::Contracts::PathGenerationResult;
 using Siligen::Shared::Types::Result;
+
+struct PlanningInputPreparationRequest {
+    std::string source_path;
+    std::string source_ref;
+    std::string source_hash;
+};
+
+struct PreparedPlanningInput {
+    std::string prepared_path;
+    std::string canonical_geometry_ref;
+    DxfValidationReport validation_report;
+};
 
 class IProcessPathBuildPort {
 public:
@@ -39,7 +52,7 @@ class IPlanningInputPreparationPort {
 public:
     virtual ~IPlanningInputPreparationPort() = default;
 
-    virtual Result<PreparedPlanningInputPath> EnsurePreparedInput(const std::string& source_path) const = 0;
+    virtual Result<PreparedPlanningInput> EnsurePreparedInput(const PlanningInputPreparationRequest& request) const = 0;
 };
 
 }  // namespace Siligen::Application::Ports::Dispensing

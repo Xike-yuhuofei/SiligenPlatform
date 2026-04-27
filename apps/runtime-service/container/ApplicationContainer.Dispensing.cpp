@@ -47,9 +47,7 @@ using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Domain::Configuration::Ports::FileData;
 using Siligen::Domain::Configuration::Ports::IConfigurationPort;
 using Siligen::Domain::Configuration::Ports::IFileStoragePort;
-using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
 using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
-using Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact;
 using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
 using Siligen::JobIngest::Contracts::UploadRequest;
@@ -199,39 +197,6 @@ class RuntimeUploadStorageAdapter final : public IUploadStoragePort {
     std::shared_ptr<IFileStoragePort> file_storage_port_;
 };
 
-class DxfPreparationAdapter final : public IUploadPreparationPort {
-   public:
-    explicit DxfPreparationAdapter(std::shared_ptr<IConfigurationPort> config_port)
-        : service_(std::move(config_port)) {}
-
-    Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const override {
-        auto result = service_.PrepareInputArtifact(source_path);
-        if (result.IsError()) {
-            return Result<PreparedInputArtifact>::Failure(result.GetError());
-        }
-
-        PreparedInputArtifact artifact;
-        artifact.prepared_path = result.Value().prepared_path;
-        artifact.import_diagnostics.result_classification = result.Value().import_diagnostics.result_classification;
-        artifact.import_diagnostics.preview_ready = result.Value().import_diagnostics.preview_ready;
-        artifact.import_diagnostics.production_ready = result.Value().import_diagnostics.production_ready;
-        artifact.import_diagnostics.summary = result.Value().import_diagnostics.summary;
-        artifact.import_diagnostics.primary_code = result.Value().import_diagnostics.primary_code;
-        artifact.import_diagnostics.warning_codes = result.Value().import_diagnostics.warning_codes;
-        artifact.import_diagnostics.error_codes = result.Value().import_diagnostics.error_codes;
-        artifact.import_diagnostics.resolved_units = result.Value().import_diagnostics.resolved_units;
-        artifact.import_diagnostics.resolved_unit_scale = result.Value().import_diagnostics.resolved_unit_scale;
-        return Result<PreparedInputArtifact>::Success(std::move(artifact));
-    }
-
-    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
-        return service_.CleanupPreparedInput(source_path);
-    }
-
-   private:
-    DxfPbPreparationService service_;
-};
-
 std::shared_ptr<IWorkflowExecutionPort> CreateRuntimeWorkflowExecutionPort(
     std::shared_ptr<DispensingExecutionUseCase> use_case) {
     return std::make_shared<RuntimeWorkflowExecutionPortAdapter>(std::move(use_case));
@@ -316,7 +281,6 @@ std::shared_ptr<UploadFileUseCase>
 ApplicationContainer::CreateInstance<UploadFileUseCase>() {
     return std::make_shared<UploadFileUseCase>(
         std::make_shared<RuntimeUploadStorageAdapter>(file_storage_port_),
-        std::make_shared<DxfPreparationAdapter>(config_port_),
         10);
 }
 

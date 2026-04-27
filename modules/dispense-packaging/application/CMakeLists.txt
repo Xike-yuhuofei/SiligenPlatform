@@ -99,6 +99,11 @@ if(TARGET siligen_trace_diagnostics_contracts_public)
         siligen_trace_diagnostics_contracts_public
     )
 endif()
+if(TARGET siligen_engineering_contracts)
+    target_link_libraries(siligen_dispense_packaging_application_headers INTERFACE
+        siligen_engineering_contracts
+    )
+endif()
 target_compile_features(siligen_dispense_packaging_application_headers INTERFACE cxx_std_17)
 
 set(SILIGEN_DISPENSE_PACKAGING_APPLICATION_IMPLEMENTATION_INCLUDE_DIRS
@@ -254,6 +259,11 @@ endif()
 if(TARGET siligen_trace_diagnostics_contracts_public)
     target_link_libraries(siligen_dispense_packaging_application PUBLIC
         siligen_trace_diagnostics_contracts_public
+    )
+endif()
+if(TARGET siligen_engineering_contracts)
+    target_link_libraries(siligen_dispense_packaging_application PUBLIC
+        siligen_engineering_contracts
     )
 endif()
 target_compile_features(siligen_dispense_packaging_application PUBLIC cxx_std_17)

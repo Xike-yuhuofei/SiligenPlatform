@@ -84,7 +84,7 @@ Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveStatusDetail> TcpDis
     return valve_query_use_case_->GetSupplyStatus();
 }
 
-Shared::Types::Result<UploadResponse> TcpDispensingFacade::UploadDxf(
+Shared::Types::Result<SourceDrawing> TcpDispensingFacade::UploadDxf(
     const UploadRequest& request) {
     return dxf_upload_use_case_->Execute(request);
 }

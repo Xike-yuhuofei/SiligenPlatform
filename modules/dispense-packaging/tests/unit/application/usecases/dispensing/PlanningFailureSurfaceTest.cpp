@@ -163,6 +163,47 @@ std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAss
         .CreateOperations();
 }
 
+class TestPlanningInputPreparationPort final
+    : public Siligen::Application::Ports::Dispensing::IPlanningInputPreparationPort {
+public:
+    explicit TestPlanningInputPreparationPort(const std::shared_ptr<DxfPbPreparationService>& pb_service)
+        : fallback_(Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(pb_service)) {}
+
+    ResultT<Siligen::Application::Ports::Dispensing::PreparedPlanningInput> EnsurePreparedInput(
+        const Siligen::Application::Ports::Dispensing::PlanningInputPreparationRequest& request) const override {
+        const auto source_path = std::filesystem::path(request.source_path);
+        if (source_path.extension() == ".pb") {
+            Siligen::Application::Ports::Dispensing::PreparedPlanningInput prepared;
+            prepared.prepared_path = request.source_path;
+            prepared.canonical_geometry_ref = "test-canonical:" + source_path.filename().string();
+            prepared.validation_report.stage_id = "S2";
+            prepared.validation_report.owner_module = "M2";
+            prepared.validation_report.source_ref =
+                request.source_ref.empty() ? source_path.filename().string() : request.source_ref;
+            prepared.validation_report.source_hash =
+                request.source_hash.empty() ? "test-source-hash" : request.source_hash;
+            prepared.validation_report.gate_result = "PASS";
+            prepared.validation_report.result_classification = "prepared_input_ready";
+            prepared.validation_report.preview_ready = true;
+            prepared.validation_report.production_ready = true;
+            prepared.validation_report.summary = "Test prepared input is ready.";
+            prepared.validation_report.resolved_units = "mm";
+            prepared.validation_report.resolved_unit_scale = 1.0;
+            return ResultT<Siligen::Application::Ports::Dispensing::PreparedPlanningInput>::Success(std::move(prepared));
+        }
+
+        return fallback_->EnsurePreparedInput(request);
+    }
+
+private:
+    std::shared_ptr<Siligen::Application::Ports::Dispensing::IPlanningInputPreparationPort> fallback_;
+};
+
+std::shared_ptr<Siligen::Application::Ports::Dispensing::IPlanningInputPreparationPort>
+CreatePlanningInputPreparationPort(const std::shared_ptr<DxfPbPreparationService>& pb_service) {
+    return std::make_shared<TestPlanningInputPreparationPort>(pb_service);
+}
+
 PlanningRequest MakePlanningRequest(const std::filesystem::path& pb_path) {
     PlanningRequest request;
     request.dxf_filepath = pb_path.string();
@@ -188,8 +229,7 @@ TEST(PlanningFailureSurfaceTest, ExportFailureBecomesExplicitFailureAndWritesEvi
             std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
         CreatePlanningOperations(),
         std::make_shared<FakeConfigurationPort>(),
-        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(
-            std::make_shared<DxfPbPreparationService>()),
+        CreatePlanningInputPreparationPort(std::make_shared<DxfPbPreparationService>()),
         std::make_shared<FailingExportPort>(),
         diagnostics_port,
         event_port);
@@ -219,8 +259,7 @@ TEST(PlanningFailureSurfaceTest, ExportNegativeAckBecomesExplicitFailureAndWrite
             std::make_shared<Siligen::Application::Services::MotionPlanning::MotionPlanningFacade>()),
         CreatePlanningOperations(),
         std::make_shared<FakeConfigurationPort>(),
-        Siligen::Application::Ports::Dispensing::AdaptDxfPreparationService(
-            std::make_shared<DxfPbPreparationService>()),
+        CreatePlanningInputPreparationPort(std::make_shared<DxfPbPreparationService>()),
         std::make_shared<NegativeExportAckPort>(),
         diagnostics_port,
         event_port);

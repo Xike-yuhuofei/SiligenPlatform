@@ -4,20 +4,13 @@
 #include "shared/types/Result.h"
 
 #include <cstddef>
-#include <memory>
 #include <string>
 #include <vector>
 
 namespace Siligen::JobIngest::Application::Ports::Dispensing {
 
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::Shared::Types::Result;
-
-struct PreparedInputArtifact {
-    std::string prepared_path;
-    DxfImportDiagnostics import_diagnostics;
-};
 
 class IUploadStoragePort {
    public:
@@ -30,15 +23,6 @@ class IUploadStoragePort {
     virtual Result<std::string> Store(const UploadRequest& request, const std::string& target_filename) = 0;
 
     virtual Result<void> Delete(const std::string& stored_path) = 0;
-};
-
-class IUploadPreparationPort {
-   public:
-    virtual ~IUploadPreparationPort() = default;
-
-    virtual Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const = 0;
-
-    virtual Result<void> CleanupPreparedInput(const std::string& source_path) const = 0;
 };
 
 }  // namespace Siligen::JobIngest::Application::Ports::Dispensing

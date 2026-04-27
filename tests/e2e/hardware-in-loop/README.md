@@ -179,7 +179,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
   - `artifacts.job_timeout_budget` 必须直接反映 runtime owner 导出的唯一等待预算
   - `job-terminal.state=completed`，且 checklist 通过
 - 若 mode 解析为 `production_blocked`，当前 authority 通过条件固定为：
-  - `dxf.job.start` 被正式拒绝且错误文案与 `import_summary` 对齐
+- `dxf.job.start` 被正式拒绝且错误文案与 `validation_report.summary` 对齐
   - 阻塞后必须继续采到 post-block 观测窗口，且 `blocked_motion_observation.sample_count > 0`
   - 只有在窗口内确认未发生轴运动时，报告才允许为 `overall_status=known_failure`，退出码 `10`
   - 报告根字段 `timing_summary.execution_budget_s / execution_budget_breakdown / observed_execution_time_s` 固定为 `null`
@@ -189,9 +189,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\e2e\hardware-in-loop
 - 当前 `production_blocked` checklist 固定要求：
   - `preview_source=planned_glue_snapshot`
   - `preview_kind=glue_points`
-  - `plan_import_production_blocked=true`
-  - `formal_compare_gate.status=production_blocked`
-  - `dxf.job.start` 被拒绝且错误文案与 `import_summary` 对齐
+- `validation_report_production_blocked=true`
+- `validation_report.formal_compare_gate.status=production_blocked`
+- `dxf.job.start` 被拒绝且错误文案与 `validation_report.summary` 对齐
   - `post_block_observation_samples_collected=true`
   - `no_axis_motion_observed_after_block=true`
 - 当前 `production_execution` checklist 固定要求：

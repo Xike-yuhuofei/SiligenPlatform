@@ -2,6 +2,7 @@
 
 #include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 
+#include "domain/safety/domain-services/SoftLimitValidator.h"
 #include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -23,6 +24,8 @@ using Siligen::Device::Contracts::Ports::DispenserDevicePort;
 using Siligen::Device::Contracts::Ports::MotionDevicePort;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
+using Siligen::Domain::Safety::DomainServices::SoftLimitValidator;
+using Siligen::Engineering::Contracts::DxfFormalCompareGateDiagnostic;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::Error;
@@ -57,6 +60,87 @@ std::uint64_t Fnv1a64(const std::string& text) {
         hash *= 1099511628211ULL;
     }
     return hash;
+}
+
+DxfFormalCompareGateDiagnostic ConvertFormalCompareGateDiagnostic(
+    const Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic& gate) {
+    DxfFormalCompareGateDiagnostic converted;
+    if (!gate.HasValue()) {
+        return converted;
+    }
+
+    converted.has_value = true;
+    converted.status = gate.status;
+    converted.reason_code = gate.reason_code;
+    converted.authority_span_ref = gate.authority_span_ref;
+    converted.trigger_begin_index = static_cast<int>(gate.trigger_begin_index);
+    converted.current_start_position_mm = gate.current_start_position_mm;
+    converted.next_trigger_position_mm = gate.next_trigger_position_mm;
+    converted.candidate_failures = gate.candidate_failures;
+    return converted;
+}
+
+constexpr const char* kPathQualityMissingCode = "path_quality_missing";
+constexpr const char* kPathQualitySource = "runtime_authority_path_quality";
+constexpr const char* kPathQualityThresholdsVersion = "runtime_path_quality.v1";
+constexpr const char* kPathQualitySpacingInvalidCode = "spacing_invalid";
+constexpr const char* kPathQualityPreviewValidationFailedCode = "preview_validation_failed";
+constexpr const char* kPathQualityFormalCompareBlockedCode = "formal_compare_blocked";
+constexpr const char* kPathQualityPreviewExceptionUnallowlistedCode = "preview_exception_unallowlisted";
+constexpr const char* kPathQualityProcessPathFragmentationCode = "process_path_fragmentation";
+
+void AppendUniqueReasonCode(std::vector<std::string>& reason_codes, const std::string& reason_code) {
+    if (reason_code.empty()) {
+        return;
+    }
+    if (std::find(reason_codes.begin(), reason_codes.end(), reason_code) != reason_codes.end()) {
+        return;
+    }
+    reason_codes.push_back(reason_code);
+}
+
+std::string JoinReasonCodes(const std::vector<std::string>& reason_codes) {
+    std::ostringstream oss;
+    for (std::size_t index = 0; index < reason_codes.size(); ++index) {
+        if (index > 0U) {
+            oss << ',';
+        }
+        oss << reason_codes[index];
+    }
+    return oss.str();
+}
+
+std::string BuildPathQualitySummary(
+    const std::string& detail,
+    const std::vector<std::string>& reason_codes) {
+    if (reason_codes.empty()) {
+        return detail;
+    }
+    if (detail.empty()) {
+        return JoinReasonCodes(reason_codes);
+    }
+    return detail + " [" + JoinReasonCodes(reason_codes) + "]";
+}
+
+bool IsFormalCompareGateBlocking(
+    const Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic& gate) {
+    if (!gate.HasValue()) {
+        return false;
+    }
+
+    return gate.status == "production_blocked" ||
+           gate.status == "blocked" ||
+           gate.status == "fail";
+}
+
+std::string ResolveRuntimeValidationClassification(const bool preview_ready, const bool production_ready) {
+    if (preview_ready && production_ready) {
+        return "runtime_authority_ready";
+    }
+    if (preview_ready) {
+        return "runtime_preview_only";
+    }
+    return "runtime_validation_blocked";
 }
 
 bool IsRuntimeTerminalState(const std::string& state) {
@@ -96,6 +180,84 @@ std::optional<std::string> ValidatePreviewBindingPayload(
         return "preview binding display_reveal_lengths_mm must match returned glue_points";
     }
     return std::nullopt;
+}
+
+Siligen::Domain::Configuration::ValueObjects::MotionConfiguration BuildSoftLimitMotionConfiguration(
+    const Siligen::Domain::Configuration::Ports::MachineConfig& machine_config) {
+    using AxisConfiguration = Siligen::Domain::Configuration::ValueObjects::AxisConfiguration;
+    using MotionConfiguration = Siligen::Domain::Configuration::ValueObjects::MotionConfiguration;
+    using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
+
+    MotionConfiguration config;
+    config.maxVelocity = machine_config.max_speed;
+    config.maxAcceleration = machine_config.max_acceleration;
+    config.axes.reserve(2);
+
+    AxisConfiguration axis_x;
+    axis_x.axisId = LogicalAxisId::X;
+    axis_x.enabled = true;
+    axis_x.maxVelocity = machine_config.max_speed;
+    axis_x.maxAcceleration = machine_config.max_acceleration;
+    axis_x.softLimits.enabled = true;
+    axis_x.softLimits.min = machine_config.soft_limits.x_min;
+    axis_x.softLimits.max = machine_config.soft_limits.x_max;
+    config.axes.push_back(axis_x);
+
+    AxisConfiguration axis_y;
+    axis_y.axisId = LogicalAxisId::Y;
+    axis_y.enabled = true;
+    axis_y.maxVelocity = machine_config.max_speed;
+    axis_y.maxAcceleration = machine_config.max_acceleration;
+    axis_y.softLimits.enabled = true;
+    axis_y.softLimits.min = machine_config.soft_limits.y_min;
+    axis_y.softLimits.max = machine_config.soft_limits.y_max;
+    config.axes.push_back(axis_y);
+
+    return config;
+}
+
+std::vector<Siligen::TrajectoryPoint> ResolveSoftLimitValidationTrajectory(
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package) {
+    if (!execution_package.execution_plan.interpolation_points.empty()) {
+        return execution_package.execution_plan.interpolation_points;
+    }
+
+    std::vector<Siligen::TrajectoryPoint> trajectory_points;
+    trajectory_points.reserve(execution_package.execution_plan.motion_trajectory.points.size());
+    for (const auto& motion_point : execution_package.execution_plan.motion_trajectory.points) {
+        Siligen::TrajectoryPoint point;
+        point.position = {motion_point.position.x, motion_point.position.y};
+        point.timestamp = motion_point.t;
+        point.velocity = std::hypot(motion_point.velocity.x, motion_point.velocity.y);
+        trajectory_points.push_back(point);
+    }
+    return trajectory_points;
+}
+
+Siligen::Shared::Types::Result<void> ValidateExecutionSoftLimits(
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
+    const Siligen::Domain::Configuration::Ports::MachineConfig& machine_config) {
+    const auto trajectory_points = ResolveSoftLimitValidationTrajectory(execution_package);
+    if (trajectory_points.empty()) {
+        return Siligen::Shared::Types::Result<void>::Failure(
+            Error(
+                ErrorCode::INVALID_STATE,
+                "execution trajectory unavailable for soft limit validation",
+                "DispensingWorkflowUseCase"));
+    }
+
+    const auto motion_config = BuildSoftLimitMotionConfiguration(machine_config);
+    const auto validation_result =
+        SoftLimitValidator::ValidateTrajectory(trajectory_points.data(), trajectory_points.size(), motion_config);
+    if (validation_result.IsError()) {
+        return Siligen::Shared::Types::Result<void>::Failure(
+            Error(
+                validation_result.GetError().GetCode(),
+                "SOFT_LIMIT_VIOLATION: " + validation_result.GetError().GetMessage(),
+                "DispensingWorkflowUseCase"));
+    }
+
+    return Siligen::Shared::Types::Result<void>::Success();
 }
 
 }  // namespace
@@ -164,18 +326,19 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
     const auto& upload = upload_result.Value();
     CreateArtifactResponse response;
     response.success = true;
-    response.artifact_id = GenerateId("artifact");
+    response.artifact_id = upload.source_drawing_ref;
+    response.source_drawing_ref = upload.source_drawing_ref;
     response.filepath = upload.filepath;
-    response.prepared_filepath = upload.prepared_filepath;
+    response.source_hash = upload.source_hash;
     response.original_name = upload.original_name;
     response.generated_filename = upload.generated_filename;
     response.size = upload.size;
     response.timestamp = upload.timestamp;
-    response.import_diagnostics = upload.import_diagnostics;
+    response.validation_report = upload.validation_report;
 
     ArtifactRecord record;
     record.response = response;
-    record.upload_response = upload;
+    record.source_drawing = upload;
 
     {
         std::lock_guard<std::mutex> lock(artifacts_mutex_);
@@ -207,7 +370,28 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     planning_request.baseline_fingerprint = baseline.baseline_fingerprint;
     planning_request.point_flying_carrier_policy = baseline.point_flying_carrier_policy;
     if (planning_request.dxf_filepath.empty()) {
-        planning_request.dxf_filepath = artifact.upload_response.filepath;
+        planning_request.dxf_filepath = artifact.source_drawing.filepath;
+    } else if (planning_request.dxf_filepath != artifact.source_drawing.filepath) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(ErrorCode::INVALID_PARAMETER, "planning request source path must match artifact authority", "DispensingWorkflowUseCase"));
+    }
+    if (planning_request.source_drawing_ref.empty()) {
+        planning_request.source_drawing_ref = artifact.source_drawing.source_drawing_ref;
+    } else if (planning_request.source_drawing_ref != artifact.source_drawing.source_drawing_ref) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "planning request source_drawing_ref must match artifact authority",
+                "DispensingWorkflowUseCase"));
+    }
+    if (planning_request.source_hash.empty()) {
+        planning_request.source_hash = artifact.source_drawing.source_hash;
+    } else if (planning_request.source_hash != artifact.source_drawing.source_hash) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "planning request source_hash must match artifact authority",
+                "DispensingWorkflowUseCase"));
     }
     const auto authority_cache_key = planning_use_case_->BuildAuthorityCacheKey(planning_request);
     auto authority_resolve_result = ResolveAuthorityPreview(authority_cache_key, planning_request);
@@ -223,7 +407,13 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     execution_launch.authority_cache_key = authority_cache_key;
     execution_launch.runtime_overrides = request.runtime_overrides;
     if (execution_launch.runtime_overrides.source_path.empty()) {
-        execution_launch.runtime_overrides.source_path = artifact.upload_response.filepath;
+        execution_launch.runtime_overrides.source_path = artifact.source_drawing.filepath;
+    } else if (execution_launch.runtime_overrides.source_path != artifact.source_drawing.filepath) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "runtime source_path must match artifact authority",
+                "DispensingWorkflowUseCase"));
     }
 
     PreparePlanResponse response;
@@ -231,12 +421,14 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.artifact_id = request.artifact_id;
     response.plan_id = GenerateId("plan");
     response.plan_fingerprint = BuildPlanFingerprint(request.artifact_id, authority_preview, execution_launch);
-    response.filepath = artifact.upload_response.filepath;
-    response.prepared_filepath = artifact.upload_response.prepared_filepath;
+    response.source_drawing_ref = artifact.source_drawing.source_drawing_ref;
+    response.source_hash = artifact.source_drawing.source_hash;
+    response.canonical_geometry_ref = authority_preview.canonical_geometry_ref;
+    response.filepath = artifact.source_drawing.filepath;
     response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
     response.point_count = static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
     response.total_length_mm = authority_preview.artifacts.total_length;
-    response.import_diagnostics = artifact.upload_response.import_diagnostics;
+    response.validation_report = authority_preview.validation_report;
     response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
     response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
     response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
@@ -277,6 +469,11 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     PlanRecord record;
     record.response = response;
     record.execution_launch = std::move(execution_launch);
+    record.prepared_pb_path = authority_preview.prepared_pb_path;
+    record.canonical_geometry_ref = authority_preview.canonical_geometry_ref;
+    record.validation_report = authority_preview.validation_report;
+    record.discontinuity_count = authority_preview.discontinuity_count;
+    record.fragmentation_suspected = authority_preview.fragmentation_suspected;
     record.execution_trajectory_points = authority_preview.artifacts.preview_trajectory_points;
     record.glue_points = authority_preview.artifacts.glue_points;
     record.authority_trigger_layout = authority_preview.artifacts.authority_trigger_layout;
@@ -326,20 +523,34 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->execution_launch.authority_cache_key = authority_cache_key;
             reusable->execution_launch.runtime_overrides = request.runtime_overrides;
             if (reusable->execution_launch.runtime_overrides.source_path.empty()) {
-                reusable->execution_launch.runtime_overrides.source_path = artifact.upload_response.filepath;
+                reusable->execution_launch.runtime_overrides.source_path = artifact.source_drawing.filepath;
+            } else if (reusable->execution_launch.runtime_overrides.source_path != artifact.source_drawing.filepath) {
+                return Result<PreparePlanResponse>::Failure(
+                    Error(
+                        ErrorCode::INVALID_PARAMETER,
+                        "runtime source_path must match artifact authority",
+                        "DispensingWorkflowUseCase"));
             }
-            reusable->response.filepath = artifact.upload_response.filepath;
-            reusable->response.prepared_filepath = artifact.upload_response.prepared_filepath;
+            reusable->response.source_drawing_ref = artifact.source_drawing.source_drawing_ref;
+            reusable->response.source_hash = artifact.source_drawing.source_hash;
+            reusable->response.canonical_geometry_ref = authority_preview.canonical_geometry_ref;
+            reusable->response.filepath = artifact.source_drawing.filepath;
             reusable->response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
             reusable->response.point_count =
                 static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
             reusable->response.total_length_mm = authority_preview.artifacts.total_length;
             reusable->response.generated_at = response.generated_at;
-            reusable->response.import_diagnostics = artifact.upload_response.import_diagnostics;
+            reusable->response.validation_report = authority_preview.validation_report;
             reusable->response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
             reusable->response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
             reusable->response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
             reusable->response.preview_diagnostic_code = authority_preview.preview_diagnostic_code;
+            reusable->prepared_pb_path = authority_preview.prepared_pb_path;
+            reusable->canonical_geometry_ref = authority_preview.canonical_geometry_ref;
+            reusable->validation_report = authority_preview.validation_report;
+            reusable->path_quality.reset();
+            reusable->discontinuity_count = authority_preview.discontinuity_count;
+            reusable->fragmentation_suspected = authority_preview.fragmentation_suspected;
             reusable->preview_authority_ready = authority_preview.artifacts.preview_authority_ready;
             reusable->preview_authority_shared_with_execution = false;
             reusable->preview_binding_ready = authority_preview.artifacts.preview_binding_ready;
@@ -395,7 +606,11 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
         auto it = plans_.find(prepared_plan_id);
         if (it != plans_.end() && it->second.latest) {
             RefreshResponseExecutionContract(it->second);
-            RefreshPlanImportDiagnostics(it->second);
+            RefreshPlanValidationReport(it->second);
+            if (!it->second.path_quality.has_value()) {
+                return Result<PreparePlanResponse>::Failure(
+                    Error(ErrorCode::INVALID_STATE, kPathQualityMissingCode, "DispensingWorkflowUseCase"));
+            }
             response = it->second.response;
             response.performance_profile = current_prepare_profile;
         }
@@ -442,6 +657,9 @@ Result<PreviewSnapshotResponse> DispensingWorkflowUseCase::GetPreviewSnapshot(co
     if (snapshot_record.execution_assembly.motion_trajectory_points.empty() &&
         !has_export_process_path) {
         return fail_snapshot_stage("motion trajectory snapshot unavailable for preview");
+    }
+    if (!snapshot_record.path_quality.has_value()) {
+        return fail_snapshot_stage(kPathQualityMissingCode);
     }
 
     auto snapshot_payload =
@@ -504,11 +722,11 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         std::lock_guard<std::mutex> lock(plans_mutex_);
         auto it = plans_.find(request.plan_id);
         if (it != plans_.end() && it->second.latest) {
-            RefreshPlanImportDiagnostics(it->second);
-            if (!it->second.response.import_diagnostics.production_ready) {
-                const std::string detail = it->second.response.import_diagnostics.summary.empty()
-                    ? "DXF import is not production-ready"
-                    : it->second.response.import_diagnostics.summary;
+            RefreshPlanValidationReport(it->second);
+            if (!it->second.response.validation_report.production_ready) {
+                const std::string detail = it->second.response.validation_report.summary.empty()
+                    ? "DXF validation report is not production-ready"
+                    : it->second.response.validation_report.summary;
                 return Result<StartJobResponse>::Failure(
                     Error(ErrorCode::INVALID_STATE, detail, "DispensingWorkflowUseCase"));
             }
@@ -521,6 +739,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     }
     auto execution_launch = execution_launch_result.Value();
     StartJobResponse::ProductionBaselineContext production_baseline;
+    std::shared_ptr<const Domain::Dispensing::Contracts::ExecutionPackageValidated> execution_package;
 
     {
         std::lock_guard<std::mutex> lock(plans_mutex_);
@@ -533,8 +752,38 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
         if (materialize_result.IsError()) {
             return Result<StartJobResponse>::Failure(materialize_result.GetError());
         }
+        RefreshPlanValidationReport(it->second);
+        if (!it->second.path_quality.has_value()) {
+            return Result<StartJobResponse>::Failure(
+                Error(ErrorCode::INVALID_STATE, kPathQualityMissingCode, "DispensingWorkflowUseCase"));
+        }
         execution_launch = it->second.execution_launch;
         production_baseline = it->second.response.production_baseline;
+        execution_package = it->second.execution_launch.execution_package;
+    }
+
+    if (!execution_package) {
+        return Result<StartJobResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_STATE,
+                "execution package unavailable for soft limit validation",
+                "DispensingWorkflowUseCase"));
+    }
+    if (!config_port_) {
+        return Result<StartJobResponse>::Failure(
+            Error(
+                ErrorCode::PORT_NOT_INITIALIZED,
+                "machine configuration port not available",
+                "DispensingWorkflowUseCase"));
+    }
+
+    const auto machine_config_result = config_port_->GetMachineConfig();
+    if (machine_config_result.IsError()) {
+        return Result<StartJobResponse>::Failure(machine_config_result.GetError());
+    }
+    const auto soft_limit_result = ValidateExecutionSoftLimits(*execution_package, machine_config_result.Value());
+    if (soft_limit_result.IsError()) {
+        return Result<StartJobResponse>::Failure(soft_limit_result.GetError());
     }
 
     Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest runtime_request;
@@ -571,6 +820,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     response.job_id = job_id;
     response.plan_id = request.plan_id;
     response.plan_fingerprint = request.plan_fingerprint;
+    response.canonical_geometry_ref = execution_launch.authority_preview.canonical_geometry_ref;
     response.target_count = request.target_count;
     if (execution_launch.execution_package) {
         response.execution_budget_breakdown =
@@ -587,6 +837,15 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     response.performance_profile.assembly_ms = execution_resolution.assembly.execution_profile.assembly_ms;
     response.performance_profile.export_ms = execution_resolution.assembly.execution_profile.export_ms;
     response.performance_profile.execution_total_ms = execution_resolution.assembly.execution_profile.total_ms;
+    {
+        std::lock_guard<std::mutex> lock(plans_mutex_);
+        const auto it = plans_.find(request.plan_id);
+        if (it != plans_.end() && it->second.latest) {
+            response.validation_report = it->second.response.validation_report;
+            response.path_quality = it->second.response.path_quality;
+            response.canonical_geometry_ref = it->second.response.canonical_geometry_ref;
+        }
+    }
     return Result<StartJobResponse>::Success(std::move(response));
 }
 
@@ -706,6 +965,9 @@ PreviewSnapshotResponse DispensingWorkflowUseCase::BuildPreviewSnapshotResponse(
     input.exception_reason = plan_record.preview_exception_reason;
     input.failure_reason = plan_record.preview_failure_reason;
     input.diagnostic_code = plan_record.preview_diagnostic_code;
+    if (plan_record.path_quality.has_value()) {
+        input.path_quality = &plan_record.path_quality.value();
+    }
 
     Siligen::Application::Services::Dispensing::PreviewSnapshotService snapshot_service;
     return snapshot_service.BuildResponse(input, max_polyline_points, max_glue_points);
@@ -762,6 +1024,9 @@ std::string DispensingWorkflowUseCase::BuildPlanFingerprint(
     const auto output_policy = runtime_request.ResolveOutputPolicy();
 
     oss << artifact_id << '|'
+        << authority_preview.source_drawing_ref << '|'
+        << authority_preview.source_hash << '|'
+        << authority_preview.canonical_geometry_ref << '|'
         << execution_launch.authority_cache_key << '|'
         << execution_launch.planning_request.baseline_fingerprint << '|'
         << execution_launch.planning_request.HasExplicitExecutionStrategy() << '|'
@@ -1076,7 +1341,11 @@ Result<DispensingWorkflowUseCase::PreviewBindingResolution> DispensingWorkflowUs
             return Result<PreviewBindingResolution>::Failure(
                 Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
         }
-        if (auto preview_gate_error = BuildPreviewGateError(it->second, mark_failed, false); preview_gate_error.has_value()) {
+        if (auto preview_gate_error = BuildPreviewGateError(
+                it->second,
+                mark_failed,
+                false,
+                true); preview_gate_error.has_value()) {
             return Result<PreviewBindingResolution>::Failure(preview_gate_error.value());
         }
 
@@ -1110,7 +1379,10 @@ Result<DispensingWorkflowUseCase::PlanRecord> DispensingWorkflowUseCase::Promote
                 Error(ErrorCode::INVALID_STATE, "plan is stale", "DispensingWorkflowUseCase"));
         }
         if (auto preview_gate_error = BuildPreviewGateError(
-                it->second, true, require_execution_binding); preview_gate_error.has_value()) {
+                it->second,
+                true,
+                require_execution_binding,
+                true); preview_gate_error.has_value()) {
             return Result<PlanRecord>::Failure(preview_gate_error.value());
         }
 
@@ -1159,7 +1431,10 @@ Result<ConfirmPreviewResponse> DispensingWorkflowUseCase::ConfirmPreviewReadyPla
                 Error(ErrorCode::INVALID_PARAMETER, "snapshot hash mismatch", "DispensingWorkflowUseCase"));
         }
         if (auto preview_gate_error = BuildPreviewGateError(
-                it->second, true, require_execution_binding); preview_gate_error.has_value()) {
+                it->second,
+                true,
+                require_execution_binding,
+                true); preview_gate_error.has_value()) {
             return Result<ConfirmPreviewResponse>::Failure(preview_gate_error.value());
         }
 
@@ -1197,7 +1472,10 @@ Result<DispensingWorkflowUseCase::PlanExecutionLaunch> DispensingWorkflowUseCase
             Error(ErrorCode::INVALID_STATE, "preview not confirmed", "DispensingWorkflowUseCase"));
     }
     if (auto preview_gate_error = BuildPreviewGateError(
-            it->second, false, require_execution_binding); preview_gate_error.has_value()) {
+            it->second,
+            false,
+            require_execution_binding,
+            false); preview_gate_error.has_value()) {
         return Result<PlanExecutionLaunch>::Failure(preview_gate_error.value());
     }
     if (it->second.preview_snapshot_hash != it->second.response.plan_fingerprint) {
@@ -1290,15 +1568,92 @@ DispensingWorkflowUseCase::EvaluateExecutionCapability(const PlanRecord& plan_re
     return diagnostic;
 }
 
+std::optional<PathQuality> DispensingWorkflowUseCase::BuildPathQuality(const PlanRecord& plan_record) const {
+    if (plan_record.preview_validation_classification.empty()) {
+        return std::nullopt;
+    }
+
+    PathQuality path_quality;
+    path_quality.source = kPathQualitySource;
+    path_quality.thresholds_version = kPathQualityThresholdsVersion;
+    path_quality.inputs.spacing_valid = plan_record.preview_spacing_valid;
+    path_quality.inputs.validation_classification = plan_record.preview_validation_classification;
+    path_quality.inputs.formal_compare_gate = plan_record.execution_assembly.formal_compare_gate.status;
+    path_quality.inputs.preview_diagnostic_code = plan_record.preview_diagnostic_code;
+    path_quality.inputs.discontinuity_count = plan_record.discontinuity_count;
+
+    bool blocking_failure = false;
+    if (!plan_record.preview_spacing_valid) {
+        AppendUniqueReasonCode(path_quality.reason_codes, kPathQualitySpacingInvalidCode);
+        blocking_failure = true;
+    }
+    if (plan_record.preview_validation_classification == "fail") {
+        AppendUniqueReasonCode(path_quality.reason_codes, kPathQualityPreviewValidationFailedCode);
+        blocking_failure = true;
+    }
+    if (IsFormalCompareGateBlocking(plan_record.execution_assembly.formal_compare_gate)) {
+        AppendUniqueReasonCode(path_quality.reason_codes, kPathQualityFormalCompareBlockedCode);
+        AppendUniqueReasonCode(path_quality.reason_codes, plan_record.execution_assembly.formal_compare_gate.reason_code);
+        blocking_failure = true;
+    }
+    if (!plan_record.preview_diagnostic_code.empty()) {
+        AppendUniqueReasonCode(path_quality.reason_codes, plan_record.preview_diagnostic_code);
+    }
+    if (plan_record.preview_diagnostic_code == kPathQualityProcessPathFragmentationCode ||
+        (plan_record.fragmentation_suspected && plan_record.discontinuity_count > 0)) {
+        AppendUniqueReasonCode(path_quality.reason_codes, kPathQualityProcessPathFragmentationCode);
+        blocking_failure = true;
+    }
+
+    if (blocking_failure) {
+        path_quality.verdict = "fail";
+        path_quality.blocking = true;
+        std::string detail = plan_record.preview_failure_reason;
+        if (detail.empty()) {
+            detail = plan_record.execution_failure_reason;
+        }
+        if (detail.empty()) {
+            detail = "path_quality blocked";
+        }
+        path_quality.summary = BuildPathQualitySummary(detail, path_quality.reason_codes);
+        return path_quality;
+    }
+
+    if (plan_record.preview_validation_classification == "pass_with_exception") {
+        path_quality.verdict = "pass_with_exception";
+        path_quality.blocking = true;
+        AppendUniqueReasonCode(path_quality.reason_codes, kPathQualityPreviewExceptionUnallowlistedCode);
+        std::string detail = plan_record.preview_exception_reason;
+        if (detail.empty()) {
+            detail = "path_quality exception is not allowlisted for production";
+        }
+        path_quality.summary = BuildPathQualitySummary(detail, path_quality.reason_codes);
+        return path_quality;
+    }
+
+    path_quality.verdict = "pass";
+    path_quality.blocking = false;
+    path_quality.summary = "path_quality passed";
+    return path_quality;
+}
+
+void DispensingWorkflowUseCase::RefreshPathQuality(PlanRecord& plan_record) const {
+    plan_record.path_quality = BuildPathQuality(plan_record);
+    if (plan_record.path_quality.has_value()) {
+        plan_record.response.path_quality = *plan_record.path_quality;
+    }
+}
+
 std::string DispensingWorkflowUseCase::ResolveProductionGateFailure(const PlanRecord& plan_record) const {
-    const auto preview_gate = BuildPreviewGateDiagnostic(plan_record, false);
+    const auto preview_gate = BuildPreviewGateDiagnostic(plan_record, false, false);
     if (!preview_gate.owner_message.empty()) {
         return preview_gate.owner_message;
     }
-    if (plan_record.execution_assembly.formal_compare_gate.IsProductionBlocked()) {
-        return plan_record.execution_failure_reason.empty()
-            ? "owner execution package is not production-ready"
-            : plan_record.execution_failure_reason;
+    if (!plan_record.path_quality.has_value()) {
+        return BuildPathQualitySummary(kPathQualityMissingCode, {kPathQualityMissingCode});
+    }
+    if (plan_record.path_quality->blocking) {
+        return plan_record.path_quality->summary;
     }
     if (!plan_record.execution_authority_shared_with_execution) {
         return "preview authority is not shared with execution";
@@ -1539,29 +1894,76 @@ Result<std::shared_ptr<const ProfileCompareExpectedTrace>> DispensingWorkflowUse
     return Result<std::shared_ptr<const ProfileCompareExpectedTrace>>::Success(trace);
 }
 
-void DispensingWorkflowUseCase::RefreshPlanImportDiagnostics(PlanRecord& plan_record) const {
-    auto& diagnostics = plan_record.response.import_diagnostics;
-    const bool import_preview_ready = diagnostics.preview_ready;
-    const bool import_production_ready = diagnostics.production_ready;
-    const auto preview_gate = BuildPreviewGateDiagnostic(plan_record, false);
-    const auto production_failure = ResolveProductionGateFailure(plan_record);
+void DispensingWorkflowUseCase::RefreshPlanValidationReport(PlanRecord& plan_record) const {
+    auto report = plan_record.validation_report;
+    const bool import_preview_ready = report.preview_ready;
+    const bool import_production_ready = report.production_ready;
 
-    diagnostics.formal_compare_gate = plan_record.execution_assembly.formal_compare_gate;
-    diagnostics.preview_ready = import_preview_ready && preview_gate.owner_message.empty();
-    diagnostics.production_ready = import_production_ready && production_failure.empty();
+    RefreshPathQuality(plan_record);
 
-    if (!production_failure.empty()) {
-        diagnostics.summary = production_failure;
-    } else if (!preview_gate.owner_message.empty()) {
-        diagnostics.summary = preview_gate.owner_message;
-    } else if (diagnostics.summary.empty()) {
-        diagnostics.summary = "DXF import succeeded and is ready for production.";
+    const auto preview_gate = BuildPreviewGateDiagnostic(plan_record, false, true);
+    const auto production_failure = import_production_ready ? ResolveProductionGateFailure(plan_record) : std::string{};
+    const bool preview_ready = import_preview_ready && preview_gate.owner_message.empty();
+    const bool production_ready = import_production_ready && production_failure.empty();
+
+    report.stage_id = "S12";
+    report.owner_module = "M9";
+    if (report.source_ref.empty()) {
+        report.source_ref = plan_record.response.source_drawing_ref;
     }
+    if (report.source_hash.empty()) {
+        report.source_hash = plan_record.response.source_hash;
+    }
+    report.formal_compare_gate = ConvertFormalCompareGateDiagnostic(plan_record.execution_assembly.formal_compare_gate);
+    report.preview_ready = preview_ready;
+    report.production_ready = production_ready;
+    report.result_classification = ResolveRuntimeValidationClassification(preview_ready, production_ready);
+
+    auto error_codes = report.error_codes;
+    if (plan_record.path_quality.has_value() && plan_record.path_quality->blocking) {
+        for (const auto& reason_code : plan_record.path_quality->reason_codes) {
+            AppendUniqueReasonCode(error_codes, reason_code);
+        }
+    } else if (!plan_record.path_quality.has_value() && import_production_ready) {
+        AppendUniqueReasonCode(error_codes, kPathQualityMissingCode);
+    }
+    report.error_codes = std::move(error_codes);
+
+    if (!import_production_ready) {
+        // Preserve upstream import authority summary/primary_code when production was already blocked before runtime.
+    } else if (!production_failure.empty()) {
+        report.summary = production_failure;
+        if (plan_record.path_quality.has_value() && !plan_record.path_quality->reason_codes.empty()) {
+            report.primary_code = plan_record.path_quality->reason_codes.front();
+        } else if (!plan_record.path_quality.has_value()) {
+            report.primary_code = kPathQualityMissingCode;
+        } else if (!plan_record.execution_diagnostic_code.empty()) {
+            report.primary_code = plan_record.execution_diagnostic_code;
+        } else if (report.formal_compare_gate.has_value && !report.formal_compare_gate.reason_code.empty()) {
+            report.primary_code = report.formal_compare_gate.reason_code;
+        }
+    } else if (!preview_gate.owner_message.empty()) {
+        report.summary = preview_gate.owner_message;
+        if (!plan_record.preview_diagnostic_code.empty()) {
+            report.primary_code = plan_record.preview_diagnostic_code;
+        }
+    } else if (report.summary.empty()) {
+        report.summary = "Canonical geometry validated and is ready for production.";
+    }
+
+    report.gate_result = Siligen::Engineering::Contracts::ResolveGateResult(
+        report.production_ready,
+        report.warning_codes,
+        report.error_codes);
+    plan_record.validation_report = report;
+    plan_record.response.validation_report = report;
+    plan_record.response.canonical_geometry_ref = plan_record.canonical_geometry_ref;
 }
 
 DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::BuildPreviewGateDiagnostic(
     const PlanRecord& plan_record,
-    bool require_execution_binding) const {
+    bool require_execution_binding,
+    bool enforce_path_validation) const {
     PreviewGateDiagnostic diagnostic;
     diagnostic.layout_id = plan_record.authority_trigger_layout.layout_id;
     diagnostic.authority_ready = plan_record.preview_authority_ready;
@@ -1591,17 +1993,19 @@ DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::Buil
             : diagnostic.failure_reason;
         return diagnostic;
     }
-    if (!diagnostic.spacing_valid || diagnostic.validation_classification == "fail") {
-        if (!diagnostic.failure_reason.empty()) {
-            diagnostic.owner_message = diagnostic.failure_reason;
+    if (enforce_path_validation) {
+        if (!diagnostic.spacing_valid || diagnostic.validation_classification == "fail") {
+            if (!diagnostic.failure_reason.empty()) {
+                diagnostic.owner_message = diagnostic.failure_reason;
+                return diagnostic;
+            }
+            if (diagnostic.validation_classification == "fail" && !diagnostic.exception_reason.empty()) {
+                diagnostic.owner_message = diagnostic.exception_reason;
+                return diagnostic;
+            }
+            diagnostic.owner_message = "preview spacing validation failed";
             return diagnostic;
         }
-        if (diagnostic.validation_classification == "fail" && !diagnostic.exception_reason.empty()) {
-            diagnostic.owner_message = diagnostic.exception_reason;
-            return diagnostic;
-        }
-        diagnostic.owner_message = "preview spacing validation failed";
-        return diagnostic;
     }
     if (diagnostic.glue_point_count == 0U) {
         diagnostic.owner_message = "glue points unavailable";
@@ -1624,7 +2028,7 @@ DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::Buil
             return diagnostic;
         }
     }
-    if (diagnostic.validation_classification == "pass_with_exception") {
+    if (enforce_path_validation && diagnostic.validation_classification == "pass_with_exception") {
         std::ostringstream oss;
         oss << "workflow_preview_gate_topology"
             << " stage=pass_with_exception"
@@ -1681,8 +2085,12 @@ DispensingWorkflowUseCase::PreviewGateDiagnostic DispensingWorkflowUseCase::Buil
 std::optional<Siligen::Shared::Types::Error> DispensingWorkflowUseCase::BuildPreviewGateError(
     PlanRecord& plan_record,
     bool mark_failed,
-    bool require_execution_binding) const {
-    const auto diagnostic = BuildPreviewGateDiagnostic(plan_record, require_execution_binding);
+    bool require_execution_binding,
+    bool enforce_path_validation) const {
+    const auto diagnostic = BuildPreviewGateDiagnostic(
+        plan_record,
+        require_execution_binding,
+        enforce_path_validation);
     if (diagnostic.owner_message.empty()) {
         return std::nullopt;
     }
@@ -1751,7 +2159,7 @@ std::optional<Siligen::Shared::Types::Error> DispensingWorkflowUseCase::BuildPre
 }
 
 std::string DispensingWorkflowUseCase::ResolvePreviewGateFailure(const PlanRecord& plan_record) const {
-    return BuildPreviewGateDiagnostic(plan_record, true).owner_message;
+    return BuildPreviewGateDiagnostic(plan_record, true, true).owner_message;
 }
 
 std::string DispensingWorkflowUseCase::PreviewStateToString(PlanPreviewState state) const {

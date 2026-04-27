@@ -27,6 +27,11 @@ if(TARGET siligen_application_contracts)
         siligen_application_contracts
     )
 endif()
+if(TARGET siligen_engineering_contracts)
+    target_link_libraries(siligen_job_ingest_contracts INTERFACE
+        siligen_engineering_contracts
+    )
+endif()
 target_link_libraries(siligen_job_ingest_contracts INTERFACE
     siligen_dispense_packaging_contracts_public
 )

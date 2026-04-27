@@ -7,6 +7,7 @@
     "job_id": "job-20260321-001",
     "plan_id": "plan-8b2649f36dcb4a79",
     "plan_fingerprint": "8b2649f36dcb4a79",
+    "canonical_geometry_ref": "geometry-8b2649f36dcb4a79",
     "target_count": 2,
     "execution_budget_s": 158.3,
     "execution_budget_breakdown": {
@@ -22,17 +23,39 @@
       "baseline_id": "baseline-production-default",
       "baseline_fingerprint": "baseline-fp-20260421"
     },
-    "prepared_filepath": "D:/runtime/uploads/sample.pb",
-    "import_result_classification": "success",
-    "import_preview_ready": true,
-    "import_production_ready": true,
-    "formal_compare_gate": null,
-    "import_summary": "DXF import succeeded and is ready for production.",
-    "import_primary_code": "",
-    "import_warning_codes": [],
-    "import_error_codes": [],
-    "import_resolved_units": "mm",
-    "import_resolved_unit_scale": 1.0,
+    "validation_report": {
+      "schema_version": "DXFValidationReport.v1",
+      "stage_id": "M9",
+      "owner_module": "modules/runtime-execution",
+      "source_ref": "artifact-20260321-001",
+      "source_hash": "fnv1a64:7c5e0f4a2b1c9d3e",
+      "gate_result": "PASS",
+      "result_classification": "success",
+      "preview_ready": true,
+      "production_ready": true,
+      "summary": "DXF import succeeded and is ready for production.",
+      "primary_code": "",
+      "warning_codes": [],
+      "error_codes": [],
+      "resolved_units": "mm",
+      "resolved_unit_scale": 1.0,
+      "formal_compare_gate": null
+    },
+    "path_quality": {
+      "verdict": "pass",
+      "blocking": false,
+      "reason_codes": [],
+      "summary": "path_quality passed",
+      "source": "runtime_authority_path_quality",
+      "inputs": {
+        "spacing_valid": true,
+        "validation_classification": "pass",
+        "formal_compare_gate": "",
+        "preview_diagnostic_code": "",
+        "discontinuity_count": 0
+      },
+      "thresholds_version": "runtime_path_quality.v1"
+    },
     "performance_profile": {
       "execution_cache_hit": false,
       "execution_joined_inflight": false,

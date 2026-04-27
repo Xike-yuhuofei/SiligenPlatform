@@ -52,6 +52,8 @@ class DxfState:
     artifact_id: str = ""
     current_plan_id: str = ""
     filepath: str = ""
+    source_hash: str = ""
+    canonical_geometry_ref: str = ""
     segment_count: int = 0
     total_length: float = 0.0
     bounds: Dict[str, float] = field(default_factory=lambda: {
@@ -210,19 +212,63 @@ def _build_execution_budget_breakdown(dxf: DxfState, target_count: int) -> Dict[
     }
 
 
-def _build_import_contract(dxf: DxfState) -> Dict[str, object]:
+def _fnv1a64_hex(data: bytes) -> str:
+    hash_value = 0xCBF29CE484222325
+    for byte in data:
+        hash_value ^= byte
+        hash_value = (hash_value * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{hash_value:016x}"
+
+
+def _resolve_source_hash(dxf: DxfState) -> str:
+    if dxf.source_hash:
+        return dxf.source_hash
+    return "fnv1a64:" + _fnv1a64_hex(dxf.filepath.encode("utf-8"))
+
+
+def _build_production_baseline() -> Dict[str, str]:
     return {
-        "prepared_filepath": dxf.filepath.replace(".dxf", ".pb"),
-        "import_result_classification": "success",
-        "import_preview_ready": True,
-        "import_production_ready": True,
+        "baseline_id": "baseline-production-default",
+        "baseline_fingerprint": "baseline-fp-mock",
+    }
+
+
+def _build_validation_report(dxf: DxfState, *, stage_id: str, owner_module: str) -> Dict[str, object]:
+    return {
+        "schema_version": "DXFValidationReport.v1",
+        "stage_id": stage_id,
+        "owner_module": owner_module,
+        "source_ref": dxf.artifact_id,
+        "source_hash": _resolve_source_hash(dxf),
+        "gate_result": "PASS",
+        "result_classification": "success",
+        "preview_ready": True,
+        "production_ready": True,
+        "summary": "DXF import succeeded and is ready for production.",
+        "primary_code": "",
+        "warning_codes": [],
+        "error_codes": [],
+        "resolved_units": "mm",
+        "resolved_unit_scale": 1.0,
         "formal_compare_gate": None,
-        "import_summary": "DXF import succeeded and is ready for production.",
-        "import_primary_code": "",
-        "import_warning_codes": [],
-        "import_error_codes": [],
-        "import_resolved_units": "mm",
-        "import_resolved_unit_scale": 1.0,
+    }
+
+
+def _build_path_quality() -> Dict[str, object]:
+    return {
+        "verdict": "pass",
+        "blocking": False,
+        "reason_codes": [],
+        "summary": "path_quality passed",
+        "source": "runtime_authority_path_quality",
+        "inputs": {
+            "spacing_valid": True,
+            "validation_classification": "pass",
+            "formal_compare_gate": "",
+            "preview_diagnostic_code": "",
+            "discontinuity_count": 0,
+        },
+        "thresholds_version": "runtime_path_quality.v1",
     }
 
 
@@ -777,8 +823,11 @@ class MockState:
                 return {"result": {"supply_open": False}}
             if method == "dxf.artifact.create":
                 self.dxf.loaded = True
+                timestamp_ms = int(time.time() * 1000)
                 self.dxf.artifact_id = f"artifact-{int(time.time() * 1000)}"
-                self.dxf.filepath = params.get("filename", "mock.dxf")
+                self.dxf.filepath = str(params.get("filename", "mock.dxf"))
+                self.dxf.source_hash = "fnv1a64:" + _fnv1a64_hex(self.dxf.filepath.encode("utf-8"))
+                self.dxf.canonical_geometry_ref = ""
                 self.dxf.segment_count = 120
                 self.dxf.total_length = 256.0
                 self.dxf.preview_snapshot_hash = ""
@@ -794,22 +843,25 @@ class MockState:
                 self.dxf.target_count = 0
                 self.dxf.completed_count = 0
                 self.dxf.job_dry_run = False
+                original_name = str(params.get("original_filename", self.dxf.filepath))
+                generated_filename = Path(self.dxf.filepath).name
+                payload_size = max(1, len(str(params.get("file_content_b64", ""))))
                 return {
                     "result": {
                         "created": True,
                         "artifact_id": self.dxf.artifact_id,
+                        "source_drawing_ref": self.dxf.artifact_id,
                         "filepath": self.dxf.filepath,
-                        "prepared_filepath": self.dxf.filepath.replace(".dxf", ".pb"),
-                        "import_result_classification": "success",
-                        "import_preview_ready": True,
-                        "import_production_ready": True,
-                        "import_summary": "DXF import succeeded and is ready for production.",
-                        "import_primary_code": "",
-                        "import_warning_codes": [],
-                        "import_error_codes": [],
-                        "import_resolved_units": "mm",
-                        "import_resolved_unit_scale": 1.0,
-                        "segment_count": self.dxf.segment_count,
+                        "source_hash": self.dxf.source_hash,
+                        "original_name": original_name,
+                        "generated_filename": generated_filename,
+                        "size": payload_size,
+                        "timestamp": timestamp_ms,
+                        "validation_report": _build_validation_report(
+                            self.dxf,
+                            stage_id="S1",
+                            owner_module="modules/job-ingest",
+                        ),
                     }
                 }
             if method == "dxf.preview.snapshot":
@@ -914,6 +966,7 @@ class MockState:
                 self.dxf.preview_confirmed_at = ""
                 self.dxf.preview_state = "prepared"
                 self.dxf.preview_request_signature = signature
+                self.dxf.canonical_geometry_ref = f"geometry-{snapshot_hash}"
                 self.dxf.plan_dry_run = bool(params.get("dry_run", False))
                 self.dxf.plan_speed_mm_s = speed
                 point_count = max(self.dxf.segment_count * 2, 0)
@@ -923,12 +976,36 @@ class MockState:
                         "artifact_id": self.dxf.artifact_id,
                         "plan_id": snapshot_id,
                         "plan_fingerprint": snapshot_hash,
+                        "source_drawing_ref": self.dxf.artifact_id,
+                        "source_hash": _resolve_source_hash(self.dxf),
+                        "canonical_geometry_ref": self.dxf.canonical_geometry_ref,
                         "segment_count": self.dxf.segment_count,
                         "point_count": point_count,
                         "total_length_mm": self.dxf.total_length,
                         "execution_nominal_time_s": execution_nominal_time_s,
                         "execution_plan_summary": _build_execution_plan_summary(self.dxf),
-                        **_build_import_contract(self.dxf),
+                        "production_baseline": _build_production_baseline(),
+                        "snapshot_id": "",
+                        "snapshot_hash": "",
+                        "preview_request_signature": signature,
+                        "preview_state": "prepared",
+                        "performance_profile": {
+                            "authority_cache_hit": False,
+                            "authority_joined_inflight": False,
+                            "authority_wait_ms": 0,
+                            "pb_prepare_ms": 0,
+                            "path_load_ms": 0,
+                            "process_path_ms": 0,
+                            "authority_build_ms": 0,
+                            "authority_total_ms": 0,
+                            "prepare_total_ms": 0,
+                        },
+                        "validation_report": _build_validation_report(
+                            self.dxf,
+                            stage_id="S12",
+                            owner_module="modules/runtime-execution",
+                        ),
+                        "path_quality": _build_path_quality(),
                         "preview_validation_classification": "pass",
                         "preview_exception_reason": "",
                         "preview_failure_reason": "",
@@ -968,10 +1045,17 @@ class MockState:
                         "job_id": self.dxf.current_job_id,
                         "plan_id": self.dxf.current_plan_id,
                         "plan_fingerprint": self.dxf.preview_snapshot_hash,
+                        "canonical_geometry_ref": self.dxf.canonical_geometry_ref,
                         "target_count": self.dxf.target_count,
                         "execution_budget_s": execution_budget_breakdown["total_budget_s"],
                         "execution_budget_breakdown": execution_budget_breakdown,
-                        **_build_import_contract(self.dxf),
+                        "production_baseline": _build_production_baseline(),
+                        "validation_report": _build_validation_report(
+                            self.dxf,
+                            stage_id="M9",
+                            owner_module="modules/runtime-execution",
+                        ),
+                        "path_quality": _build_path_quality(),
                         "performance_profile": {
                             "execution_cache_hit": False,
                             "execution_joined_inflight": False,

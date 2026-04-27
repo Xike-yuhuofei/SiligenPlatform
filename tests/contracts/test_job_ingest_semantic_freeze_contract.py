@@ -54,36 +54,42 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
         decision = WORKSPACE_ROOT / "docs" / "decisions" / "job-ingest-upload-semantic-freeze.md"
         self.assertTrue(decision.exists(), msg="missing job-ingest semantic freeze decision record")
         text = _read(decision)
+        frozen_truth, _, no_regression = text.partition("## 5. 禁止回退")
         self.assertIn("Job-Ingest Upload Semantic Freeze", text)
-        self.assertIn("UploadResponse", text)
+        self.assertIn("SourceDrawing", text)
         self.assertIn("Siligen::JobIngest::Contracts", text)
         self.assertIn("IUploadStoragePort", text)
-        self.assertIn("IUploadPreparationPort", text)
+        self.assertNotIn("IUploadPreparationPort", frozen_truth)
+        self.assertIn("禁止恢复 `IUploadPreparationPort`", no_regression)
 
-    def test_module_metadata_and_docs_freeze_upload_response_authority(self) -> None:
+    def test_module_metadata_and_docs_freeze_source_drawing_authority(self) -> None:
         module_yaml = _read(WORKSPACE_ROOT / "modules" / "job-ingest" / "module.yaml")
-        self.assertIn("owner_artifact: UploadResponse", module_yaml)
+        self.assertIn("owner_artifact: SourceDrawing", module_yaml)
         self.assertEqual(["shared"], _extract_allowed_dependencies(module_yaml))
         self.assertIn("authority fact", module_yaml)
         self.assertIn("IUploadStoragePort", module_yaml)
-        self.assertIn("IUploadPreparationPort", module_yaml)
+        self.assertNotIn("IUploadPreparationPort", module_yaml)
 
         readme = _read(WORKSPACE_ROOT / "modules" / "job-ingest" / "README.md")
         self.assertIn("authority artifact", readme)
-        self.assertIn("`UploadResponse`", readme)
+        self.assertIn("`SourceDrawing`", readme)
         self.assertIn("`UploadRequest` 是 ingress 输入 DTO", readme)
+        self.assertIn("`modules/runtime-execution/`", readme)
+        self.assertNotIn("`modules/workflow/`", readme)
 
         contracts_readme = _read(WORKSPACE_ROOT / "modules" / "job-ingest" / "contracts" / "README.md")
-        self.assertIn("authority artifact 固定为 `UploadResponse`", contracts_readme)
+        self.assertIn("authority artifact 固定为 `SourceDrawing`", contracts_readme)
         self.assertIn("Siligen::JobIngest::Contracts", contracts_readme)
 
         application_readme = _read(WORKSPACE_ROOT / "modules" / "job-ingest" / "application" / "README.md")
-        self.assertIn("`UploadResponse` 是本模块 authority artifact", application_readme)
+        self.assertIn("`SourceDrawing` 是本模块 authority artifact", application_readme)
         self.assertIn("IUploadStoragePort", application_readme)
-        self.assertIn("IUploadPreparationPort", application_readme)
+        self.assertNotIn("IUploadPreparationPort", application_readme)
 
         tests_readme = _read(WORKSPACE_ROOT / "modules" / "job-ingest" / "tests" / "README.md")
         self.assertIn("tests/contracts/test_job_ingest_semantic_freeze_contract.py", tests_readme)
+        self.assertIn("SourceDrawingGoldenTest.cpp", tests_readme)
+        self.assertNotIn("UploadResponseGoldenTest.cpp", tests_readme)
 
     def test_public_contract_and_application_surface_are_canonical(self) -> None:
         contracts_header = _read(
@@ -99,6 +105,8 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
         )
         self.assertIn("namespace Siligen::JobIngest::Contracts", contracts_header)
         self.assertNotIn("namespace Siligen::Application::UseCases::Dispensing", contracts_header)
+        self.assertIn("struct SourceDrawing", contracts_header)
+        self.assertNotIn("struct UploadResponse", contracts_header)
 
         ports_header = _read(
             WORKSPACE_ROOT
@@ -113,7 +121,7 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
             / "UploadPorts.h"
         )
         self.assertIn("class IUploadStoragePort", ports_header)
-        self.assertIn("class IUploadPreparationPort", ports_header)
+        self.assertNotIn("IUploadPreparationPort", ports_header)
 
         use_case_header = _read(
             WORKSPACE_ROOT
@@ -128,7 +136,7 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
             / "UploadFileUseCase.h"
         )
         self.assertIn("IUploadStoragePort", use_case_header)
-        self.assertIn("IUploadPreparationPort", use_case_header)
+        self.assertIn("Result<SourceDrawing>", use_case_header)
         for forbidden in ("IConfigurationPort", "IFileStoragePort", "DxfPbPreparationService"):
             self.assertNotIn(forbidden, use_case_header)
 
@@ -181,11 +189,11 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
             WORKSPACE_ROOT / "apps" / "runtime-service" / "container" / "ApplicationContainer.Dispensing.cpp"
         )
         self.assertIn("class RuntimeUploadStorageAdapter final : public IUploadStoragePort", container)
-        self.assertIn("class DxfPreparationAdapter final : public IUploadPreparationPort", container)
         self.assertIn("std::make_shared<RuntimeUploadStorageAdapter>", container)
-        self.assertIn("std::make_shared<DxfPreparationAdapter>", container)
         self.assertIn("Resolve<IUploadFilePort>()", container)
-        self.assertIn("service_.CleanupPreparedInput(source_path)", container)
+        self.assertNotIn("IUploadPreparationPort", container)
+        self.assertNotIn("DxfPreparationAdapter", container)
+        self.assertNotIn("CleanupPreparedInput", container)
 
     def test_storage_owner_migrates_to_runtime_bootstrap_quarantine_surface(self) -> None:
         runtime_storage_header = (
@@ -237,16 +245,18 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
         workflow_header = _read(
             WORKSPACE_ROOT
             / "modules"
-            / "workflow"
+            / "runtime-execution"
             / "application"
             / "include"
+            / "runtime_execution"
             / "application"
-            / "phase-control"
+            / "usecases"
+            / "dispensing"
             / "DispensingWorkflowUseCase.h"
         )
         self.assertIn("using Siligen::JobIngest::Contracts::IUploadFilePort;", workflow_header)
         self.assertIn("using Siligen::JobIngest::Contracts::UploadRequest;", workflow_header)
-        self.assertIn("using Siligen::JobIngest::Contracts::UploadResponse;", workflow_header)
+        self.assertIn("using Siligen::JobIngest::Contracts::SourceDrawing;", workflow_header)
 
         gateway_header = _read(
             WORKSPACE_ROOT
@@ -260,7 +270,7 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
         )
         self.assertIn("using Siligen::JobIngest::Contracts::IUploadFilePort;", gateway_header)
         self.assertIn("using Siligen::JobIngest::Contracts::UploadRequest;", gateway_header)
-        self.assertIn("using Siligen::JobIngest::Contracts::UploadResponse;", gateway_header)
+        self.assertIn("using Siligen::JobIngest::Contracts::SourceDrawing;", gateway_header)
 
         planner_cli = _read(WORKSPACE_ROOT / "apps" / "planner-cli" / "CommandHandlers.Dxf.cpp")
         self.assertIn("Siligen::JobIngest::Contracts::UploadRequest upload_request;", planner_cli)
@@ -271,7 +281,7 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
             WORKSPACE_ROOT / "apps" / "runtime-gateway",
             WORKSPACE_ROOT / "apps" / "planner-cli",
             WORKSPACE_ROOT / "modules" / "job-ingest",
-            WORKSPACE_ROOT / "modules" / "workflow",
+            WORKSPACE_ROOT / "modules" / "runtime-execution",
             WORKSPACE_ROOT / "tests",
         ]
         forbidden_needles = [
@@ -281,6 +291,7 @@ class JobIngestSemanticFreezeContractTest(unittest.TestCase):
             '#include "application/usecases/dispensing/UploadFileUseCase.h"',
             '#include "job_ingest/contracts/storage/IFileStoragePort.h"',
             '#include "ports/IFileStoragePort.h"',
+            "IUploadPreparationPort",
         ]
         for root in scan_roots:
             for needle in forbidden_needles:

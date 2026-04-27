@@ -1422,6 +1422,28 @@ TEST(DispensingExecutionUseCaseInternalTest, ValidateExecutionPreconditionsRejec
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::AXIS_NOT_HOMED);
 }
 
+TEST(DispensingExecutionUseCaseInternalTest, ValidateExecutionPreconditionsRejectsActiveSoftLimit) {
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    motion_state_port->status.state = MotionState::HOMED;
+    motion_state_port->status.position = Point2D{0.0f, 0.0f};
+    motion_state_port->status.velocity = 0.0f;
+    motion_state_port->status.in_position = true;
+    motion_state_port->status.enabled = true;
+    motion_state_port->status.soft_limit_positive = true;
+
+    auto use_case = CreateExecutionUseCase(
+        std::make_shared<StubDispensingProcessPort>(),
+        nullptr,
+        std::make_shared<FakeHardwareConnectionPort>(),
+        motion_state_port);
+
+    const auto result = use_case->ValidateExecutionPreconditions(false);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::POSITION_OUT_OF_RANGE);
+    EXPECT_NE(result.GetError().GetMessage().find("SOFT_LIMIT_ACTIVE"), std::string::npos);
+}
+
 TEST(DispensingExecutionUseCaseInternalTest, VelocityTracePathPolicyRejectsAbsoluteConfiguredPath) {
     const auto source_dir =
         std::filesystem::temp_directory_path() / "siligen-runtime-execution-velocity-trace-absolute";

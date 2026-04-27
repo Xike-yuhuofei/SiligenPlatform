@@ -95,6 +95,11 @@ target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_job_ingest_contracts
     siligen_process_planning_contracts_public
 )
+if(TARGET siligen_engineering_contracts)
+    target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
+        siligen_engineering_contracts
+    )
+endif()
 if(TARGET siligen_trace_diagnostics_contracts_public)
     target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
         siligen_trace_diagnostics_contracts_public
@@ -217,6 +222,11 @@ target_link_libraries(siligen_runtime_execution_application PRIVATE
     siligen_dispense_packaging_application_public
     siligen_shared_runtime_contracts
 )
+if(TARGET siligen_engineering_contracts)
+    target_link_libraries(siligen_runtime_execution_application PUBLIC
+        siligen_engineering_contracts
+    )
+endif()
 if(TARGET siligen_device_contracts)
     target_link_libraries(siligen_runtime_execution_application PUBLIC
         siligen_device_contracts

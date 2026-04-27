@@ -19,32 +19,47 @@
 
 namespace Siligen::JobIngest::Application::UseCases::Dispensing {
 
+using Siligen::Engineering::Contracts::DxfValidationReport;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
 
+namespace {
+
+std::string HexEncodeUint64(std::uint64_t value) {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << value;
+    return oss.str();
+}
+
+std::uint64_t Fnv1a64(const std::vector<std::uint8_t>& payload) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (std::uint8_t byte : payload) {
+        hash ^= static_cast<std::uint64_t>(byte);
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+}  // namespace
+
 UploadFileUseCase::UploadFileUseCase(std::shared_ptr<IUploadStoragePort> storage_port,
-                                     std::shared_ptr<IUploadPreparationPort> preparation_port,
                                      size_t max_file_size_mb)
     : storage_port_(std::move(storage_port)),
-      preparation_port_(std::move(preparation_port)),
       max_file_size_mb_(max_file_size_mb) {
     if (!storage_port_) {
         throw std::invalid_argument("UploadFileUseCase: storage_port cannot be null");
     }
-    if (!preparation_port_) {
-        throw std::invalid_argument("UploadFileUseCase: preparation_port cannot be null");
-    }
 }
 
-Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) {
+Result<SourceDrawing> UploadFileUseCase::Execute(const UploadRequest& request) {
     SILIGEN_LOG_INFO("Starting file upload: " + request.original_filename);
 
     // 1. 验证请求参数
     if (!request.Validate()) {
-        return Result<UploadResponse>::Failure(Error(ErrorCode::INVALID_PARAMETER,
-                                                     "Invalid upload request: empty file content or filename",
-                                                     "UploadFileUseCase"));
+        return Result<SourceDrawing>::Failure(Error(ErrorCode::INVALID_PARAMETER,
+                                                    "Invalid upload request: empty file content or filename",
+                                                    "UploadFileUseCase"));
     }
 
     // 2. 生成安全文件名
@@ -56,38 +71,39 @@ Result<UploadResponse> UploadFileUseCase::Execute(const UploadRequest& request) 
     auto validation_result = storage_port_->Validate(request, max_file_size_mb_, allowed_extensions);
 
     if (!validation_result.IsSuccess()) {
-        return Result<UploadResponse>::Failure(validation_result.GetError());
+        return Result<SourceDrawing>::Failure(validation_result.GetError());
     }
 
     // 4. 存储文件
     auto store_result = storage_port_->Store(request, safe_filename);
 
     if (!store_result.IsSuccess()) {
-        return Result<UploadResponse>::Failure(store_result.GetError());
+        return Result<SourceDrawing>::Failure(store_result.GetError());
     }
     const auto& stored_path = store_result.Value();
 
-    // 5. 生成对应的准备产物
-    auto prepared_result = preparation_port_->EnsurePreparedInput(stored_path);
-    if (!prepared_result.IsSuccess()) {
-        CleanupGeneratedArtifacts(stored_path);
-        return Result<UploadResponse>::Failure(prepared_result.GetError());
-    }
-
-    // 7. 构建响应
-    UploadResponse response;
-    response.success = true;
+    SourceDrawing response;
+    response.source_drawing_ref = "source-drawing:" + safe_filename;
     response.filepath = stored_path;
-    response.prepared_filepath = prepared_result.Value().prepared_path;
     response.original_name = request.original_filename;
     response.size = request.file_size;
     response.generated_filename = safe_filename;
     response.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-    response.import_diagnostics = prepared_result.Value().import_diagnostics;
+    response.source_hash = ComputeSourceHash(request);
+    response.validation_report.schema_version = "DXFValidationReport.v1";
+    response.validation_report.stage_id = "S1";
+    response.validation_report.owner_module = "M1";
+    response.validation_report.source_ref = response.source_drawing_ref;
+    response.validation_report.source_hash = response.source_hash;
+    response.validation_report.gate_result = "PASS";
+    response.validation_report.result_classification = "source_drawing_accepted";
+    response.validation_report.preview_ready = false;
+    response.validation_report.production_ready = false;
+    response.validation_report.summary = "Source drawing accepted and archived for downstream geometry parsing.";
 
     SILIGEN_LOG_INFO("File uploaded successfully: " + response.filepath);
 
-    return Result<UploadResponse>::Success(response);
+    return Result<SourceDrawing>::Success(response);
 }
 
 std::string UploadFileUseCase::GenerateSafeFilename(const std::string& original_filename) {
@@ -141,16 +157,8 @@ std::string UploadFileUseCase::GenerateSafeFilename(const std::string& original_
     return filename_ss.str();
 }
 
-void UploadFileUseCase::CleanupGeneratedArtifacts(const std::string& stored_path) const noexcept {
-    auto delete_result = storage_port_->Delete(stored_path);
-    if (delete_result.IsError()) {
-        SILIGEN_LOG_WARNING("清理上传失败DXF文件失败: " + delete_result.GetError().ToString());
-    }
-
-    auto cleanup_result = preparation_port_->CleanupPreparedInput(stored_path);
-    if (cleanup_result.IsError()) {
-        SILIGEN_LOG_WARNING("清理上传失败准备产物失败: " + cleanup_result.GetError().ToString());
-    }
+std::string UploadFileUseCase::ComputeSourceHash(const UploadRequest& request) const {
+    return HexEncodeUint64(Fnv1a64(request.file_content));
 }
 
 }  // namespace Siligen::JobIngest::Application::UseCases::Dispensing

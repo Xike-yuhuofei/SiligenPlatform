@@ -6,6 +6,8 @@ namespace {
 
 using Siligen::Application::UseCases::System::InitializeSystemRequest;
 using Siligen::Application::UseCases::System::InitializeSystemUseCase;
+using Siligen::Application::UseCases::System::IHardLimitMonitor;
+using Siligen::Application::UseCases::System::ISoftLimitMonitor;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DeviceConnectionPort;
 using Siligen::Device::Contracts::State::DeviceConnectionSnapshot;
@@ -93,9 +95,63 @@ class FakeHardwareConnectionPort final : public DeviceConnectionPort {
     HeartbeatSnapshot heartbeat_status;
 };
 
+class FakeHardLimitMonitor final : public IHardLimitMonitor {
+   public:
+    Result<void> Start() noexcept override {
+        ++start_calls;
+        if (start_error.IsError()) {
+            return Result<void>::Failure(start_error);
+        }
+        running = true;
+        return Result<void>::Success();
+    }
+
+    Result<void> Stop() noexcept override {
+        ++stop_calls;
+        running = false;
+        return Result<void>::Success();
+    }
+
+    bool IsRunning() const noexcept override {
+        return running;
+    }
+
+    int start_calls = 0;
+    int stop_calls = 0;
+    bool running = false;
+    Error start_error{};
+};
+
+class FakeSoftLimitMonitor final : public ISoftLimitMonitor {
+   public:
+    Result<void> Start() noexcept override {
+        ++start_calls;
+        if (start_error.IsError()) {
+            return Result<void>::Failure(start_error);
+        }
+        running = true;
+        return Result<void>::Success();
+    }
+
+    Result<void> Stop() noexcept override {
+        ++stop_calls;
+        running = false;
+        return Result<void>::Success();
+    }
+
+    bool IsRunning() const noexcept override {
+        return running;
+    }
+
+    int start_calls = 0;
+    int stop_calls = 0;
+    bool running = false;
+    Error start_error{};
+};
+
 TEST(InitializeSystemUseCaseTest, StartsConnectionMonitoringAndHeartbeatFromSingleConnectionPort) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
-    InitializeSystemUseCase use_case(nullptr, connection_port, nullptr, nullptr, nullptr, nullptr);
+    InitializeSystemUseCase use_case(nullptr, connection_port, nullptr, nullptr, nullptr, nullptr, nullptr);
 
     InitializeSystemRequest request;
     request.load_configuration = false;
@@ -120,6 +176,85 @@ TEST(InitializeSystemUseCaseTest, StartsConnectionMonitoringAndHeartbeatFromSing
     EXPECT_EQ(connection_port->monitor_calls, 1);
     EXPECT_EQ(connection_port->heartbeat_calls, 1);
     EXPECT_EQ(connection_port->last_monitor_interval_ms, 250u);
+}
+
+TEST(InitializeSystemUseCaseTest, StartsHardAndSoftLimitMonitoringWhenRequested) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto hard_limit_monitor = std::make_shared<FakeHardLimitMonitor>();
+    auto soft_limit_monitor = std::make_shared<FakeSoftLimitMonitor>();
+    InitializeSystemUseCase use_case(
+        nullptr,
+        connection_port,
+        nullptr,
+        nullptr,
+        nullptr,
+        hard_limit_monitor,
+        soft_limit_monitor);
+
+    InitializeSystemRequest request;
+    request.load_configuration = false;
+    request.auto_connect_hardware = true;
+    request.start_heartbeat = false;
+    request.start_status_monitoring = false;
+    request.start_hard_limit_monitoring = true;
+    request.require_hard_limit_monitoring = true;
+    request.start_soft_limit_monitoring = true;
+    request.require_soft_limit_monitoring = true;
+    request.connection_config.local_ip = "192.168.0.10";
+    request.connection_config.card_ip = "192.168.0.11";
+    request.connection_config.local_port = 5000;
+    request.connection_config.card_port = 5000;
+    request.connection_config.timeout_ms = 1000;
+
+    auto result = use_case.Execute(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
+    const auto& response = result.Value();
+    EXPECT_TRUE(response.hardware_connected);
+    EXPECT_TRUE(response.hard_limit_monitoring_started);
+    EXPECT_TRUE(response.soft_limit_monitoring_started);
+    EXPECT_EQ(hard_limit_monitor->start_calls, 1);
+    EXPECT_EQ(soft_limit_monitor->start_calls, 1);
+    EXPECT_EQ(hard_limit_monitor->stop_calls, 0);
+    EXPECT_EQ(soft_limit_monitor->stop_calls, 0);
+}
+
+TEST(InitializeSystemUseCaseTest, RollsBackHardLimitMonitorIfSoftLimitMonitorFailsToStart) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto hard_limit_monitor = std::make_shared<FakeHardLimitMonitor>();
+    auto soft_limit_monitor = std::make_shared<FakeSoftLimitMonitor>();
+    soft_limit_monitor->start_error = Error(ErrorCode::THREAD_START_FAILED, "soft thread failed", "test");
+    InitializeSystemUseCase use_case(
+        nullptr,
+        connection_port,
+        nullptr,
+        nullptr,
+        nullptr,
+        hard_limit_monitor,
+        soft_limit_monitor);
+
+    InitializeSystemRequest request;
+    request.load_configuration = false;
+    request.auto_connect_hardware = true;
+    request.start_heartbeat = false;
+    request.start_status_monitoring = false;
+    request.start_hard_limit_monitoring = true;
+    request.require_hard_limit_monitoring = true;
+    request.start_soft_limit_monitoring = true;
+    request.require_soft_limit_monitoring = true;
+    request.connection_config.local_ip = "192.168.0.10";
+    request.connection_config.card_ip = "192.168.0.11";
+    request.connection_config.local_port = 5000;
+    request.connection_config.card_port = 5000;
+    request.connection_config.timeout_ms = 1000;
+
+    auto result = use_case.Execute(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::THREAD_START_FAILED);
+    EXPECT_EQ(hard_limit_monitor->start_calls, 1);
+    EXPECT_EQ(hard_limit_monitor->stop_calls, 1);
+    EXPECT_EQ(soft_limit_monitor->start_calls, 1);
 }
 
 }  // namespace

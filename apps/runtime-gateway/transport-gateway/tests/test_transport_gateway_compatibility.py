@@ -177,6 +177,7 @@ def test_dxf_preview_gate_contract_is_wired():
     assert '{"display_reveal_lengths_mm", preview_binding_display_reveal_lengths_mm}' in source
     assert '{"glue_point_count", snapshot.glue_point_count}' in source
     assert '{"motion_preview", motion_preview}' in source
+    assert '{"path_quality", BuildPathQualityJson(snapshot.path_quality)}' in source
     assert '{"source", snapshot.motion_preview_source}' in source
     assert '{"point_count", snapshot.motion_preview_point_count}' in source
     assert 'for (const auto& point : snapshot.motion_preview_polyline)' in source
@@ -237,6 +238,10 @@ def test_dxf_preview_contract_docs_freeze_shared_authority_semantics():
     assert fixture["result"]["motion_preview"]["source"] == "execution_trajectory_snapshot"
     assert fixture["result"]["motion_preview"]["sampling_strategy"] == "execution_trajectory_geometry_preserving_clamp"
     assert len(fixture["result"]["motion_preview"]["polyline"]) == fixture["result"]["motion_preview"]["point_count"]
+    assert fixture["result"]["path_quality"]["verdict"] == "pass"
+    assert fixture["result"]["path_quality"]["blocking"] is False
+    assert "path_quality" in mapping
+    assert "preview_diagnostic_code" in mapping
     assert "shared authority" in mapping.lower()
 
 
@@ -250,9 +255,10 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert {"artifact_id", "dispensing_speed_mm_s"}.issubset(set(prepare_operation["paramsSchema"]["required"]))
     assert "recipe_id" not in prepare_operation["paramsSchema"]["properties"]
     assert "version_id" not in prepare_operation["paramsSchema"]["properties"]
-    assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
+    assert {"source_drawing_ref", "source_hash", "canonical_geometry_ref", "validation_report"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
+    assert "path_quality" in prepare_operation["resultSchema"]["required"]
     assert {"execution_nominal_time_s", "execution_plan_summary", "production_baseline"}.issubset(
         set(prepare_operation["resultSchema"]["required"])
     )
@@ -268,23 +274,37 @@ def test_dxf_plan_prepare_contract_exposes_requested_execution_strategy():
     assert "artifact_id 允许省略" not in notes
     assert "requested_execution_strategy" in mapping
     assert "current production baseline" in mapping
+    assert "path_quality" in mapping
+    assert "fail-closed" in mapping
     assert "published recipe version" not in mapping
     assert "activeVersionId" not in mapping
     assert "允许省略 `artifact_id`" not in mapping
     job_start_operation = next(op for op in command_set["operations"] if op["method"] == "dxf.job.start")
     job_start_notes = "\n".join(job_start_operation.get("compatibility", {}).get("notes", []))
     assert "回退最近一次 prepared plan" not in job_start_notes
-    assert {"import_result_classification", "import_production_ready", "formal_compare_gate", "prepared_filepath"}.issubset(
+    assert {"canonical_geometry_ref", "validation_report"}.issubset(
         set(job_start_operation["resultSchema"]["required"])
     )
+    assert "path_quality" in job_start_operation["resultSchema"]["required"]
     assert {"execution_budget_s", "execution_budget_breakdown", "production_baseline"}.issubset(
         set(job_start_operation["resultSchema"]["required"])
     )
     assert 'GatewayJsonProtocol::MakeErrorResponse(id, 2895, "Missing artifact_id")' in dispatcher_source
+    assert '{"source_drawing_ref", artifact.source_drawing_ref}' in dispatcher_source
+    assert '{"source_hash", artifact.source_hash}' in dispatcher_source
+    assert '{"source_drawing_ref", plan.source_drawing_ref}' in dispatcher_source
+    assert '{"source_hash", plan.source_hash}' in dispatcher_source
+    assert '{"canonical_geometry_ref", plan.canonical_geometry_ref}' in dispatcher_source
     assert '{"execution_nominal_time_s", plan.execution_nominal_time_s}' in dispatcher_source
     assert '{"execution_plan_summary", BuildExecutionPlanSummaryJson(plan.execution_plan_summary)}' in dispatcher_source
     assert '{"production_baseline", BuildProductionBaselineJson(' in dispatcher_source
+    assert '{"path_quality", BuildPathQualityJson(plan.path_quality)}' in dispatcher_source
+    assert '{"canonical_geometry_ref", start_response.canonical_geometry_ref}' in dispatcher_source
     assert '{"execution_budget_s", start_response.execution_budget_s}' in dispatcher_source
+    assert '{"path_quality", BuildPathQualityJson(start_response.path_quality)}' in dispatcher_source
+    assert '{"validation_report", BuildValidationReportJson(artifact.validation_report)}' in dispatcher_source
+    assert '{"validation_report", BuildValidationReportJson(plan.validation_report)}' in dispatcher_source
+    assert '{"validation_report", BuildValidationReportJson(start_response.validation_report)}' in dispatcher_source
     assert 'ReadJsonStringAlias(params, "recipeId", "recipe_id")' not in dispatcher_source
     assert 'ReadJsonStringAlias(params, "versionId", "version_id")' not in dispatcher_source
     assert 'ReadJsonDouble(params, "dispensing_speed_mm_s", ReadJsonDouble(params, "speed_mm_s", 0.0))' not in dispatcher_source

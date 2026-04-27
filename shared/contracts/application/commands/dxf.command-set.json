@@ -2,6 +2,125 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "protocol": "siligen.application/1.0",
   "group": "dxf",
+  "$defs": {
+    "point2d": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "dxfFormalCompareGateDiagnostic": {
+      "type": ["object", "null"],
+      "required": [
+        "status",
+        "reason_code",
+        "authority_span_ref",
+        "trigger_begin_index",
+        "current_start_position_mm",
+        "next_trigger_position_mm",
+        "candidate_failures"
+      ],
+      "properties": {
+        "status": { "type": "string" },
+        "reason_code": { "type": "string" },
+        "authority_span_ref": { "type": "string" },
+        "trigger_begin_index": { "type": "integer" },
+        "current_start_position_mm": { "$ref": "#/$defs/point2d" },
+        "next_trigger_position_mm": { "$ref": "#/$defs/point2d" },
+        "candidate_failures": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "dxfValidationReport": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "stage_id",
+        "owner_module",
+        "source_ref",
+        "source_hash",
+        "gate_result",
+        "result_classification",
+        "preview_ready",
+        "production_ready",
+        "summary",
+        "primary_code",
+        "warning_codes",
+        "error_codes",
+        "resolved_units",
+        "resolved_unit_scale",
+        "formal_compare_gate"
+      ],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "owner_module": { "type": "string" },
+        "source_ref": { "type": "string" },
+        "source_hash": { "type": "string" },
+        "gate_result": { "type": "string" },
+        "result_classification": { "type": "string" },
+        "preview_ready": { "type": "boolean" },
+        "production_ready": { "type": "boolean" },
+        "summary": { "type": "string" },
+        "primary_code": { "type": "string" },
+        "warning_codes": { "type": "array", "items": { "type": "string" } },
+        "error_codes": { "type": "array", "items": { "type": "string" } },
+        "resolved_units": { "type": "string" },
+        "resolved_unit_scale": { "type": "number" },
+        "formal_compare_gate": { "$ref": "#/$defs/dxfFormalCompareGateDiagnostic" }
+      },
+      "additionalProperties": false
+    },
+    "pathQualityInputs": {
+      "type": "object",
+      "required": [
+        "spacing_valid",
+        "validation_classification",
+        "formal_compare_gate",
+        "preview_diagnostic_code",
+        "discontinuity_count"
+      ],
+      "properties": {
+        "spacing_valid": { "type": "boolean" },
+        "validation_classification": { "type": "string" },
+        "formal_compare_gate": { "type": "string" },
+        "preview_diagnostic_code": { "type": "string" },
+        "discontinuity_count": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "pathQuality": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "blocking",
+        "reason_codes",
+        "summary",
+        "source",
+        "inputs",
+        "thresholds_version"
+      ],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["pass", "pass_with_exception", "fail"]
+        },
+        "blocking": { "type": "boolean" },
+        "reason_codes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "summary": { "type": "string" },
+        "source": { "type": "string" },
+        "inputs": { "$ref": "#/$defs/pathQualityInputs" },
+        "thresholds_version": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
   "operations": [
     {
       "method": "dxf.artifact.create",
@@ -19,55 +138,29 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["created", "artifact_id", "filepath", "prepared_filepath", "original_name", "generated_filename", "size", "timestamp", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": [
+          "created",
+          "artifact_id",
+          "source_drawing_ref",
+          "filepath",
+          "source_hash",
+          "original_name",
+          "generated_filename",
+          "size",
+          "timestamp",
+          "validation_report"
+        ],
         "properties": {
           "created": { "type": "boolean" },
           "artifact_id": { "type": "string" },
+          "source_drawing_ref": { "type": "string" },
           "filepath": { "type": "string" },
-          "prepared_filepath": { "type": "string" },
+          "source_hash": { "type": "string" },
           "original_name": { "type": "string" },
           "generated_filename": { "type": "string" },
           "size": { "type": "integer" },
           "timestamp": { "type": "integer" },
-          "import_result_classification": { "type": "string" },
-          "import_preview_ready": { "type": "boolean" },
-          "import_production_ready": { "type": "boolean" },
-          "formal_compare_gate": {
-            "type": ["object", "null"],
-            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
-            "properties": {
-              "status": { "type": "string" },
-              "reason_code": { "type": "string" },
-              "authority_span_ref": { "type": "string" },
-              "trigger_begin_index": { "type": "integer" },
-              "current_start_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "next_trigger_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "candidate_failures": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
-          "import_summary": { "type": "string" },
-          "import_primary_code": { "type": "string" },
-          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
-          "import_error_codes": { "type": "array", "items": { "type": "string" } },
-          "import_resolved_units": { "type": "string" },
-          "import_resolved_unit_scale": { "type": "number" }
+          "validation_report": { "$ref": "#/$defs/dxfValidationReport" }
         },
         "additionalProperties": false
       },
@@ -113,12 +206,30 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["plan_id", "plan_fingerprint", "artifact_id", "segment_count", "point_count", "total_length_mm", "execution_nominal_time_s", "execution_plan_summary", "generated_at", "production_baseline", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": [
+          "plan_id",
+          "plan_fingerprint",
+          "artifact_id",
+          "source_drawing_ref",
+          "source_hash",
+          "canonical_geometry_ref",
+          "segment_count",
+          "point_count",
+          "total_length_mm",
+          "execution_nominal_time_s",
+          "execution_plan_summary",
+          "generated_at",
+          "production_baseline",
+          "validation_report",
+          "path_quality"
+        ],
         "properties": {
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
           "artifact_id": { "type": "string" },
-          "prepared_filepath": { "type": "string" },
+          "source_drawing_ref": { "type": "string" },
+          "source_hash": { "type": "string" },
+          "canonical_geometry_ref": { "type": "string" },
           "segment_count": { "type": "integer" },
           "point_count": { "type": "integer" },
           "total_length_mm": { "type": "number" },
@@ -149,45 +260,8 @@
             },
             "additionalProperties": false
           },
-          "import_result_classification": { "type": "string" },
-          "import_preview_ready": { "type": "boolean" },
-          "import_production_ready": { "type": "boolean" },
-          "formal_compare_gate": {
-            "type": ["object", "null"],
-            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
-            "properties": {
-              "status": { "type": "string" },
-              "reason_code": { "type": "string" },
-              "authority_span_ref": { "type": "string" },
-              "trigger_begin_index": { "type": "integer" },
-              "current_start_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "next_trigger_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "candidate_failures": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
-          "import_summary": { "type": "string" },
-          "import_primary_code": { "type": "string" },
-          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
-          "import_error_codes": { "type": "array", "items": { "type": "string" } },
-          "import_resolved_units": { "type": "string" },
-          "import_resolved_unit_scale": { "type": "number" },
+          "validation_report": { "$ref": "#/$defs/dxfValidationReport" },
+          "path_quality": { "$ref": "#/$defs/pathQuality" },
           "generated_at": { "type": "string" },
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -241,7 +315,7 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "glue_reveal_lengths_mm", "preview_binding", "motion_preview", "execution_point_count", "total_length_mm", "estimated_time_s", "generated_at"],
+        "required": ["snapshot_id", "snapshot_hash", "plan_id", "preview_state", "preview_source", "preview_kind", "confirmed_at", "segment_count", "point_count", "glue_point_count", "glue_points", "glue_reveal_lengths_mm", "preview_binding", "motion_preview", "execution_point_count", "total_length_mm", "estimated_time_s", "generated_at", "path_quality"],
         "properties": {
           "snapshot_id": { "type": "string" },
           "snapshot_hash": { "type": "string" },
@@ -324,7 +398,8 @@
           },
           "total_length_mm": { "type": "number" },
           "estimated_time_s": { "type": "number" },
-          "generated_at": { "type": "string" }
+          "generated_at": { "type": "string" },
+          "path_quality": { "$ref": "#/$defs/pathQuality" }
         },
         "additionalProperties": false
       },
@@ -385,12 +460,26 @@
       },
       "resultSchema": {
         "type": "object",
-        "required": ["started", "job_id", "plan_id", "plan_fingerprint", "target_count", "execution_budget_s", "execution_budget_breakdown", "production_baseline", "performance_profile", "prepared_filepath", "import_result_classification", "import_preview_ready", "import_production_ready", "formal_compare_gate", "import_summary", "import_primary_code", "import_warning_codes", "import_error_codes", "import_resolved_units", "import_resolved_unit_scale"],
+        "required": [
+          "started",
+          "job_id",
+          "plan_id",
+          "plan_fingerprint",
+          "canonical_geometry_ref",
+          "target_count",
+          "execution_budget_s",
+          "execution_budget_breakdown",
+          "production_baseline",
+          "performance_profile",
+          "validation_report",
+          "path_quality"
+        ],
         "properties": {
           "started": { "type": "boolean" },
           "job_id": { "type": "string" },
           "plan_id": { "type": "string" },
           "plan_fingerprint": { "type": "string" },
+          "canonical_geometry_ref": { "type": "string" },
           "target_count": { "type": "integer" },
           "execution_budget_s": { "type": "number" },
           "execution_budget_breakdown": {
@@ -416,46 +505,8 @@
             },
             "additionalProperties": false
           },
-          "prepared_filepath": { "type": "string" },
-          "import_result_classification": { "type": "string" },
-          "import_preview_ready": { "type": "boolean" },
-          "import_production_ready": { "type": "boolean" },
-          "formal_compare_gate": {
-            "type": ["object", "null"],
-            "required": ["status", "reason_code", "authority_span_ref", "trigger_begin_index", "current_start_position_mm", "next_trigger_position_mm", "candidate_failures"],
-            "properties": {
-              "status": { "type": "string" },
-              "reason_code": { "type": "string" },
-              "authority_span_ref": { "type": "string" },
-              "trigger_begin_index": { "type": "integer" },
-              "current_start_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "next_trigger_position_mm": {
-                "type": "object",
-                "required": ["x", "y"],
-                "properties": {
-                  "x": { "type": "number" },
-                  "y": { "type": "number" }
-                },
-                "additionalProperties": false
-              },
-              "candidate_failures": { "type": "array", "items": { "type": "string" } }
-            },
-            "additionalProperties": false
-          },
-          "import_summary": { "type": "string" },
-          "import_primary_code": { "type": "string" },
-          "import_warning_codes": { "type": "array", "items": { "type": "string" } },
-          "import_error_codes": { "type": "array", "items": { "type": "string" } },
-          "import_resolved_units": { "type": "string" },
-          "import_resolved_unit_scale": { "type": "number" },
+          "validation_report": { "$ref": "#/$defs/dxfValidationReport" },
+          "path_quality": { "$ref": "#/$defs/pathQuality" },
           "performance_profile": {
             "type": "object",
             "properties": {

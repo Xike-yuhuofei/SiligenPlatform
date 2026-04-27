@@ -5,6 +5,7 @@
 #include "shared/types/Types.h"
 
 #include <chrono>
+#include <functional>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -82,6 +83,61 @@ Result<void> StartHeartbeatWithRetry(
     return heartbeat_result;
 }
 
+template <typename TMonitor>
+Result<void> StartSafetyMonitor(
+    const std::shared_ptr<TMonitor>& monitor,
+    const char* monitor_name,
+    bool start_requested,
+    bool require_monitor,
+    const std::shared_ptr<Siligen::Device::Contracts::Ports::DeviceConnectionPort>& connection_port,
+    bool& started_flag,
+    std::vector<std::string>& warnings,
+    std::vector<std::function<void()>>& rollback_actions) {
+    if (!start_requested) {
+        return Result<void>::Success();
+    }
+
+    if (!monitor) {
+        if (require_monitor) {
+            return Result<void>::Failure(
+                Error(ErrorCode::PORT_NOT_INITIALIZED, std::string(monitor_name) + " not initialized", "InitializeSystemUseCase"));
+        }
+        warnings.emplace_back(std::string(monitor_name) + " not available");
+        return Result<void>::Success();
+    }
+
+    if (!connection_port) {
+        return Result<void>::Failure(
+            Error(ErrorCode::PORT_NOT_INITIALIZED, "Hardware connection port not initialized", "InitializeSystemUseCase"));
+    }
+
+    if (!connection_port->IsConnected()) {
+        if (require_monitor) {
+            return Result<void>::Failure(
+                Error(ErrorCode::INVALID_STATE,
+                      std::string(monitor_name) + " cannot start while hardware is disconnected",
+                      "InitializeSystemUseCase"));
+        }
+        warnings.emplace_back(std::string(monitor_name) + " not started because hardware is disconnected");
+        return Result<void>::Success();
+    }
+
+    auto start_result = monitor->Start();
+    if (start_result.IsError()) {
+        if (require_monitor) {
+            return Result<void>::Failure(start_result.GetError());
+        }
+        warnings.emplace_back(std::string(monitor_name) + " failed to start");
+        return Result<void>::Success();
+    }
+
+    started_flag = true;
+    rollback_actions.push_back([monitor]() {
+        monitor->Stop();
+    });
+    return Result<void>::Success();
+}
+
 }  // namespace
 
 InitializeSystemUseCase::InitializeSystemUseCase(
@@ -90,13 +146,15 @@ InitializeSystemUseCase::InitializeSystemUseCase(
     std::shared_ptr<Siligen::Application::UseCases::Motion::Homing::HomeAxesUseCase> home_axes_usecase,
     std::shared_ptr<Siligen::Domain::Diagnostics::Ports::IDiagnosticsPort> diagnostics_port,
     std::shared_ptr<Siligen::Domain::System::Ports::IEventPublisherPort> event_port,
-    std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor)
+    std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor,
+    std::shared_ptr<Siligen::Application::UseCases::System::ISoftLimitMonitor> soft_limit_monitor)
     : config_port_(std::move(config_port)),
       connection_port_(std::move(connection_port)),
       home_axes_usecase_(std::move(home_axes_usecase)),
       diagnostics_port_(std::move(diagnostics_port)),
       event_port_(std::move(event_port)),
-      hard_limit_monitor_(std::move(hard_limit_monitor)) {}
+      hard_limit_monitor_(std::move(hard_limit_monitor)),
+      soft_limit_monitor_(std::move(soft_limit_monitor)) {}
 
 Result<InitializeSystemResponse> InitializeSystemUseCase::Execute(const InitializeSystemRequest& request) {
     if (!request.Validate()) {
@@ -162,7 +220,8 @@ Result<InitializeSystemResponse> InitializeSystemUseCase::Execute(const Initiali
 
     // 2. 连接硬件（仅在显式请求时尝试）
     const bool connection_actions_requested = request.auto_connect_hardware || request.start_status_monitoring ||
-                                              request.start_heartbeat;
+                                              request.start_heartbeat || request.start_hard_limit_monitoring ||
+                                              request.start_soft_limit_monitoring;
     if (connection_actions_requested && !connection_port_) {
         return Result<InitializeSystemResponse>::Failure(
             Error(ErrorCode::PORT_NOT_INITIALIZED, "Hardware connection port not initialized", "InitializeSystemUseCase"));
@@ -202,26 +261,39 @@ Result<InitializeSystemResponse> InitializeSystemUseCase::Execute(const Initiali
         response.connection_info = connection_result.Value();
     }
 
-    if (request.start_hard_limit_monitoring) {
-        if (!hard_limit_monitor_) {
-            if (request.require_hard_limit_monitoring) {
-                return Result<InitializeSystemResponse>::Failure(
-                    Error(ErrorCode::PORT_NOT_INITIALIZED,
-                          "Hard limit monitor not initialized",
-                          "InitializeSystemUseCase"));
-            }
-            warnings.emplace_back("Hard limit monitor not available");
-        } else if (connection_port_ && connection_port_->IsConnected()) {
-            auto start_result = hard_limit_monitor_->Start();
-            if (start_result.IsError()) {
-                if (request.require_hard_limit_monitoring) {
-                    return Result<InitializeSystemResponse>::Failure(start_result.GetError());
-                }
-                warnings.emplace_back("Hard limit monitor failed to start");
-            } else {
-                response.hard_limit_monitoring_started = true;
-            }
+    std::vector<std::function<void()>> monitor_rollback_actions;
+    auto rollback_monitors = [&monitor_rollback_actions]() {
+        for (auto it = monitor_rollback_actions.rbegin(); it != monitor_rollback_actions.rend(); ++it) {
+            (*it)();
         }
+    };
+
+    auto hard_monitor_result = StartSafetyMonitor(
+        hard_limit_monitor_,
+        "Hard limit monitor",
+        request.start_hard_limit_monitoring,
+        request.require_hard_limit_monitoring,
+        connection_port_,
+        response.hard_limit_monitoring_started,
+        warnings,
+        monitor_rollback_actions);
+    if (hard_monitor_result.IsError()) {
+        rollback_monitors();
+        return Result<InitializeSystemResponse>::Failure(hard_monitor_result.GetError());
+    }
+
+    auto soft_monitor_result = StartSafetyMonitor(
+        soft_limit_monitor_,
+        "Soft limit monitor",
+        request.start_soft_limit_monitoring,
+        request.require_soft_limit_monitoring,
+        connection_port_,
+        response.soft_limit_monitoring_started,
+        warnings,
+        monitor_rollback_actions);
+    if (soft_monitor_result.IsError()) {
+        rollback_monitors();
+        return Result<InitializeSystemResponse>::Failure(soft_monitor_result.GetError());
     }
 
     if (request.start_status_monitoring) {

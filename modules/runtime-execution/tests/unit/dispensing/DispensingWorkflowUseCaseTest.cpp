@@ -56,6 +56,8 @@ using Siligen::Application::UseCases::Dispensing::PreparePlanRuntimeOverrides;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobTraceabilityResponse;
 using Siligen::Application::UseCases::Dispensing::RuntimeJobStatusResponse;
 using Siligen::Application::UseCases::Dispensing::StartJobResponse;
+using Siligen::Engineering::Contracts::DxfValidationReport;
+using Siligen::Engineering::Contracts::PathQuality;
 using Siligen::Infrastructure::Adapters::Parsing::PbPathSourceAdapter;
 using Siligen::Application::Ports::Dispensing::IProductionBaselinePort;
 using Siligen::Application::Ports::Dispensing::ResolvedProductionBaseline;
@@ -63,13 +65,10 @@ using Siligen::Application::Services::Dispensing::PlanningArtifactExportResult;
 using Siligen::Application::Services::Dispensing::IPlanningArtifactExportPort;
 using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Infrastructure::Adapters::ConfigFileAdapter;
-using Siligen::JobIngest::Contracts::DxfImportDiagnostics;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
-using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
 using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
-using Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact;
 using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DispenserDevicePort;
@@ -176,6 +175,29 @@ private:
     std::shared_ptr<DispensingExecutionUseCase> use_case_;
 };
 
+class SpyWorkflowExecutionPort final
+    : public Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort {
+public:
+    Result<Siligen::Application::Ports::Dispensing::WorkflowJobId> StartJob(
+        const Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest& request) override {
+        ++start_call_count;
+        last_request = request;
+        if (fail_start) {
+            return Result<Siligen::Application::Ports::Dispensing::WorkflowJobId>::Failure(start_error);
+        }
+        return Result<Siligen::Application::Ports::Dispensing::WorkflowJobId>::Success(job_id);
+    }
+
+    int start_call_count = 0;
+    std::optional<Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest> last_request;
+    bool fail_start = false;
+    Siligen::Shared::Types::Error start_error = Siligen::Shared::Types::Error(
+        ErrorCode::INVALID_STATE,
+        "spy runtime start failure",
+        "SpyWorkflowExecutionPort");
+    std::string job_id = "spy-job-1";
+};
+
 std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort> CreateRuntimeWorkflowExecutionPort(
     std::shared_ptr<DispensingExecutionUseCase> use_case) {
     return std::make_shared<RuntimeWorkflowExecutionPortAdapter>(std::move(use_case));
@@ -271,25 +293,62 @@ PointFlyingCarrierPolicy BuildCanonicalPointFlyingCarrierPolicy() {
     return policy;
 }
 
-DxfImportDiagnostics BuildProductionReadyImportDiagnostics() {
-    DxfImportDiagnostics diagnostics;
-    diagnostics.result_classification = "success";
-    diagnostics.preview_ready = true;
-    diagnostics.production_ready = true;
-    diagnostics.summary = "DXF import succeeded and is ready for production.";
-    diagnostics.resolved_units = "mm";
-    diagnostics.resolved_unit_scale = 1.0;
-    return diagnostics;
+DxfValidationReport BuildProductionReadyValidationReport() {
+    DxfValidationReport report;
+    report.stage_id = "S12";
+    report.owner_module = "M9";
+    report.gate_result = "PASS";
+    report.result_classification = "runtime_authority_ready";
+    report.preview_ready = true;
+    report.production_ready = true;
+    report.summary = "Canonical geometry validated and is ready for production.";
+    report.resolved_units = "mm";
+    report.resolved_unit_scale = 1.0;
+    return report;
 }
 
-void SeedProductionReadyImportDiagnostics(DispensingWorkflowUseCase::PlanRecord& plan_record) {
-    plan_record.response.import_diagnostics = BuildProductionReadyImportDiagnostics();
+PathQuality BuildPassPathQuality() {
+    PathQuality path_quality;
+    path_quality.verdict = "pass";
+    path_quality.blocking = false;
+    path_quality.summary = "path_quality passed";
+    path_quality.source = "runtime_authority_path_quality";
+    path_quality.inputs.spacing_valid = true;
+    path_quality.inputs.validation_classification = "pass";
+    path_quality.thresholds_version = "runtime_path_quality.v1";
+    return path_quality;
 }
 
-void SeedProductionReadyImportDiagnostics(DispensingWorkflowUseCase::ArtifactRecord& artifact_record) {
-    const auto diagnostics = BuildProductionReadyImportDiagnostics();
-    artifact_record.response.import_diagnostics = diagnostics;
-    artifact_record.upload_response.import_diagnostics = diagnostics;
+void SeedProductionReadyValidationReport(DispensingWorkflowUseCase::PlanRecord& plan_record) {
+    const auto report = BuildProductionReadyValidationReport();
+    plan_record.validation_report = report;
+    plan_record.response.validation_report = report;
+    plan_record.path_quality = BuildPassPathQuality();
+    plan_record.response.path_quality = *plan_record.path_quality;
+}
+
+void SeedProductionReadyValidationReport(DispensingWorkflowUseCase::ArtifactRecord& artifact_record) {
+    const auto report = BuildProductionReadyValidationReport();
+    artifact_record.response.validation_report = report;
+    artifact_record.source_drawing.validation_report = report;
+}
+
+void SeedSourceDrawingArtifact(
+    DispensingWorkflowUseCase::ArtifactRecord& artifact_record,
+    const std::string& artifact_id,
+    const std::string& filepath) {
+    artifact_record.response.artifact_id = artifact_id;
+    artifact_record.response.source_drawing_ref = artifact_id;
+    artifact_record.response.filepath = filepath;
+    artifact_record.response.source_hash = "hash-" + artifact_id;
+    artifact_record.source_drawing.source_drawing_ref = artifact_id;
+    artifact_record.source_drawing.filepath = filepath;
+    artifact_record.source_drawing.original_name = std::filesystem::path(filepath).filename().string();
+    artifact_record.source_drawing.generated_filename = artifact_record.source_drawing.original_name;
+    artifact_record.source_drawing.size = 1U;
+    artifact_record.source_drawing.timestamp = 1;
+    artifact_record.source_drawing.source_hash = artifact_record.response.source_hash;
+    SeedProductionReadyValidationReport(artifact_record);
 }
 
 class FakeProductionBaselinePort final : public IProductionBaselinePort {
@@ -570,9 +629,6 @@ PreparePlanRuntimeOverrides BuildDemo1ProductionValidationRuntimeOverrides() {
     return overrides;
 }
 
-DxfImportDiagnostics ToUploadImportDiagnostics(
-    const Siligen::Application::Services::DXF::ImportDiagnosticsSummary& summary);
-
 class TempUploadStoragePort final : public IUploadStoragePort {
    public:
     explicit TempUploadStoragePort(std::filesystem::path root) : root_(std::move(root)) {
@@ -651,52 +707,27 @@ class TempUploadStoragePort final : public IUploadStoragePort {
     std::filesystem::path root_;
 };
 
-class TempDxfPreparationPort final : public IUploadPreparationPort {
-   public:
-    explicit TempDxfPreparationPort(std::shared_ptr<IConfigurationPort> config_port)
-        : service_(std::move(config_port)) {}
-
-    Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const override {
-        auto result = service_.PrepareInputArtifact(source_path);
-        if (result.IsError()) {
-            return Result<PreparedInputArtifact>::Failure(result.GetError());
-        }
-
-        PreparedInputArtifact artifact;
-        artifact.prepared_path = result.Value().prepared_path;
-        artifact.import_diagnostics = ToUploadImportDiagnostics(result.Value().import_diagnostics);
-        return Result<PreparedInputArtifact>::Success(std::move(artifact));
-    }
-
-    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
-        return service_.CleanupPreparedInput(source_path);
-    }
-
-   private:
-    DxfPbPreparationService service_;
-};
-
 class RuntimeLikeUploadPort final : public IUploadFilePort {
    public:
     explicit RuntimeLikeUploadPort(const std::shared_ptr<IConfigurationPort>& config_port)
         : root_(std::filesystem::temp_directory_path() / ("siligen-upload-" + std::to_string(std::rand()))),
           storage_port_(std::make_shared<TempUploadStoragePort>(root_ / "uploads" / "dxf")),
-          preparation_port_(std::make_shared<TempDxfPreparationPort>(config_port)),
-          use_case_(storage_port_, preparation_port_, 10) {}
+          use_case_(storage_port_, 10) {
+        (void)config_port;
+    }
 
     ~RuntimeLikeUploadPort() override {
         std::error_code ec;
         std::filesystem::remove_all(root_, ec);
     }
 
-    Result<UploadResponse> Execute(const UploadRequest& request) override {
+    Result<SourceDrawing> Execute(const UploadRequest& request) override {
         return use_case_.Execute(request);
     }
 
    private:
     std::filesystem::path root_;
     std::shared_ptr<TempUploadStoragePort> storage_port_;
-    std::shared_ptr<TempDxfPreparationPort> preparation_port_;
     UploadFileUseCase use_case_;
 };
 
@@ -718,21 +749,6 @@ UploadRequest BuildUploadRequestFromFile(const std::filesystem::path& filepath) 
     request.file_size = request.file_content.size();
     request.content_type = "application/dxf";
     return request;
-}
-
-DxfImportDiagnostics ToUploadImportDiagnostics(
-    const Siligen::Application::Services::DXF::ImportDiagnosticsSummary& summary) {
-    DxfImportDiagnostics diagnostics;
-    diagnostics.result_classification = summary.result_classification;
-    diagnostics.preview_ready = summary.preview_ready;
-    diagnostics.production_ready = summary.production_ready;
-    diagnostics.summary = summary.summary;
-    diagnostics.primary_code = summary.primary_code;
-    diagnostics.warning_codes = summary.warning_codes;
-    diagnostics.error_codes = summary.error_codes;
-    diagnostics.resolved_units = summary.resolved_units;
-    diagnostics.resolved_unit_scale = summary.resolved_unit_scale;
-    return diagnostics;
 }
 
 PlanningRequest BuildCanonicalPlanningRequest(const std::string& filepath = "canonical.dxf") {
@@ -1091,7 +1107,7 @@ void ApplyOwnerExecutionContractState(DispensingWorkflowUseCase::PlanRecord& pla
     plan_record.execution_contract_ready = true;
     plan_record.execution_failure_reason.clear();
     plan_record.execution_diagnostic_code.clear();
-    plan_record.response.import_diagnostics.formal_compare_gate = {};
+    plan_record.response.validation_report.formal_compare_gate = {};
     plan_record.execution_assembly.execution_contract_ready = true;
     plan_record.execution_assembly.execution_failure_reason.clear();
     plan_record.execution_assembly.execution_diagnostic_code.clear();
@@ -1744,7 +1760,7 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     DispensingWorkflowUseCase::PlanRecord plan_record;
     plan_record.response.plan_id = plan_id;
     plan_record.response.plan_fingerprint = "fp-" + plan_id;
-    SeedProductionReadyImportDiagnostics(plan_record);
+    SeedProductionReadyValidationReport(plan_record);
     plan_record.execution_launch.execution_package =
         std::make_shared<Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated>(
             BuildMinimalExecutionPackage());
@@ -1761,6 +1777,9 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     plan_record.execution_authority_shared_with_execution = true;
     plan_record.execution_binding_ready = true;
     plan_record.preview_spacing_valid = true;
+    plan_record.preview_validation_classification = "pass";
+    plan_record.preview_exception_reason.clear();
+    plan_record.preview_failure_reason.clear();
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.latest = true;
@@ -1775,6 +1794,20 @@ void SeedPlan(DispensingWorkflowUseCase& use_case, const std::string& plan_id) {
     SeedAuthorityTriggerLayoutFromExecutionPackage(plan_record, *plan_record.execution_launch.execution_package);
     plan_record.execution_assembly.authority_trigger_layout = plan_record.authority_trigger_layout;
     use_case.plans_[plan_id] = plan_record;
+}
+
+void SetPlanExecutionTrajectory(
+    DispensingWorkflowUseCase::PlanRecord& plan_record,
+    const std::vector<Siligen::TrajectoryPoint>& trajectory_points) {
+    plan_record.execution_trajectory_points = trajectory_points;
+    plan_record.execution_assembly.execution_trajectory_points = trajectory_points;
+    plan_record.response.point_count = static_cast<std::uint32_t>(trajectory_points.size());
+    if (plan_record.execution_launch.execution_package) {
+        plan_record.execution_launch.execution_package->execution_plan.interpolation_points = trajectory_points;
+    }
+    if (plan_record.execution_assembly.execution_package) {
+        plan_record.execution_assembly.execution_package->execution_plan.interpolation_points = trajectory_points;
+    }
 }
 
 std::shared_ptr<PlanningUseCase> CreatePbBackedPlanningUseCase(
@@ -1989,6 +2022,32 @@ DispensingWorkflowUseCase CreateUseCase(
         interlock_port);
 }
 
+DispensingWorkflowUseCase CreateUseCaseWithExecutionPort(
+    const std::shared_ptr<Siligen::Application::Ports::Dispensing::IWorkflowExecutionPort>& execution_port,
+    const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
+    const std::shared_ptr<FakeMotionStatePort>& motion_state_port,
+    const std::shared_ptr<FakeHomingPort>& homing_port,
+    const std::shared_ptr<FakeInterlockSignalPort>& interlock_port,
+    std::shared_ptr<FakeProductionBaselinePort> baseline_policy_port =
+        std::make_shared<FakeProductionBaselinePort>(),
+    std::shared_ptr<IConfigurationPort> config_port =
+        std::make_shared<FakeConfigurationPort>()) {
+    auto motion_device_port = std::make_shared<FakeMotionDevicePort>();
+    auto dispenser_device_port = std::make_shared<FakeDispenserDevicePort>();
+    return DispensingWorkflowUseCase(
+        MakeDummyShared<IUploadFilePort>(),
+        MakeDummyShared<PlanningUseCase>(),
+        baseline_policy_port,
+        execution_port,
+        config_port,
+        connection_port,
+        motion_device_port,
+        dispenser_device_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+}
+
 DispensingWorkflowUseCase CreateUseCaseWithPlanning(
     const std::shared_ptr<PlanningUseCase>& planning_use_case,
     const std::shared_ptr<FakeHardwareConnectionPort>& connection_port,
@@ -2099,11 +2158,14 @@ DispensingWorkflowUseCase::PlanRecord BuildPreviewPlanRecord(
     plan_record.response.total_length_mm = 0.0f;
     plan_record.response.execution_nominal_time_s = 1.0f;
     plan_record.preview_estimated_time_s = 1.0f;
-    SeedProductionReadyImportDiagnostics(plan_record);
+    SeedProductionReadyValidationReport(plan_record);
     plan_record.preview_authority_ready = true;
     plan_record.preview_authority_shared_with_execution = true;
     plan_record.preview_binding_ready = true;
     plan_record.preview_spacing_valid = true;
+    plan_record.preview_validation_classification = "pass";
+    plan_record.preview_exception_reason.clear();
+    plan_record.preview_failure_reason.clear();
     plan_record.preview_diagnostic_code.clear();
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::SNAPSHOT_READY;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
@@ -2234,10 +2296,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-prepare";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-prepare", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2265,6 +2324,9 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
     EXPECT_FALSE(stored_launch.authority_preview.artifacts.glue_points.empty());
     EXPECT_FALSE(stored_launch.authority_cache_key.empty());
     EXPECT_EQ(prepared.filepath, temp_pb_file.string());
+    EXPECT_EQ(prepared.path_quality.verdict, "pass");
+    EXPECT_FALSE(prepared.path_quality.blocking);
+    EXPECT_TRUE(prepared.path_quality.reason_codes.empty());
 }
 
 TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWithoutLegacyIdentifiers) {
@@ -2282,10 +2344,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-missing-legacy-identifiers";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-missing-legacy-identifiers", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     const auto result = use_case.PreparePlan(BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
@@ -2295,7 +2354,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
     EXPECT_EQ(result.Value().production_baseline.baseline_fingerprint, "baseline-fingerprint");
 }
 
-TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanWithProductionLikeInputsReturnsProductionReadyContract) {
+TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanMapsFragmentationDiagnosticIntoBlockingPathQuality) {
     const auto workspace_root = ResolveWorkspaceRoot();
     ASSERT_FALSE(workspace_root.empty());
 
@@ -2332,11 +2391,20 @@ TEST(DispensingWorkflowUseCaseTest, Demo1PreparePlanWithProductionLikeInputsRetu
 
     const auto result = use_case.PreparePlan(request);
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
-
-    const auto& gate = result.Value().import_diagnostics.formal_compare_gate;
-    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
-    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
-    EXPECT_FALSE(gate.HasValue());
+    const auto& gate = result.Value().validation_report.formal_compare_gate;
+    EXPECT_TRUE(result.Value().validation_report.preview_ready);
+    EXPECT_EQ(result.Value().preview_validation_classification, "pass");
+    EXPECT_EQ(result.Value().preview_diagnostic_code, "process_path_fragmentation");
+    EXPECT_FALSE(result.Value().validation_report.production_ready);
+    EXPECT_FALSE(gate.has_value);
+    EXPECT_EQ(result.Value().path_quality.verdict, "fail");
+    EXPECT_TRUE(result.Value().path_quality.blocking);
+    EXPECT_NE(
+        std::find(
+            result.Value().path_quality.reason_codes.begin(),
+            result.Value().path_quality.reason_codes.end(),
+            "process_path_fragmentation"),
+        result.Value().path_quality.reason_codes.end());
 
     const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
     EXPECT_TRUE(plan_record.execution_contract_ready);
@@ -2358,10 +2426,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-cache-hit";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-cache-hit", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2403,10 +2468,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityP
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-single-flight";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-single-flight", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2462,10 +2524,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecuti
         config_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-start-profile";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-start-profile", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2562,10 +2621,7 @@ TEST(DispensingWorkflowUseCaseTest, EnsureExecutionAssemblySingleFlightsConcurre
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-exec-single-flight";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-exec-single-flight", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2640,10 +2696,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-preview-execution-alignment";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-preview-execution-alignment", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2712,6 +2765,124 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsUnhomedAxis) {
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::AXIS_NOT_HOMED);
 }
 
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsExecutionTrajectoryOutsideMachineSoftLimit) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    ConfigureDemo1ProductionLikeConfig(config_port);
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto use_case = CreateUseCaseWithExecutionPort(
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        std::make_shared<FakeProductionBaselinePort>(),
+        config_port);
+    SeedPlan(use_case, "plan-soft-limit-out-of-range");
+    auto& plan_record = use_case.plans_.at("plan-soft-limit-out-of-range");
+
+    std::vector<Siligen::TrajectoryPoint> trajectory_points{
+        Siligen::TrajectoryPoint(0.0f, 0.0f, 10.0f),
+        Siligen::TrajectoryPoint(481.0f, 0.0f, 10.0f),
+    };
+    trajectory_points[0].timestamp = 0.0f;
+    trajectory_points[1].timestamp = 0.1f;
+    SetPlanExecutionTrajectory(plan_record, trajectory_points);
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-soft-limit-out-of-range";
+    request.plan_fingerprint = "fp-plan-soft-limit-out-of-range";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::POSITION_OUT_OF_RANGE);
+    EXPECT_NE(result.GetError().GetMessage().find("SOFT_LIMIT_VIOLATION"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("481"), std::string::npos);
+    EXPECT_EQ(execution_port->start_call_count, 0);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobSoftLimitViolationDoesNotCallRuntimeExecutionPort) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    ConfigureDemo1ProductionLikeConfig(config_port);
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto use_case = CreateUseCaseWithExecutionPort(
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        std::make_shared<FakeProductionBaselinePort>(),
+        config_port);
+    SeedPlan(use_case, "plan-soft-limit-no-start");
+    auto& plan_record = use_case.plans_.at("plan-soft-limit-no-start");
+
+    std::vector<Siligen::TrajectoryPoint> trajectory_points{
+        Siligen::TrajectoryPoint(0.0f, 0.0f, 10.0f),
+        Siligen::TrajectoryPoint(481.0f, 0.0f, 10.0f),
+    };
+    trajectory_points[0].timestamp = 0.0f;
+    trajectory_points[1].timestamp = 0.1f;
+    SetPlanExecutionTrajectory(plan_record, trajectory_points);
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-soft-limit-no-start";
+    request.plan_fingerprint = "fp-plan-soft-limit-no-start";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(execution_port->start_call_count, 0);
+    EXPECT_FALSE(execution_port->last_request.has_value());
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobAllowsExecutionTrajectoryWithinMachineSoftLimit) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    ConfigureDemo1ProductionLikeConfig(config_port);
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto use_case = CreateUseCaseWithExecutionPort(
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        std::make_shared<FakeProductionBaselinePort>(),
+        config_port);
+    SeedPlan(use_case, "plan-soft-limit-clean");
+    auto& plan_record = use_case.plans_.at("plan-soft-limit-clean");
+
+    std::vector<Siligen::TrajectoryPoint> trajectory_points{
+        Siligen::TrajectoryPoint(0.0f, 0.0f, 10.0f),
+        Siligen::TrajectoryPoint(479.0f, 10.0f, 10.0f),
+    };
+    trajectory_points[0].timestamp = 0.0f;
+    trajectory_points[1].timestamp = 0.1f;
+    SetPlanExecutionTrajectory(plan_record, trajectory_points);
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-soft-limit-clean";
+    request.plan_fingerprint = "fp-plan-soft-limit-clean";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
+    EXPECT_TRUE(result.Value().started);
+    EXPECT_EQ(execution_port->start_call_count, 1);
+    ASSERT_TRUE(execution_port->last_request.has_value());
+    EXPECT_EQ(execution_port->last_request->plan_id, request.plan_id);
+}
+
 TEST(DispensingWorkflowUseCaseTest, StartJobAndExecutionResumeUseSameInterlockPreconditions) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -2751,6 +2922,34 @@ TEST(DispensingWorkflowUseCaseTest, StartJobAndExecutionResumeUseSameInterlockPr
     EXPECT_EQ(resume_result.GetError().GetCode(), ErrorCode::EMERGENCY_STOP_ACTIVATED);
 }
 
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsActiveSoftLimitBeforeRuntimeStart) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_use_case =
+        CreateRuntimeExecutionUseCase(connection_port, motion_state_port, homing_port, interlock_port);
+    auto x_status = ReadyAxisStatus();
+    x_status.soft_limit_positive = true;
+    motion_state_port->statuses[LogicalAxisId::X] = x_status;
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    auto use_case = CreateUseCase(connection_port, motion_state_port, homing_port, interlock_port, execution_use_case);
+    SeedPlan(use_case, "plan-active-soft-limit");
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-active-soft-limit";
+    request.plan_fingerprint = "fp-plan-active-soft-limit";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::POSITION_OUT_OF_RANGE);
+    EXPECT_NE(result.GetError().GetMessage().find("SOFT_LIMIT_ACTIVE"), std::string::npos);
+}
+
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFingerprintUnchanged) {
     auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
     auto motion_state_port = std::make_shared<FakeMotionStatePort>();
@@ -2770,6 +2969,10 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsConfirmedStateWhenFin
     plan_record.preview_authority_shared_with_execution = true;
     plan_record.preview_binding_ready = true;
     plan_record.preview_spacing_valid = true;
+    plan_record.preview_validation_classification = "pass";
+    plan_record.preview_exception_reason.clear();
+    plan_record.preview_failure_reason.clear();
+    SeedProductionReadyValidationReport(plan_record);
     plan_record.preview_state = DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED;
     plan_record.preview_snapshot_hash = plan_record.response.plan_fingerprint;
     plan_record.confirmed_at = "2026-03-22T00:00:00Z";
@@ -2871,9 +3074,17 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotCarriesPreviewDiagnosticCo
     auto plan_record = BuildPreviewPlanRecord(
         "plan-fragmented",
         {Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)});
-    plan_record.preview_validation_classification = "pass_with_exception";
-    plan_record.preview_exception_reason = "span spacing outside configured window but accepted as explicit exception";
+    plan_record.preview_validation_classification = "pass";
+    plan_record.preview_exception_reason.clear();
     plan_record.preview_diagnostic_code = "process_path_fragmentation";
+    plan_record.path_quality = BuildPassPathQuality();
+    plan_record.path_quality->verdict = "fail";
+    plan_record.path_quality->blocking = true;
+    plan_record.path_quality->reason_codes = {"process_path_fragmentation"};
+    plan_record.path_quality->summary = "path_quality blocked [process_path_fragmentation]";
+    plan_record.path_quality->inputs.preview_diagnostic_code = "process_path_fragmentation";
+    plan_record.path_quality->inputs.discontinuity_count = 1;
+    plan_record.response.path_quality = *plan_record.path_quality;
     use_case.plans_[plan_record.response.plan_id] = plan_record;
 
     Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest request;
@@ -2882,7 +3093,15 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotCarriesPreviewDiagnosticCo
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().GetMessage();
     EXPECT_EQ(result.Value().preview_diagnostic_code, "process_path_fragmentation");
-    EXPECT_EQ(result.Value().preview_validation_classification, "pass_with_exception");
+    EXPECT_EQ(result.Value().preview_validation_classification, "pass");
+    EXPECT_TRUE(result.Value().path_quality.blocking);
+    EXPECT_EQ(result.Value().path_quality.verdict, "fail");
+    EXPECT_NE(
+        std::find(
+            result.Value().path_quality.reason_codes.begin(),
+            result.Value().path_quality.reason_codes.end(),
+            "process_path_fragmentation"),
+        result.Value().path_quality.reason_codes.end());
 }
 
 TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFailPreviewUsingFailureReason) {
@@ -2912,7 +3131,113 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsFailPreviewUsingFailureReason
 
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
-    EXPECT_EQ(result.GetError().GetMessage(), "authority locator failed on degenerate spline");
+    EXPECT_NE(result.GetError().GetMessage().find("spacing_invalid"), std::string::npos);
+    EXPECT_NE(result.GetError().GetMessage().find("preview_validation_failed"), std::string::npos);
+    const auto& updated_plan = use_case.plans_.at("plan-authority-fail");
+    ASSERT_TRUE(updated_plan.path_quality.has_value());
+    EXPECT_EQ(updated_plan.path_quality->verdict, "fail");
+    EXPECT_TRUE(updated_plan.path_quality->blocking);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsBlockingPathQualityBeforeRuntimeLaunch) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto use_case = CreateUseCaseWithExecutionPort(
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+    SeedPlan(use_case, "plan-path-quality-blocked");
+    auto& plan_record = use_case.plans_.at("plan-path-quality-blocked");
+    plan_record.preview_diagnostic_code = "process_path_fragmentation";
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-path-quality-blocked";
+    request.plan_fingerprint = "fp-plan-path-quality-blocked";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("process_path_fragmentation"), std::string::npos);
+    const auto& updated_plan = use_case.plans_.at("plan-path-quality-blocked");
+    ASSERT_TRUE(updated_plan.path_quality.has_value());
+    EXPECT_TRUE(updated_plan.path_quality->blocking);
+    EXPECT_EQ(execution_port->start_call_count, 0);
+    EXPECT_FALSE(execution_port->last_request.has_value());
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsMissingPathQualityWithoutRuntimeLaunch) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto use_case = CreateUseCaseWithExecutionPort(
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+    SeedPlan(use_case, "plan-path-quality-missing");
+    auto& plan_record = use_case.plans_.at("plan-path-quality-missing");
+    plan_record.path_quality.reset();
+    plan_record.preview_validation_classification.clear();
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-path-quality-missing";
+    request.plan_fingerprint = "fp-plan-path-quality-missing";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("path_quality_missing"), std::string::npos);
+    EXPECT_EQ(execution_port->start_call_count, 0);
+    EXPECT_FALSE(execution_port->last_request.has_value());
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobBlocksPassWithExceptionPathQualityByDefault) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto use_case = CreateUseCaseWithExecutionPort(
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port);
+    SeedPlan(use_case, "plan-pass-with-exception");
+    auto& plan_record = use_case.plans_.at("plan-pass-with-exception");
+    plan_record.preview_validation_classification = "pass_with_exception";
+    plan_record.preview_exception_reason = "short closed span kept as explicit exception";
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-pass-with-exception";
+    request.plan_fingerprint = "fp-plan-pass-with-exception";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
+    EXPECT_NE(result.GetError().GetMessage().find("preview_exception_unallowlisted"), std::string::npos);
+    const auto& updated_plan = use_case.plans_.at("plan-pass-with-exception");
+    ASSERT_TRUE(updated_plan.path_quality.has_value());
+    EXPECT_EQ(updated_plan.path_quality->verdict, "pass_with_exception");
+    EXPECT_TRUE(updated_plan.path_quality->blocking);
+    EXPECT_NE(
+        std::find(
+            updated_plan.path_quality->reason_codes.begin(),
+            updated_plan.path_quality->reason_codes.end(),
+            "preview_exception_unallowlisted"),
+        updated_plan.path_quality->reason_codes.end());
+    EXPECT_EQ(execution_port->start_call_count, 0);
 }
 
 TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotKeepsCornerWhenDownsampling) {
@@ -3358,10 +3683,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGlue
         config_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-consistency";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-consistency", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -3422,10 +3744,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanParameterChangeInvalidatesPreviou
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-preview-stale";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-preview-stale", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -3484,10 +3803,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanExecutionStrategyPresenceUpdatesP
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-strategy-fingerprint";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-strategy-fingerprint", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -3530,10 +3846,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBaselinePolicyUpdatesPlanFingerpr
         baseline_policy_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-policy-fingerprint";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-policy-fingerprint", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     const auto first_prepare = use_case.PreparePlan(
@@ -3624,8 +3937,8 @@ TEST(DispensingWorkflowUseCaseTest, StartJobAllowsProfileComparePlanRequiringMul
     const auto result = use_case.StartJob(request);
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
-    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.production_ready);
+    EXPECT_TRUE(plan_record.response.validation_report.preview_ready);
+    EXPECT_TRUE(plan_record.response.validation_report.production_ready);
     ASSERT_TRUE(plan_record.execution_launch.profile_compare_schedule);
     ASSERT_TRUE(plan_record.execution_launch.expected_trace);
     EXPECT_EQ(plan_record.execution_launch.profile_compare_schedule->spans.size(), 2U);
@@ -3722,15 +4035,15 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsClosedLoopBranchRevisitProfil
     ASSERT_TRUE(result.IsError());
     EXPECT_EQ(result.GetError().GetCode(), ErrorCode::INVALID_STATE);
     EXPECT_NE(result.GetError().GetMessage().find("无法编译正式 execution schedule"), std::string::npos);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
-    EXPECT_FALSE(plan_record.response.import_diagnostics.production_ready);
-    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(plan_record.response.validation_report.preview_ready);
+    EXPECT_FALSE(plan_record.response.validation_report.production_ready);
+    EXPECT_FALSE(plan_record.response.validation_report.formal_compare_gate.has_value);
     EXPECT_NE(
-        plan_record.response.import_diagnostics.summary.find("owner execution package 不满足 formal runtime compare contract"),
+        plan_record.response.validation_report.summary.find("owner execution package 不满足 formal runtime compare contract"),
         std::string::npos);
 }
 
-TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContractForRectDiag) {
+TEST(DispensingWorkflowUseCaseTest, PreparePlanMapsPassWithExceptionIntoBlockingPathQualityForRectDiag) {
     auto temp_pb_file = ScopedTempPbFile();
     auto path_source = std::make_shared<RectDiagPathSourceStub>();
     auto pb_service = std::make_shared<DxfPbPreparationService>();
@@ -3762,13 +4075,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContract
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-owner-gate";
-    artifact_record.response.filepath = temp_pb_file.string();
-    artifact_record.response.prepared_filepath = temp_pb_file.string();
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.prepared_filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-owner-gate", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     auto request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -3776,9 +4083,19 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContract
     const auto result = use_case.PreparePlan(request);
 
     ASSERT_TRUE(result.IsSuccess()) << result.GetError().ToString();
-    EXPECT_TRUE(result.Value().import_diagnostics.preview_ready);
-    EXPECT_TRUE(result.Value().import_diagnostics.production_ready);
-    EXPECT_FALSE(result.Value().import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(result.Value().validation_report.preview_ready);
+    EXPECT_EQ(result.Value().preview_validation_classification, "pass_with_exception");
+    EXPECT_EQ(result.Value().preview_diagnostic_code, "");
+    EXPECT_FALSE(result.Value().validation_report.production_ready);
+    EXPECT_FALSE(result.Value().validation_report.formal_compare_gate.has_value);
+    EXPECT_EQ(result.Value().path_quality.verdict, "pass_with_exception");
+    EXPECT_TRUE(result.Value().path_quality.blocking);
+    EXPECT_NE(
+        std::find(
+            result.Value().path_quality.reason_codes.begin(),
+            result.Value().path_quality.reason_codes.end(),
+            "preview_exception_unallowlisted"),
+        result.Value().path_quality.reason_codes.end());
 
     const auto& plan_record = use_case.plans_.at(result.Value().plan_id);
     EXPECT_TRUE(plan_record.preview_binding_ready);
@@ -3786,10 +4103,10 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContract
     EXPECT_TRUE(plan_record.execution_contract_ready);
     EXPECT_EQ(plan_record.execution_diagnostic_code, "");
     EXPECT_FALSE(plan_record.execution_assembly.formal_compare_gate.HasValue());
-    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_FALSE(plan_record.response.validation_report.formal_compare_gate.has_value);
 }
 
-TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowReadyAfterConfirm) {
+TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowReadyAfterConfirmWhilePathQualityBlocksProduction) {
     auto temp_pb_file = ScopedTempPbFile();
     auto path_source = std::make_shared<RectDiagPathSourceStub>();
     auto pb_service = std::make_shared<DxfPbPreparationService>();
@@ -3815,13 +4132,7 @@ TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowR
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-owner-gate-preview";
-    artifact_record.response.filepath = temp_pb_file.string();
-    artifact_record.response.prepared_filepath = temp_pb_file.string();
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.prepared_filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-owner-gate-preview", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     auto prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -3829,9 +4140,19 @@ TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowR
     const auto prepare_result = use_case.PreparePlan(prepare_request);
 
     ASSERT_TRUE(prepare_result.IsSuccess()) << prepare_result.GetError().ToString();
-    EXPECT_TRUE(prepare_result.Value().import_diagnostics.preview_ready);
-    EXPECT_TRUE(prepare_result.Value().import_diagnostics.production_ready);
-    EXPECT_FALSE(prepare_result.Value().import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(prepare_result.Value().validation_report.preview_ready);
+    EXPECT_EQ(prepare_result.Value().preview_validation_classification, "pass_with_exception");
+    EXPECT_EQ(prepare_result.Value().preview_diagnostic_code, "");
+    EXPECT_FALSE(prepare_result.Value().validation_report.production_ready);
+    EXPECT_FALSE(prepare_result.Value().validation_report.formal_compare_gate.has_value);
+    EXPECT_EQ(prepare_result.Value().path_quality.verdict, "pass_with_exception");
+    EXPECT_TRUE(prepare_result.Value().path_quality.blocking);
+    EXPECT_NE(
+        std::find(
+            prepare_result.Value().path_quality.reason_codes.begin(),
+            prepare_result.Value().path_quality.reason_codes.end(),
+            "preview_exception_unallowlisted"),
+        prepare_result.Value().path_quality.reason_codes.end());
 
     Siligen::Application::UseCases::Dispensing::PreviewSnapshotRequest snapshot_request;
     snapshot_request.plan_id = prepare_result.Value().plan_id;
@@ -3850,9 +4171,9 @@ TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowR
 
     const auto& plan_record = use_case.plans_.at(prepare_result.Value().plan_id);
     EXPECT_EQ(plan_record.preview_state, DispensingWorkflowUseCase::PlanPreviewState::CONFIRMED);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.preview_ready);
-    EXPECT_TRUE(plan_record.response.import_diagnostics.production_ready);
-    EXPECT_FALSE(plan_record.response.import_diagnostics.formal_compare_gate.HasValue());
+    EXPECT_TRUE(plan_record.response.validation_report.preview_ready);
+    EXPECT_FALSE(plan_record.response.validation_report.production_ready);
+    EXPECT_FALSE(plan_record.response.validation_report.formal_compare_gate.has_value);
     EXPECT_EQ(plan_record.preview_failure_reason, prepare_result.Value().preview_failure_reason);
 }
 
@@ -4209,10 +4530,7 @@ TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutio
         interlock_port);
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
-    artifact_record.response.artifact_id = "artifact-release-rebuild";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyImportDiagnostics(artifact_record);
+    SeedSourceDrawingArtifact(artifact_record, "artifact-release-rebuild", temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);

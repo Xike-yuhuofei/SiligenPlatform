@@ -9,7 +9,7 @@
 #include <mutex>
 #include <cstdint>
 
-#include "dispense_packaging/contracts/FormalCompareGateDiagnostic.h"
+#include "engineering/contracts/DxfValidationReport.h"
 #include "shared/types/DiagnosticsConfig.h"
 #include "runtime_execution/application/services/motion/execution/MotionReadinessService.h"
 
@@ -80,8 +80,10 @@ private:
     struct DxfCache {
         bool loaded = false;
         std::string artifact_id;
+        std::string source_drawing_ref;
         std::string filepath;
-        std::string prepared_filepath;
+        std::string source_hash;
+        std::string canonical_geometry_ref;
         uint32_t segment_count = 0;
         double total_length = 0.0;
         double x_min = 0.0;
@@ -100,16 +102,7 @@ private:
         double preview_speed_mm_s = 0.0;
         std::string production_baseline_id;
         std::string production_baseline_fingerprint;
-        std::string import_result_classification;
-        bool import_preview_ready = false;
-        bool import_production_ready = false;
-        std::string import_summary;
-        std::string import_primary_code;
-        std::vector<std::string> import_warning_codes;
-        std::vector<std::string> import_error_codes;
-        std::string import_resolved_units;
-        double import_resolved_unit_scale = 1.0;
-        Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic formal_compare_gate;
+        Siligen::Engineering::Contracts::DxfValidationReport validation_report;
     };
 
     mutable std::mutex dxf_mutex_;

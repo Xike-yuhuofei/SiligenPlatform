@@ -4,12 +4,53 @@
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "dxf_geometry/application/services/dxf/DxfPbPreparationService.h"
 
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
 namespace Siligen::Application::Ports::Dispensing {
 
 namespace {
+
+std::string HexEncodeUint64(std::uint64_t value) {
+    std::ostringstream oss;
+    oss << std::hex << std::setw(16) << std::setfill('0') << value;
+    return oss.str();
+}
+
+std::uint64_t Fnv1a64(const std::string& text) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (unsigned char ch : text) {
+        hash ^= static_cast<std::uint64_t>(ch);
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+Siligen::Engineering::Contracts::DxfValidationReport BuildValidationReport(
+    const Siligen::Application::Services::DXF::ImportDiagnosticsSummary& diagnostics,
+    const PlanningInputPreparationRequest& request) {
+    Siligen::Engineering::Contracts::DxfValidationReport report;
+    report.stage_id = "S2";
+    report.owner_module = "M2";
+    report.source_ref = request.source_ref;
+    report.source_hash = request.source_hash;
+    report.result_classification = diagnostics.result_classification;
+    report.preview_ready = diagnostics.preview_ready;
+    report.production_ready = diagnostics.production_ready;
+    report.summary = diagnostics.summary;
+    report.primary_code = diagnostics.primary_code;
+    report.warning_codes = diagnostics.warning_codes;
+    report.error_codes = diagnostics.error_codes;
+    report.resolved_units = diagnostics.resolved_units;
+    report.resolved_unit_scale = diagnostics.resolved_unit_scale;
+    report.gate_result = Siligen::Engineering::Contracts::ResolveGateResult(
+        diagnostics.production_ready,
+        diagnostics.warning_codes,
+        diagnostics.error_codes);
+    return report;
+}
 
 class ProcessPathFacadePortAdapter final : public IProcessPathBuildPort {
 public:
@@ -59,8 +100,18 @@ public:
         }
     }
 
-    Result<PreparedPlanningInputPath> EnsurePreparedInput(const std::string& source_path) const override {
-        return service_->EnsurePbReady(source_path);
+    Result<PreparedPlanningInput> EnsurePreparedInput(const PlanningInputPreparationRequest& request) const override {
+        auto result = service_->PrepareInputArtifact(request.source_path);
+        if (result.IsError()) {
+            return Result<PreparedPlanningInput>::Failure(result.GetError());
+        }
+
+        PreparedPlanningInput prepared;
+        prepared.prepared_path = result.Value().prepared_path;
+        prepared.canonical_geometry_ref = "canonical-geometry:" + HexEncodeUint64(
+            Fnv1a64(request.source_ref + "|" + request.source_hash + "|" + prepared.prepared_path));
+        prepared.validation_report = BuildValidationReport(result.Value().import_diagnostics, request);
+        return Result<PreparedPlanningInput>::Success(std::move(prepared));
     }
 
 private:

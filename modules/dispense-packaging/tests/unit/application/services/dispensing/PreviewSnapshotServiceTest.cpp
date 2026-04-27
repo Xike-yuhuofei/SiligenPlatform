@@ -15,6 +15,7 @@ using Siligen::Application::Services::Dispensing::PreviewSnapshotService;
 using Siligen::Domain::Dispensing::ValueObjects::AuthorityTriggerLayout;
 using Siligen::Domain::Dispensing::ValueObjects::InterpolationTriggerBinding;
 using Siligen::Domain::Dispensing::ValueObjects::LayoutTriggerPoint;
+using Siligen::Engineering::Contracts::PathQuality;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::ProcessSegment;
 using Siligen::ProcessPath::Contracts::Segment;
@@ -28,6 +29,19 @@ std::vector<Siligen::TrajectoryPoint> BuildTrajectory(const std::vector<Point2D>
         trajectory.emplace_back(point.x, point.y, 0.0f);
     }
     return trajectory;
+}
+
+const PathQuality& DefaultPathQuality() {
+    static const PathQuality path_quality{
+        "pass",
+        false,
+        {},
+        "path_quality passed",
+        "runtime_authority_path_quality",
+        {true, "pass", "", "", 0},
+        "runtime_path_quality.v1",
+    };
+    return path_quality;
 }
 
 PreviewSnapshotInput BuildInput(const std::vector<Siligen::TrajectoryPoint>& trajectory) {
@@ -44,6 +58,7 @@ PreviewSnapshotInput BuildInput(const std::vector<Siligen::TrajectoryPoint>& tra
     input.generated_at = "2026-03-28T00:00:01Z";
     input.trajectory_points = &trajectory;
     input.motion_trajectory_points = &trajectory;
+    input.path_quality = &DefaultPathQuality();
     return input;
 }
 
@@ -60,6 +75,7 @@ PreviewSnapshotInput BuildProcessPathInput(const ProcessPath& process_path) {
     input.estimated_time_s = 1.0f;
     input.generated_at = "2026-03-28T00:00:01Z";
     input.process_path = &process_path;
+    input.path_quality = &DefaultPathQuality();
     return input;
 }
 
@@ -148,6 +164,8 @@ TEST(PreviewSnapshotServiceTest, BuildResponsePreservesMetadataAndBuildsPreviewP
     EXPECT_EQ(payload.confirmed_at, "2026-03-28T00:00:00Z");
     EXPECT_EQ(payload.motion_preview_source_point_count, 2U);
     EXPECT_EQ(payload.motion_preview_point_count, payload.motion_preview_polyline.size());
+    EXPECT_EQ(payload.path_quality.verdict, "pass");
+    EXPECT_FALSE(payload.path_quality.blocking);
 }
 
 TEST(PreviewSnapshotServiceTest, BuildResponsePreservesExecutionTrajectoryVerticesWhenWithinClampBudget) {

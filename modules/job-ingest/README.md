@@ -4,12 +4,12 @@
 
 ## Owner 范围
 
-- authority artifact：`UploadResponse`
-- 当前 live owner surface：`UploadRequest`、`UploadResponse`、`IUploadFilePort`、`UploadFileUseCase`
+- authority artifact：`SourceDrawing`
+- 当前 live owner surface：`UploadRequest`、`SourceDrawing`、`IUploadFilePort`、`UploadFileUseCase`
 - `UploadRequest` 是 ingress 输入 DTO，不是 authority artifact
 - 任务接入与输入归档（ingest）语义
 - 输入校验与接入侧最小编排
-- 向下游 workflow 交接 DXF 文件事实（`filepath`、`generated_filename`、`size`、`timestamp`）
+- 向下游交接 DXF source drawing 事实（`source_drawing_ref`、`filepath`、`generated_filename`、`size`、`timestamp`、`source_hash`、`validation_report`）
 - contracts namespace：`Siligen::JobIngest::Contracts`
 - application use case namespace：`Siligen::JobIngest::Application::UseCases::Dispensing`
 
@@ -19,16 +19,16 @@
 - 跨模块稳定应用契约归位到 `shared/contracts/application/`。
 - `job-ingest` 专属契约当前通过 `job_ingest/contracts/...` 暴露稳定 include path。
 - `job_ingest/application/...` 是唯一 authoritative application include path。
-- `UploadFileUseCase` public seam 只暴露 module-owned upload ports，不再公开 foreign storage / PB service / configuration types。
-- PB preparation 与 cleanup 只允许通过 `job_ingest/application/ports/dispensing/UploadPorts.h` 暴露的 seam 进入 use case。
-- foreign storage owner 与 PB preparation concrete owner 保持在模块外；M1 只通过 `IUploadStoragePort` / `IUploadPreparationPort` 感知它们。
+- `UploadFileUseCase` public seam 只暴露 module-owned storage port，不再公开 foreign storage / planning / geometry / configuration types。
+- `.pb` preparation、cleanup、canonical geometry 生成与后续 production gate 不属于 `job-ingest` owner truth。
+- foreign storage owner 保持在模块外；M1 只通过 `IUploadStoragePort` 感知文件校验、落盘与删除能力。
 
 ## 当前协作面
 
 - `apps/planner-cli/`
 - `apps/runtime-service/`
 - `apps/runtime-gateway/`
-- `modules/workflow/`
+- `modules/runtime-execution/`
 
 ## 统一骨架状态
 
@@ -45,5 +45,5 @@
   - `siligen_job_ingest_unit_tests`
   - `siligen_job_ingest_golden_tests`
   - `siligen_job_ingest_integration_tests`
-- 当前最小正式矩阵聚焦 `UploadFileUseCase` 的上传校验、PB 生成闭环与失败清理，以及 `UploadContracts` 的稳定输入/输出公开面。
+- 当前最小正式矩阵聚焦 `UploadFileUseCase` 的上传校验、source drawing 归档、`source_hash` / `validation_report(S1)` 输出，以及 `UploadContracts` 的稳定输入/输出公开面。
 - 仓库级 `tests/` 只消费跨 owner 场景，不替代 `job-ingest` 模块内 contract。
