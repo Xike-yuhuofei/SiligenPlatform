@@ -454,9 +454,10 @@ class GateOrchestratorContractTest(unittest.TestCase):
             subprocess.run(["git", "worktree", "add", "--detach", str(worktree), "HEAD"], cwd=str(ROOT), check=True)
             try:
                 base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(worktree), text=True).strip()
-                smoke_file = worktree / "docs" / "validation" / "pre-push-contract-smoke.md"
+                smoke_file_name = f"pre-push-contract-smoke-{temp_root.name}.md"
+                smoke_file = worktree / "docs" / "validation" / smoke_file_name
                 smoke_file.write_text("# pre-push contract smoke\n", encoding="utf-8")
-                subprocess.run(["git", "add", "docs/validation/pre-push-contract-smoke.md"], cwd=str(worktree), check=True)
+                subprocess.run(["git", "add", f"docs/validation/{smoke_file_name}"], cwd=str(worktree), check=True)
                 subprocess.run(
                     [
                         "git",
@@ -506,7 +507,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
                 self.assertEqual(manifest["range_source"], "pre-push-hook")
                 self.assertEqual(manifest["base_sha"], base_sha)
                 self.assertEqual(manifest["head_sha"], head_sha)
-                self.assertEqual(manifest["changed_files"], ["docs/validation/pre-push-contract-smoke.md"])
+                self.assertEqual(manifest["changed_files"], [f"docs/validation/{smoke_file_name}"])
             finally:
                 shutil.rmtree(report_root, ignore_errors=True)
                 subprocess.run(["git", "worktree", "remove", str(worktree)], cwd=str(ROOT), check=False)
