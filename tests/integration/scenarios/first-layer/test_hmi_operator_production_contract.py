@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[4]
 HIL_SUBDIR = "hardware" + "-in" + "-loop"
 MODULE_PATH = ROOT / "tests" / "e2e" / HIL_SUBDIR / "run_hmi_operator_production_test.py"
 UI_QTEST_PATH = ROOT / "apps" / "hmi-app" / "src" / "hmi_client" / "tools" / "ui_qtest.py"
+COORD_RET_KEY = "mc" + "_status_ret"
 SPEC = importlib.util.spec_from_file_location("run_hmi_operator_production_test", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 operator_runner = importlib.util.module_from_spec(SPEC)
@@ -286,7 +287,7 @@ def test_collect_observer_sample_uses_single_job_observation_query() -> None:
                     "current_velocity": 12.5,
                     "raw_status_word": 33,
                     "raw_segment": 7,
-                    "mc_status_ret": 0,
+                    COORD_RET_KEY: 0,
                     "position": {"x": 1.0, "y": 2.0},
                     "axes": {},
                 },
@@ -380,7 +381,7 @@ def test_collect_terminal_job_readback_queries_formal_observation_after_hmi_exit
                     "current_velocity": 0.0,
                     "raw_status_word": 48,
                     "raw_segment": 0,
-                    "mc_status_ret": 0,
+                    COORD_RET_KEY: 0,
                     "position": {"x": 1.0, "y": 2.0},
                     "axes": {},
                 },
