@@ -586,8 +586,10 @@ class GateOrchestratorContractTest(unittest.TestCase):
     def test_remote_delete_safety_writes_summary_when_gh_is_unavailable(self) -> None:
         powershell = shutil.which("powershell") or shutil.which("pwsh")
         git = shutil.which("git")
-        self.assertIsNotNone(powershell)
-        self.assertIsNotNone(git)
+        if powershell is None:
+            self.fail("powershell executable is required for this contract test")
+        if git is None:
+            self.fail("git executable is required for this contract test")
 
         with tempfile.TemporaryDirectory(prefix="pre-push-delete-gh-missing-") as temp_dir:
             report_dir = Path(temp_dir) / "report"
