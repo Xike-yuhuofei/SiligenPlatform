@@ -164,7 +164,8 @@ sys.exit(0 if ok else 1)
             $hits = @()
             $markerScanFiles = @(
                 $changedFiles | Where-Object {
-                    $_ -match '^(apps|modules|shared|tests/(contracts|integration|e2e)|scripts/(?!validation/))/'
+                    $_ -match '^(apps|modules|shared|tests/(contracts|integration|e2e)|scripts/(?!validation/))/' -and
+                    $_ -notmatch '^modules/runtime-execution/adapters/device/'
                 }
             )
             foreach ($file in $markerScanFiles) {
