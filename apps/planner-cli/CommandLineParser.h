@@ -131,7 +131,7 @@ struct CommandLineConfig {
 
 class CommandLineParser {
    public:
-    static CommandLineConfig Parse(int argc, char* argv[]);
+    static CommandLineConfig Parse(int argc, const char* const argv[]);
 
    private:
     static RunMode ParseMode(const std::string& mode_str);
