@@ -58,23 +58,4 @@ std::string StringManipulator::PadRight(const std::string& str, int32 width, cha
     return Siligen::SharedKernel::StringManipulator::PadRight(str, width, fill_char);
 }
 
-std::string StringManipulator::InternalTrim(const std::string& str, bool left, bool right) {
-    if (left && right) {
-        return Siligen::SharedKernel::StringManipulator::Trim(str);
-    }
-    if (left) {
-        return Siligen::SharedKernel::StringManipulator::TrimLeft(str);
-    }
-    if (right) {
-        return Siligen::SharedKernel::StringManipulator::TrimRight(str);
-    }
-    return str;
-}
-
-std::vector<std::string> StringManipulator::InternalSplit(const std::string& str,
-                                                          const std::string& delimiter,
-                                                          int32 max_split) {
-    return Siligen::SharedKernel::StringManipulator::Split(str, delimiter, max_split);
-}
-
 }  // namespace Siligen
