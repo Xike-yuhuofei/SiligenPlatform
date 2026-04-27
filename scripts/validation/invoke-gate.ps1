@@ -500,7 +500,20 @@ function Test-StepTools {
 function Test-RequiredArtifact {
     param([string]$Pattern)
 
-    $resolvedPattern = Resolve-WorkspacePath -PathValue ($Pattern.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
+    $patternValue = $Pattern.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    if ($patternValue -match '[*?]') {
+        $firstWildcard = $patternValue.IndexOfAny([char[]]@("*", "?"))
+        $patternPrefix = $patternValue.Substring(0, $firstWildcard)
+        $patternSuffix = $patternValue.Substring($firstWildcard)
+        $resolvedPrefix = if ([System.IO.Path]::IsPathRooted($patternPrefix)) {
+            [System.IO.Path]::GetFullPath($patternPrefix)
+        } else {
+            [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $patternPrefix))
+        }
+        $resolvedPattern = $resolvedPrefix + $patternSuffix
+    } else {
+        $resolvedPattern = Resolve-WorkspacePath -PathValue $patternValue
+    }
     if ($resolvedPattern -notmatch '[*?]') {
         return (Test-Path -LiteralPath $resolvedPattern)
     }
@@ -949,13 +962,16 @@ foreach ($step in $manifestSteps) {
     }
 }
 
-$gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
-    Expand-TemplateValue -Value $_ -Context @{
-        workspaceRoot = $workspaceRoot
-        gateReportDir = $gateReportDir
-        stepReportDir = $gateReportDir
-    }
-})
+$gateArtifactResults = @()
+if ($SelectedStep.Count -eq 0) {
+    $gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
+        Expand-TemplateValue -Value $_ -Context @{
+            workspaceRoot = $workspaceRoot
+            gateReportDir = $gateReportDir
+            stepReportDir = $gateReportDir
+        }
+    })
+}
 $missingGateArtifacts = @($gateArtifactResults | Where-Object { -not $_.exists } | ForEach-Object { $_.pattern })
 if (@($missingGateArtifacts).Count -gt 0) {
     $gateFailed = $true

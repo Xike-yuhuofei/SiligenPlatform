@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "policies": [
+    {
+      "mode": "pr",
+      "blocking_findings": [
+        "forbidden_dependency",
+        "unknown_dependency",
+        "private_surface_access",
+        "unregistered_bridge",
+        "unauthorized_bridge",
+        "expired_bridge",
+        "missing_required_owner_target",
+        "retired_surface_reintroduced",
+        "direct_workflow_target_reference",
+        "owner_mapping_missing",
+        "model_error"
+      ],
+      "advisory_findings": [
+        "no_boundary_relevant_changed_files",
+        "registered_bridge_observed"
+      ],
+      "coverage_requirements": {
+        "scan_scope": "changed-files",
+        "require_changed_files": false,
+        "require_module_owner_mapping": true,
+        "supported_files": [
+          "CMakeLists.txt",
+          ".cmake",
+          ".h",
+          ".hpp",
+          ".cpp",
+          ".cc",
+          ".cxx",
+          ".ps1"
+        ],
+        "required_owner_targets": [
+          {
+            "id": "runtime-execution-application-public-target",
+            "owner": "modules.runtime-execution",
+            "path": "modules/runtime-execution/application/CMakeLists.txt",
+            "pattern": "add_library(siligen_runtime_execution_application_public INTERFACE)"
+          },
+          {
+            "id": "process-path-application-public-target",
+            "owner": "modules.process-path",
+            "path": "modules/process-path/application/CMakeLists.txt",
+            "pattern": "add_library(siligen_process_path_application_public INTERFACE)"
+          },
+          {
+            "id": "process-path-contracts-public-target",
+            "owner": "modules.process-path",
+            "path": "modules/process-path/contracts/CMakeLists.txt",
+            "pattern": "add_library(siligen_process_path_contracts_public INTERFACE)"
+          },
+          {
+            "id": "trace-diagnostics-contracts-public-target",
+            "owner": "modules.trace-diagnostics",
+            "path": "modules/trace-diagnostics/contracts/CMakeLists.txt",
+            "pattern": "add_library(siligen_trace_diagnostics_contracts_public INTERFACE)"
+          }
+        ],
+        "retired_surfaces": [
+          {
+            "id": "retired-process-path-dxf-contract",
+            "owner": "modules.process-path",
+            "path": "modules/process-path/contracts/include/process_path/contracts/IDXFPathSourcePort.h",
+            "forbidden_references": [
+              "process_path/contracts/IDXFPathSourcePort.h"
+            ]
+          },
+          {
+            "id": "retired-process-path-domain-port",
+            "owner": "modules.process-path",
+            "path": "modules/process-path/domain/trajectory/ports/IPathSourcePort.h",
+            "forbidden_references": [
+              "domain/trajectory/ports/IPathSourcePort.h",
+              "Siligen::Domain::Trajectory::Ports::"
+            ]
+          },
+          {
+            "id": "retired-process-path-domain-dxf-port",
+            "owner": "modules.process-path",
+            "path": "modules/process-path/domain/trajectory/ports/IDXFPathSourcePort.h",
+            "forbidden_references": [
+              "domain/trajectory/ports/IDXFPathSourcePort.h"
+            ]
+          },
+          {
+            "id": "retired-workflow-motion-core-root",
+            "owner": "modules.workflow",
+            "path": "modules/workflow/domain/motion-core/CMakeLists.txt"
+          }
+        ],
+        "forbidden_targets": [
+          {
+            "id": "runtime-workflow-runtime-compat-target",
+            "owner": "modules.runtime-execution",
+            "pattern": "siligen_runtime_execution_workflow_runtime_compat"
+          },
+          {
+            "id": "runtime-workflow-domain-compat-target",
+            "owner": "modules.runtime-execution",
+            "pattern": "siligen_runtime_execution_workflow_domain_compat"
+          },
+          {
+            "id": "retired-recipe-json-codec-target",
+            "owner": "modules.workflow",
+            "pattern": "siligen_recipe_json_codec"
+          },
+          {
+            "id": "retired-recipe-lifecycle-target",
+            "owner": "modules.workflow",
+            "pattern": "siligen_recipe_lifecycle"
+          }
+        ],
+        "direct_workflow_targets": [
+          "siligen_workflow_domain_public",
+          "siligen_workflow_adapters_public",
+          "siligen_workflow_runtime_consumer_public",
+          "siligen_workflow_application_public"
+        ],
+        "bridge_like_patterns": [
+          "_bridge",
+          "_compat",
+          "quarantine"
+        ],
+        "external_target_prefixes": [
+          "GTest::",
+          "gtest",
+          "gmock",
+          "Threads::",
+          "Python::",
+          "Qt6::",
+          "Qt5::",
+          "nlohmann_json",
+          "yaml-cpp",
+          "spdlog",
+          "fmt::",
+          "CONAN_PKG::"
+        ]
+      }
+    },
+    {
+      "mode": "full",
+      "blocking_findings": [
+        "forbidden_dependency",
+        "unknown_dependency",
+        "private_surface_access",
+        "unregistered_bridge",
+        "unauthorized_bridge",
+        "expired_bridge",
+        "missing_required_owner_target",
+        "retired_surface_reintroduced",
+        "direct_workflow_target_reference",
+        "owner_mapping_missing",
+        "model_error"
+      ],
+      "advisory_findings": [
+        "registered_bridge_observed"
+      ],
+      "coverage_requirements": {
+        "scan_scope": "repository",
+        "require_changed_files": false,
+        "require_module_owner_mapping": true,
+        "inherit_from": "pr"
+      }
+    },
+    {
+      "mode": "nightly",
+      "blocking_findings": [
+        "forbidden_dependency",
+        "unknown_dependency",
+        "private_surface_access",
+        "unregistered_bridge",
+        "unauthorized_bridge",
+        "expired_bridge",
+        "missing_required_owner_target",
+        "retired_surface_reintroduced",
+        "direct_workflow_target_reference",
+        "owner_mapping_missing",
+        "model_error"
+      ],
+      "advisory_findings": [
+        "registered_bridge_observed",
+        "unused_registered_bridge"
+      ],
+      "coverage_requirements": {
+        "scan_scope": "repository",
+        "require_changed_files": false,
+        "require_module_owner_mapping": true,
+        "emit_bridge_expiry_status": true,
+        "inherit_from": "pr"
+      }
+    }
+  ]
+}

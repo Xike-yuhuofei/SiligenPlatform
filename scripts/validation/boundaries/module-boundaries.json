@@ -1,0 +1,429 @@
+{
+  "schemaVersion": 1,
+  "modules": [
+    {
+      "id": "apps.workspace",
+      "owner": "apps",
+      "roots": [ "apps" ],
+      "public_surfaces": [ "apps/CMakeLists.txt" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "apps.*", "modules.*", "shared.*" ],
+      "forbidden_dependencies": []
+    },
+    {
+      "id": "apps.runtime-service",
+      "owner": "apps/runtime-service",
+      "roots": [ "apps/runtime-service" ],
+      "public_surfaces": [
+        "apps/runtime-service/CMakeLists.txt",
+        "siligen_app_runtime_service",
+        "siligen_runtime_process_bootstrap_public",
+        "siligen_runtime_service_unit_tests"
+      ],
+      "private_surfaces": [ "apps/runtime-service/bootstrap", "apps/runtime-service/container", "apps/runtime-service/runtime" ],
+      "allowed_dependencies": [
+        "modules.runtime-execution",
+        "modules.workflow",
+        "modules.job-ingest",
+        "modules.dxf-geometry",
+        "modules.trace-diagnostics",
+        "modules.dispense-packaging",
+        "modules.motion-planning",
+        "modules.process-path",
+        "modules.process-planning",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.recipe-lifecycle", "modules.workflow.domain" ]
+    },
+    {
+      "id": "apps.runtime-gateway",
+      "owner": "apps/runtime-gateway",
+      "roots": [ "apps/runtime-gateway" ],
+      "public_surfaces": [
+        "apps/runtime-gateway/CMakeLists.txt",
+        "apps/runtime-gateway/transport-gateway/CMakeLists.txt",
+        "siligen_transport_gateway"
+      ],
+      "private_surfaces": [ "apps/runtime-gateway/transport-gateway/src", "apps/runtime-gateway/transport-gateway/include" ],
+      "allowed_dependencies": [
+        "apps.runtime-service",
+        "modules.runtime-execution",
+        "modules.job-ingest",
+        "modules.workflow",
+        "modules.dispense-packaging",
+        "modules.process-planning",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.recipe-lifecycle", "modules.workflow.domain" ]
+    },
+    {
+      "id": "apps.planner-cli",
+      "owner": "apps/planner-cli",
+      "roots": [ "apps/planner-cli" ],
+      "public_surfaces": [ "apps/planner-cli/CMakeLists.txt" ],
+      "private_surfaces": [ "apps/planner-cli/CommandHandlers" ],
+      "allowed_dependencies": [
+        "apps.runtime-service",
+        "modules.runtime-execution",
+        "modules.workflow",
+        "modules.job-ingest",
+        "modules.topology-feature",
+        "modules.dispense-packaging",
+        "modules.process-planning",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.recipe-lifecycle", "modules.workflow.domain" ]
+    },
+    {
+      "id": "apps.hmi-app",
+      "owner": "apps/hmi-app",
+      "roots": [ "apps/hmi-app" ],
+      "public_surfaces": [ "apps/hmi-app/src", "apps/hmi-app/run.ps1" ],
+      "private_surfaces": [ "apps/hmi-app/src/hmi_client/client/backend_manager.py", "apps/hmi-app/src/hmi_client/client/tcp_client.py", "apps/hmi-app/src/hmi_client/client/gateway_launch.py" ],
+      "allowed_dependencies": [ "modules.hmi-application", "shared.contracts", "shared.testing" ],
+      "forbidden_dependencies": [ "apps.runtime-service", "apps.runtime-gateway" ]
+    },
+    {
+      "id": "apps.trace-viewer",
+      "owner": "apps/trace-viewer",
+      "roots": [ "apps/trace-viewer" ],
+      "public_surfaces": [ "apps/trace-viewer" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "modules.trace-diagnostics", "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.runtime-service", "apps.runtime-gateway" ]
+    },
+    {
+      "id": "modules.workspace",
+      "owner": "modules",
+      "roots": [ "modules" ],
+      "public_surfaces": [ "modules/CMakeLists.txt" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "modules.*", "shared.*" ],
+      "forbidden_dependencies": [ "apps.*" ]
+    },
+    {
+      "id": "modules.workflow",
+      "owner": "workflow",
+      "roots": [ "modules/workflow" ],
+      "public_surfaces": [
+        "modules/workflow/application",
+        "siligen_workflow_adapters_public",
+        "siligen_workflow_domain_public",
+        "siligen_workflow_runtime_consumer_public"
+      ],
+      "private_surfaces": [ "modules/workflow/domain", "modules/workflow/services", "modules/workflow/examples" ],
+      "allowed_dependencies": [
+        "modules.dispense-packaging",
+        "modules.dxf-geometry",
+        "modules.motion-planning",
+        "modules.process-path",
+        "modules.process-planning",
+        "modules.runtime-execution",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.runtime-execution", "modules.recipe-lifecycle" ]
+    },
+    {
+      "id": "modules.runtime-execution",
+      "owner": "runtime-execution",
+      "roots": [ "modules/runtime-execution" ],
+      "public_surfaces": [
+        "modules/runtime-execution/contracts",
+        "modules/runtime-execution/application",
+        "modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/IMotionRuntimePort.h",
+        "modules/runtime-execution/contracts/runtime/include/runtime_execution/contracts/motion/IIOControlPort.h",
+        "siligen_runtime_execution_application_public",
+        "siligen_runtime_execution_hosting_public",
+        "siligen_runtime_execution_runtime_contracts"
+      ],
+      "private_surfaces": [ "modules/runtime-execution/runtime/host", "modules/runtime-execution/adapters/device" ],
+      "allowed_dependencies": [
+        "apps.runtime-gateway",
+        "apps.runtime-service",
+        "modules.dispense-packaging",
+        "modules.dxf-geometry",
+        "modules.job-ingest",
+        "modules.motion-planning",
+        "modules.process-path",
+        "modules.process-planning",
+        "modules.trace-diagnostics",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.workflow.domain", "modules.recipe-lifecycle" ]
+    },
+    {
+      "id": "modules.motion-planning",
+      "owner": "motion-planning",
+      "roots": [ "modules/motion-planning" ],
+      "public_surfaces": [
+        "modules/motion-planning/CMakeLists.txt",
+        "siligen_motion_planning_application_public",
+        "siligen_motion_planning_contracts_public"
+      ],
+      "private_surfaces": [ "modules/motion-planning/domain/motion/domain-services" ],
+      "allowed_dependencies": [
+        "apps.runtime-service",
+        "modules.dispense-packaging",
+        "modules.dxf-geometry",
+        "modules.process-path",
+        "modules.process-planning",
+        "modules.runtime-execution",
+        "modules.workflow",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.process-path",
+      "owner": "process-path",
+      "roots": [ "modules/process-path" ],
+      "public_surfaces": [
+        "modules/process-path/contracts",
+        "modules/process-path/contracts/include/process_path/contracts/IPathSourcePort.h",
+        "siligen_process_path_application_public",
+        "siligen_process_path_contracts_public"
+      ],
+      "private_surfaces": [ "modules/process-path/domain/trajectory" ],
+      "allowed_dependencies": [
+        "modules.coordinate-alignment",
+        "modules.dxf-geometry",
+        "modules.motion-planning",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.process-planning",
+      "owner": "process-planning",
+      "roots": [ "modules/process-planning" ],
+      "public_surfaces": [ "siligen_process_planning_application_public", "siligen_process_planning_contracts_public" ],
+      "private_surfaces": [ "modules/process-planning/domain" ],
+      "allowed_dependencies": [ "modules.motion-planning", "modules.process-path", "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.dispense-packaging",
+      "owner": "dispense-packaging",
+      "roots": [ "modules/dispense-packaging" ],
+      "public_surfaces": [
+        "siligen_dispense_packaging_application_public",
+        "siligen_dispense_packaging_contracts_public"
+      ],
+      "private_surfaces": [ "modules/dispense-packaging/domain/dispensing" ],
+      "allowed_dependencies": [
+        "modules.dxf-geometry",
+        "modules.motion-planning",
+        "modules.process-path",
+        "modules.process-planning",
+        "modules.runtime-execution",
+        "modules.trace-diagnostics",
+        "shared.contracts",
+        "shared.kernel"
+      ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.dxf-geometry",
+      "owner": "dxf-geometry",
+      "roots": [ "modules/dxf-geometry" ],
+      "public_surfaces": [ "siligen_dxf_geometry_application_public", "siligen_module_dxf_geometry" ],
+      "private_surfaces": [ "modules/dxf-geometry/domain" ],
+      "allowed_dependencies": [ "modules.process-planning", "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.job-ingest",
+      "owner": "job-ingest",
+      "roots": [ "modules/job-ingest" ],
+      "public_surfaces": [ "siligen_job_ingest_application_public", "siligen_job_ingest_contracts", "siligen_module_job_ingest" ],
+      "private_surfaces": [ "modules/job-ingest/domain" ],
+      "allowed_dependencies": [ "modules.dxf-geometry", "modules.dispense-packaging", "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.topology-feature",
+      "owner": "topology-feature",
+      "roots": [ "modules/topology-feature" ],
+      "public_surfaces": [ "siligen_topology_feature_contracts_public", "siligen_module_topology_feature" ],
+      "private_surfaces": [ "modules/topology-feature/domain" ],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.trace-diagnostics",
+      "owner": "trace-diagnostics",
+      "roots": [ "modules/trace-diagnostics" ],
+      "public_surfaces": [
+        "modules/trace-diagnostics/contracts/include/trace_diagnostics/contracts/IDiagnosticsPort.h",
+        "siligen_trace_diagnostics_application_public",
+        "siligen_trace_diagnostics_contracts_public"
+      ],
+      "private_surfaces": [ "modules/trace-diagnostics/adapters" ],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*" ]
+    },
+    {
+      "id": "modules.coordinate-alignment",
+      "owner": "coordinate-alignment",
+      "roots": [ "modules/coordinate-alignment" ],
+      "public_surfaces": [ "siligen_coordinate_alignment_contracts_public" ],
+      "private_surfaces": [ "modules/coordinate-alignment/domain" ],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "modules.workflow.domain" ]
+    },
+    {
+      "id": "modules.hmi-application",
+      "owner": "hmi-application",
+      "roots": [ "modules/hmi-application" ],
+      "public_surfaces": [ "modules/hmi-application/application" ],
+      "private_surfaces": [ "modules/hmi-application/internal" ],
+      "allowed_dependencies": [ "shared.contracts", "shared.testing" ],
+      "forbidden_dependencies": [ "apps.runtime-service", "apps.runtime-gateway" ]
+    },
+    {
+      "id": "shared.contracts",
+      "owner": "shared/contracts",
+      "roots": [ "shared/contracts" ],
+      "public_surfaces": [
+        "shared/contracts",
+        "siligen_application_contracts",
+        "siligen_device_contracts",
+        "siligen_shared_contracts",
+        "siligen_shared_runtime_contracts"
+      ],
+      "private_surfaces": [ "shared/contracts/internal" ],
+      "allowed_dependencies": [ "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.kernel",
+      "owner": "shared/kernel",
+      "roots": [ "shared/kernel" ],
+      "public_surfaces": [
+        "shared/kernel",
+        "siligen_geometry",
+        "siligen_shared",
+        "siligen_shared_kernel",
+        "siligen_types",
+        "siligen_utils",
+        "siligen_workspace_boost_headers"
+      ],
+      "private_surfaces": [ "shared/kernel/internal" ],
+      "allowed_dependencies": [],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.testing",
+      "owner": "shared/testing",
+      "roots": [ "shared/testing" ],
+      "public_surfaces": [ "shared/testing/test-kit" ],
+      "private_surfaces": [ "shared/testing/internal" ],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*" ]
+    },
+    {
+      "id": "shared.artifacts",
+      "owner": "shared/artifacts",
+      "roots": [ "shared/artifacts" ],
+      "public_surfaces": [ "shared/artifacts" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.commands",
+      "owner": "shared/commands",
+      "roots": [ "shared/commands" ],
+      "public_surfaces": [ "shared/commands" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.config",
+      "owner": "shared/config",
+      "roots": [ "shared/config" ],
+      "public_surfaces": [ "shared/config" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.events",
+      "owner": "shared/events",
+      "roots": [ "shared/events" ],
+      "public_surfaces": [ "shared/events" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.failures",
+      "owner": "shared/failures",
+      "roots": [ "shared/failures" ],
+      "public_surfaces": [ "shared/failures" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.ids",
+      "owner": "shared/ids",
+      "roots": [ "shared/ids" ],
+      "public_surfaces": [ "shared/ids" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.logging",
+      "owner": "shared/logging",
+      "roots": [ "shared/logging" ],
+      "public_surfaces": [ "shared/logging" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.messaging",
+      "owner": "shared/messaging",
+      "roots": [ "shared/messaging" ],
+      "public_surfaces": [ "shared/messaging" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.contracts", "shared.kernel" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    },
+    {
+      "id": "shared.workspace",
+      "owner": "shared",
+      "roots": [ "shared" ],
+      "public_surfaces": [ "shared/CMakeLists.txt" ],
+      "private_surfaces": [],
+      "allowed_dependencies": [ "shared.*" ],
+      "forbidden_dependencies": [ "apps.*", "modules.*" ]
+    }
+  ],
+  "external_roots": [
+    ".git",
+    ".github",
+    ".agents",
+    ".vscode",
+    "build",
+    "third_party",
+    "tests/reports",
+    "docs",
+    "specs",
+    "data",
+    "config",
+    "deploy",
+    "scripts",
+    "samples"
+  ]
+}

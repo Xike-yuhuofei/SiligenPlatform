@@ -142,7 +142,7 @@ $workspaceValidationHilClosedLoopDir = Join-Path $runDir "workspace-validation-h
 $workspaceValidationHilMatrixDir = Join-Path $runDir "workspace-validation-hil-case-matrix"
 $dspE2ESpecDir = Join-Path $runDir "dsp-e2e-spec-docset"
 $legacyExitDir = Join-Path $runDir "legacy-exit"
-$moduleBoundaryDir = Join-Path $runDir "module-boundary-bridges"
+$moduleBoundaryDir = Join-Path $runDir "module-boundary-audit"
 $reviewBaselineDir = Join-Path $runDir "review-baseline"
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
@@ -250,16 +250,18 @@ $steps = @(
         )
     },
     @{
-        Id      = "module-boundary-bridges"
-        Name    = "Validate runtime module boundary bridges"
-        LogName = "04-module-boundary-bridges.log"
+        Id      = "module-boundary-audit"
+        Name    = "Run Module Boundary Audit"
+        LogName = "04-module-boundary-audit.log"
         Command = @(
             "powershell",
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            ".\scripts\validation\assert-module-boundary-bridges.ps1",
+            ".\scripts\validation\invoke-module-boundary-audit.ps1",
+            "-Mode",
+            "full",
             "-WorkspaceRoot",
             $repoRoot,
             "-ReportDir",
@@ -491,8 +493,10 @@ $requiredArtifacts = @(
     (Join-Path $dspE2ESpecDir "dsp-e2e-spec-docset.md"),
     (Join-Path $legacyExitDir "legacy-exit-checks.json"),
     (Join-Path $legacyExitDir "legacy-exit-checks.md"),
-    (Join-Path $moduleBoundaryDir "module-boundary-bridges.json"),
-    (Join-Path $moduleBoundaryDir "module-boundary-bridges.md"),
+    (Join-Path $moduleBoundaryDir "module-boundary-audit.json"),
+    (Join-Path $moduleBoundaryDir "module-boundary-audit.md"),
+    (Join-Path $moduleBoundaryDir "module-boundary-coverage.json"),
+    (Join-Path $moduleBoundaryDir "bridge-registry-status.json"),
     (Join-Path $reviewBaselineDir "review-baseline-completeness.json"),
     (Join-Path $reviewBaselineDir "review-baseline-completeness.md")
 )

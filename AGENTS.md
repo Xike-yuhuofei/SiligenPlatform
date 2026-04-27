@@ -10,6 +10,7 @@ Run everything from the repository root.
 - `.\scripts\validation\invoke-gate.ps1 -Gate pre-push`: canonical fast local gate.
 - `.\scripts\validation\invoke-gate.ps1 -Gate pr`: canonical hosted PR baseline gate.
 - `.\scripts\validation\invoke-gate.ps1 -Gate full-offline`: canonical full offline/native-quality gate.
+- `.\scripts\validation\invoke-module-boundary-audit.ps1 -Mode pr`: canonical Module Boundary Audit entry.
 - `.\build.ps1`: canonical workspace build entry.
 - `.\test.ps1 -Profile Local -Suite all`: local validation entry; writes reports to `tests/reports/`.
 - `.\ci.ps1 -Suite all`: compatibility wrapper for `invoke-gate.ps1 -Gate full-offline`.
@@ -17,7 +18,7 @@ Run everything from the repository root.
 - `python -m pytest .\apps\hmi-app\tests\unit -q`: targeted Python/HMI regression.
 - `ctest --test-dir .\build -C Debug --output-on-failure`: targeted C++ regression after a successful build.
 
-Gate authority lives in `docs/validation/gate-orchestrator.md` and `scripts/validation/gates/gates.json`. Do not duplicate gate step lists in workflows, hooks, or temporary scripts. Treat PR baseline, conditional Native/HIL, Nightly, and Release as separate gates; PR passed does not mean release ready.
+Gate authority lives in `docs/validation/gate-orchestrator.md` and `scripts/validation/gates/gates.json`. Module Boundary Audit authority lives in `scripts/validation/boundaries/module-boundaries.json`, `scripts/validation/boundaries/bridge-registry.json`, and `scripts/validation/boundaries/boundary-policy.json`. Do not duplicate gate step lists in workflows, hooks, or temporary scripts. Treat PR baseline, conditional Native/HIL, Nightly, and Release as separate gates; PR passed does not mean release ready.
 
 ## Coding Style & Naming Conventions
 Follow existing module boundaries: `apps/` wires, `modules/` owns business semantics, `shared/` stays generic. C++ uses PascalCase file names and `*Test.cpp` tests; Python uses `snake_case` modules and `test_*.py`. Match the surrounding file’s formatting; most repository code uses 4-space indentation. Keep new paths canonical and descriptive, using lowercase kebab-case for folders when creating new docs or scripts.

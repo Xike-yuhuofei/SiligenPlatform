@@ -93,12 +93,20 @@ class ProcessPathContractSurfaceTest(unittest.TestCase):
         self.assertNotIn("IDXFPathSourcePort", contracts_readme)
         self.assertNotIn("兼容桥接", contracts_readme)
 
-    def test_boundary_bridge_script_uses_only_canonical_process_path_header(self) -> None:
-        validation_script = _read(
-            WORKSPACE_ROOT / "scripts" / "validation" / "assert-module-boundary-bridges.ps1"
+    def test_module_boundary_audit_models_canonical_process_path_surface(self) -> None:
+        boundary_model = _read(
+            WORKSPACE_ROOT / "scripts" / "validation" / "boundaries" / "module-boundaries.json"
         )
-        self.assertIn("process_path/contracts/IPathSourcePort.h", validation_script)
-        self.assertNotIn("process_path/contracts/IDXFPathSourcePort.h instead of", validation_script)
+        policy = _read(
+            WORKSPACE_ROOT / "scripts" / "validation" / "boundaries" / "boundary-policy.json"
+        )
+        runner = _read(
+            WORKSPACE_ROOT / "scripts" / "validation" / "invoke-module-boundary-audit.ps1"
+        )
+        self.assertIn("process_path/contracts/IPathSourcePort.h", boundary_model)
+        self.assertIn("modules/process-path/contracts/include/process_path/contracts/IDXFPathSourcePort.h", policy)
+        self.assertIn("module_boundary_audit.py", runner)
+        self.assertNotIn("process_path/contracts/IDXFPathSourcePort.h instead of", boundary_model + policy)
 
 
 if __name__ == "__main__":
