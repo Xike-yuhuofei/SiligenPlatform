@@ -101,6 +101,8 @@ class ConfigFileAdapter : public Domain::Configuration::Ports::IConfigurationPor
     mutable bool ini_cache_loaded_ = false;
     mutable std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ini_cache_;
 
+    Result<Domain::Configuration::Ports::SystemConfig> LoadConfigurationCore();
+
     // INI文件操作辅助方法
     Result<void> LoadIniCache() const;
     Result<std::string> ReadIniValue(const std::string& section, const std::string& key) const;
@@ -134,9 +136,10 @@ class ConfigFileAdapter : public Domain::Configuration::Ports::IConfigurationPor
     void SaveHomingSection(const std::vector<Domain::Configuration::Ports::HomingConfig>& configs) const;
 
     // 配置验证辅助方法
-    bool ValidateDispensingConfig(const Domain::Configuration::Ports::DispensingConfig& config,
-                                  std::vector<std::string>& errors) const;
-    bool ValidateMachineConfig(const Domain::Configuration::Ports::MachineConfig& config, std::vector<std::string>& errors) const;
+    static bool ValidateDispensingConfig(const Domain::Configuration::Ports::DispensingConfig& config,
+                                         std::vector<std::string>& errors);
+    static bool ValidateMachineConfig(const Domain::Configuration::Ports::MachineConfig& config,
+                                      std::vector<std::string>& errors);
 };
 
 }  // namespace Siligen::Infrastructure::Adapters

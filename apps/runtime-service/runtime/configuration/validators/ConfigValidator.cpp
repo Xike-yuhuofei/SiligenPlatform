@@ -331,20 +331,6 @@ bool ConfigValidator::ValidateModeCompatibility(int32 mode, bool enable_limit_sw
     }
 }
 
-// === 私有辅助方法实现 ===
-
-bool ConfigValidator::IsInRange(float32 value, float32 min_val, float32 max_val) {
-    return value >= min_val && value <= max_val;
-}
-
-bool ConfigValidator::IsInRange(int32 value, int32 min_val, int32 max_val) {
-    return value >= min_val && value <= max_val;
-}
-
-std::string ConfigValidator::FormatParameterName(const std::string& param_name) {
-    return param_name;
-}
-
 std::string ConfigValidator::FormatRangeError(const std::string& param_name,
                                               float32 value,
                                               float32 min_val,

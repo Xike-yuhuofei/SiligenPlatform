@@ -187,9 +187,13 @@ inline std::string ResolveWorkspaceRelativePath(
 
     std::vector<std::filesystem::path> candidates;
     candidates.emplace_back(workspace_root / canonical_relative_path);
-    for (const auto& fallback_relative_path : fallback_relative_paths) {
-        candidates.emplace_back(workspace_root / fallback_relative_path);
-    }
+    std::transform(
+        fallback_relative_paths.begin(),
+        fallback_relative_paths.end(),
+        std::back_inserter(candidates),
+        [&workspace_root](const auto& fallback_relative_path) {
+            return workspace_root / fallback_relative_path;
+        });
 
     std::error_code ec;
     for (const auto& candidate : candidates) {

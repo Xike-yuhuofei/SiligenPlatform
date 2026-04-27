@@ -466,7 +466,7 @@ void ConfigFileAdapter::SaveHomingSection(const std::vector<HomingConfig>& confi
 // === 配置验证辅助方法 ===
 
 bool ConfigFileAdapter::ValidateDispensingConfig(const DispensingConfig& config,
-                                                 std::vector<std::string>& errors) const {
+                                                 std::vector<std::string>& errors) {
     bool valid = true;
 
     if (config.pressure <= 0 || config.pressure > 1000) {
@@ -599,7 +599,7 @@ bool ConfigFileAdapter::ValidateDispensingConfig(const DispensingConfig& config,
     return valid;
 }
 
-bool ConfigFileAdapter::ValidateMachineConfig(const MachineConfig& config, std::vector<std::string>& errors) const {
+bool ConfigFileAdapter::ValidateMachineConfig(const MachineConfig& config, std::vector<std::string>& errors) {
     bool valid = true;
 
     if (config.max_speed <= 0 || config.max_speed > 1000) {
