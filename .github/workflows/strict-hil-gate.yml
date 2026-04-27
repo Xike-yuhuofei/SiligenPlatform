@@ -29,6 +29,10 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: strict-hil-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   classify-hil-requirement:
     name: Classify HIL Requirement
@@ -56,17 +60,22 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $classificationPath = "tests\reports\github-actions\strict-hil-gate\classification\classification.json"
-          $classificationArgs = @{
-            Mode = "hil"
-            OutputPath = $classificationPath
-            BaseSha = $env:BASE_SHA
-            HeadSha = $env:HEAD_SHA
-            EventName = $env:EVENT_NAME
-          }
           if ($env:FORCE_HIL -eq "true") {
-            $classificationArgs["ForceHil"] = $true
+            .\scripts\validation\classify-change.ps1 `
+              -Mode hil `
+              -OutputPath $classificationPath `
+              -BaseSha $env:BASE_SHA `
+              -HeadSha $env:HEAD_SHA `
+              -EventName $env:EVENT_NAME `
+              -ForceHil
+          } else {
+            .\scripts\validation\classify-change.ps1 `
+              -Mode hil `
+              -OutputPath $classificationPath `
+              -BaseSha $env:BASE_SHA `
+              -HeadSha $env:HEAD_SHA `
+              -EventName $env:EVENT_NAME
           }
-          .\scripts\validation\classify-change.ps1 @classificationArgs
 
           $event = Get-Content -Raw -Path $env:GITHUB_EVENT_PATH | ConvertFrom-Json
           $trustedHilRunner = $false
@@ -125,14 +134,16 @@ jobs:
         env:
           FORCE_HIL: ${{ inputs.force_hil || 'false' }}
         run: |
-          $gateArgs = @{
-            Gate = "hil"
-            ReportRoot = "tests\reports\github-actions\strict-hil-gate"
-          }
           if ($env:FORCE_HIL -eq "true") {
-            $gateArgs["ForceHil"] = $true
+            .\scripts\validation\invoke-gate.ps1 `
+              -Gate hil `
+              -ReportRoot tests\reports\github-actions\strict-hil-gate `
+              -ForceHil
+          } else {
+            .\scripts\validation\invoke-gate.ps1 `
+              -Gate hil `
+              -ReportRoot tests\reports\github-actions\strict-hil-gate
           }
-          .\scripts\validation\invoke-gate.ps1 @gateArgs
 
       - name: Upload strict HIL evidence
         if: always()

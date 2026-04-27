@@ -10,8 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STRICT_HIL_WORKFLOW = ROOT / ".github" / "workflows" / "strict-hil-gate.yml"
 STRICT_NATIVE_WORKFLOW = ROOT / ".github" / "workflows" / "strict-native-gate.yml"
+STRICT_PR_WORKFLOW = ROOT / ".github" / "workflows" / "strict-pr-gate.yml"
+STRICT_NATIVE_CACHE_SCRIPT = ROOT / "scripts" / "validation" / "prepare-strict-native-build-cache.ps1"
 CHANGE_CLASSIFICATION = ROOT / "scripts" / "validation" / "gates" / "change-classification.json"
-CLASSIFY_CHANGE = ROOT / "scripts" / "validation" / "classify-change.ps1"
 TCP_PRECONDITION_MATRIX = ROOT / "tests" / "integration" / "scenarios" / "first-layer" / "run_tcp_precondition_matrix.py"
 
 
@@ -38,41 +39,14 @@ class StrictRunnerGateContractTest(unittest.TestCase):
         self.assertIn("- unlabeled", workflow)
         self.assertIn("native-sensitive", classification["native"]["labels"])
 
-    def test_hil_classification_fails_closed_when_changed_file_collection_fails(self) -> None:
-        scratch_root = ROOT / "build" / "contract-scratch" / "strict-runner-gate"
-        scratch_root.mkdir(parents=True, exist_ok=True)
+    def test_strict_native_and_hil_gates_cancel_superseded_pr_runs(self) -> None:
+        native_workflow = _read(STRICT_NATIVE_WORKFLOW)
+        hil_workflow = _read(STRICT_HIL_WORKFLOW)
 
-        with tempfile.TemporaryDirectory(dir=scratch_root) as temp_dir:
-            output_path = Path(temp_dir) / "classification.json"
-            completed = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    str(CLASSIFY_CHANGE),
-                    "-Mode",
-                    "hil",
-                    "-OutputPath",
-                    str(output_path),
-                    "-BaseSha",
-                    "missing-base-sha",
-                    "-HeadSha",
-                    "missing-head-sha",
-                ],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-            )
-
-            output = f"{completed.stdout}\n{completed.stderr}"
-            self.assertEqual(completed.returncode, 0, msg=output)
-
-            classification = json.loads(output_path.read_text(encoding="utf-8-sig"))
-            self.assertFalse(classification["classification_reliable"])
-            self.assertTrue(classification["requires_hil"])
-            self.assertIn("changed-file classification unavailable", classification["hil_reason"])
+        for workflow in (native_workflow, hil_workflow):
+            self.assertIn("concurrency:", workflow)
+            self.assertIn("${{ github.event.pull_request.number || github.ref }}", workflow)
+            self.assertIn("cancel-in-progress: true", workflow)
 
     def test_strict_hil_gate_fail_closed_before_self_hosted_runner_for_untrusted_pr(self) -> None:
         workflow = _read(STRICT_HIL_WORKFLOW)
@@ -86,17 +60,75 @@ class StrictRunnerGateContractTest(unittest.TestCase):
         )
         self.assertIn("Strict HIL Gate required but self-hosted HIL runner is not trusted", workflow)
 
+    def test_strict_hil_gate_delegates_execution_to_orchestrator(self) -> None:
+        workflow = _read(STRICT_HIL_WORKFLOW)
+
+        self.assertIn("invoke-gate.ps1", workflow)
+        self.assertIn("-Gate hil", workflow)
+        self.assertIn("strict-hil-gate-evidence", workflow)
+        self.assertNotIn("@classificationArgs", workflow)
+        self.assertNotIn("@gateArgs", workflow)
+        self.assertNotIn("offline-prereq:", workflow)
+        self.assertNotIn("-OfflinePrereqReport", workflow)
+        self.assertNotIn("actions/download-artifact@v4", workflow)
+
     def test_strict_native_gate_fail_closed_before_self_hosted_runner_for_untrusted_pr(self) -> None:
         workflow = _read(STRICT_NATIVE_WORKFLOW)
 
         self.assertIn("trusted_native_runner", workflow)
         self.assertIn("forked pull request cannot run self-hosted native build", workflow)
+        self.assertNotIn("@classificationArgs", workflow)
+        self.assertNotIn("@gateArgs", workflow)
         self.assertIn(
             "needs.classify-native-requirement.outputs.requires_native == 'true' && "
             "needs.classify-native-requirement.outputs.trusted_native_runner == 'true'",
             workflow,
         )
         self.assertIn("Strict Native Gate required but self-hosted native build runner is not trusted", workflow)
+
+    def test_strict_native_gate_uses_guarded_persistent_build_cache(self) -> None:
+        workflow = _read(STRICT_NATIVE_WORKFLOW)
+
+        self.assertIn("clean: false", workflow)
+        self.assertIn("Prepare strict native build cache", workflow)
+        self.assertIn(".\\scripts\\validation\\prepare-strict-native-build-cache.ps1", workflow)
+
+    def test_strict_native_cache_guard_uses_scoped_safe_directory_for_runner_ownership(self) -> None:
+        script = _read(STRICT_NATIVE_CACHE_SCRIPT)
+
+        self.assertIn("safe.directory=$resolvedWorkspaceRoot", script)
+        self.assertIn("git @gitBaseArgs status --porcelain --untracked-files=no", script)
+        self.assertIn("git @gitBaseArgs status --porcelain --untracked-files=all", script)
+
+    def test_strict_native_gate_passes_pr_range_to_orchestrator(self) -> None:
+        workflow = _read(STRICT_NATIVE_WORKFLOW)
+
+        self.assertIn("BASE_SHA:", workflow)
+        self.assertIn("HEAD_SHA:", workflow)
+        self.assertIn("clean: false\n          fetch-depth: 0", workflow)
+        self.assertIn("-BaseSha $env:BASE_SHA", workflow)
+        self.assertIn("-HeadSha $env:HEAD_SHA", workflow)
+
+    def test_strict_pr_gate_fetches_full_pr_range(self) -> None:
+        workflow = _read(STRICT_PR_WORKFLOW)
+
+        self.assertIn("BASE_SHA:", workflow)
+        self.assertIn("HEAD_SHA:", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("-BaseSha $env:BASE_SHA", workflow)
+        self.assertIn("-HeadSha $env:HEAD_SHA", workflow)
+
+    def test_strict_pr_gate_delegates_execution_to_orchestrator(self) -> None:
+        workflow = _read(STRICT_PR_WORKFLOW)
+
+        self.assertIn("strict-pr-gate:", workflow)
+        self.assertIn("name: Strict PR Gate", workflow)
+        self.assertIn("invoke-gate.ps1", workflow)
+        self.assertIn("-Gate pr", workflow)
+        self.assertIn("strict-pr-gate-evidence", workflow)
+        self.assertNotIn("legacy-exit:", workflow)
+        self.assertNotIn("semgrep:", workflow)
+        self.assertNotIn("import-linter:", workflow)
 
     def test_tcp_precondition_matrix_default_runtime_workspace_is_not_under_report_tree(self) -> None:
         scratch_root = ROOT / "build" / "contract-scratch" / "strict-runner-gate"

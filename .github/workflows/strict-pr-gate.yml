@@ -25,13 +25,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run strict PR gate
         shell: pwsh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           .\scripts\validation\invoke-gate.ps1 `
             -Gate pr `
-            -ReportRoot tests\reports\github-actions\strict-pr-gate
+            -ReportRoot tests\reports\github-actions\strict-pr-gate `
+            -BaseSha $env:BASE_SHA `
+            -HeadSha $env:HEAD_SHA
 
       - name: Upload strict gate evidence
         if: always()

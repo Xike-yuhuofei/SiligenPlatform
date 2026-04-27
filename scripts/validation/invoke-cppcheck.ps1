@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ReportDir = "tests\reports\static-analysis\cppcheck",
+    [string[]]$ChangedFile = @(),
     [switch]$FailOnIssues
 )
 
@@ -8,69 +9,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "tooling-common.ps1")
-
-function ConvertTo-ArgumentLine {
-    param([string[]]$Arguments)
-
-    $quoted = @()
-    foreach ($arg in @($Arguments)) {
-        if ($null -eq $arg) {
-            continue
-        }
-
-        $text = [string]$arg
-        if ($text.Length -eq 0) {
-            $quoted += '""'
-            continue
-        }
-
-        if ($text -notmatch '[\s"]') {
-            $quoted += $text
-            continue
-        }
-
-        $escaped = $text -replace '\\(?=("+)$)', '\\' -replace '"', '\"'
-        $quoted += '"' + $escaped + '"'
-    }
-
-    return ($quoted -join " ")
-}
-
-function Invoke-ExternalCommand {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FileName,
-        [Parameter(Mandatory = $true)]
-        [string[]]$Arguments,
-        [Parameter(Mandatory = $true)]
-        [string]$WorkingDirectory
-    )
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo.FileName = $FileName
-    $process.StartInfo.Arguments = ConvertTo-ArgumentLine -Arguments $Arguments
-    $process.StartInfo.WorkingDirectory = $WorkingDirectory
-    $process.StartInfo.UseShellExecute = $false
-    $process.StartInfo.RedirectStandardOutput = $true
-    $process.StartInfo.RedirectStandardError = $true
-    $process.StartInfo.CreateNoWindow = $true
-
-    try {
-        [void]$process.Start()
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
-
-        return [pscustomobject]@{
-            ExitCode = $process.ExitCode
-            StandardOutput = $stdoutTask.Result
-            StandardError = $stderrTask.Result
-        }
-    }
-    finally {
-        $process.Dispose()
-    }
-}
 
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $resolvedReportDir = Ensure-WorkspaceDirectory -Path (Resolve-WorkspaceReportPath -WorkspaceRoot $workspaceRoot -ReportPath $ReportDir)
@@ -86,7 +24,7 @@ if ([string]::IsNullOrWhiteSpace($cppcheckCommand)) {
         ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
         '- failure_condition: `tool missing or non-zero cppcheck exit when FailOnIssues is enabled`',
         '- report_dir: `tests/reports/static-analysis/cppcheck`',
-        '- detail: 当前环境未安装 `cppcheck`。强制门禁模式下必须安装 cppcheck 后再放行。'
+        '- detail: `cppcheck` is not installed in the current environment. Install cppcheck before passing the strict gate.'
     )
     Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
     Write-Output "cppcheck tool missing; summary written to $mdReportPath"
@@ -98,8 +36,45 @@ if ([string]::IsNullOrWhiteSpace($cppcheckCommand)) {
 
 $buildRoot = Get-ControlAppsBuildRoot -WorkspaceRoot $workspaceRoot
 $compileCommandsPath = Join-Path $buildRoot "compile_commands.json"
+$sourceExtensions = @(".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx")
+$changedCppFiles = @(
+    $ChangedFile |
+        ForEach-Object { ([string]$_).Trim() } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Where-Object { $sourceExtensions -contains [System.IO.Path]::GetExtension($_).ToLowerInvariant() } |
+        ForEach-Object {
+            if ([System.IO.Path]::IsPathRooted($_)) {
+                [System.IO.Path]::GetFullPath($_)
+            } else {
+                [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $_))
+            }
+        } |
+        Where-Object { Test-Path -LiteralPath $_ } |
+        Select-Object -Unique
+)
+
+if ($ChangedFile.Count -gt 0 -and $changedCppFiles.Count -eq 0) {
+    $lines = @(
+        '# Cppcheck',
+        '',
+        '- status: `passed`',
+        '- exit_code: `0`',
+        ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+        '- scope: `changed-files`',
+        '- cpp_files: `0`',
+        '- failure_condition: `FailOnIssues + non-zero cppcheck exit`',
+        '- detail: no changed C/C++ source files were present in the supplied change scope.'
+    )
+    Set-Content -LiteralPath $xmlReportPath -Value "" -Encoding UTF8
+    Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
+    Write-Output "cppcheck skipped: no changed C/C++ source files in supplied scope"
+    Write-Output "cppcheck report md:  $mdReportPath"
+    exit 0
+}
+
 $arguments = @(
     "--enable=warning,style,performance,portability",
+    "--quiet",
     "--xml",
     "--xml-version=2",
     "--inline-suppr",
@@ -108,6 +83,9 @@ $arguments = @(
 )
 if (Test-Path $compileCommandsPath) {
     $arguments += "--project=$compileCommandsPath"
+}
+elseif ($changedCppFiles.Count -gt 0) {
+    $arguments += @($changedCppFiles)
 }
 else {
     $arguments += @(
@@ -118,23 +96,28 @@ else {
 }
 
 Write-Output "cppcheck: $cppcheckCommand $($arguments -join ' ')"
-$commandResult = Invoke-ExternalCommand -FileName $cppcheckCommand -Arguments $arguments -WorkingDirectory $workspaceRoot
-$exitCode = $commandResult.ExitCode
-$xmlContent = [string]$commandResult.StandardError
-if ([string]::IsNullOrWhiteSpace($xmlContent)) {
-    $xmlContent = [string]$commandResult.StandardOutput
+$stderrPath = Join-Path $resolvedReportDir "cppcheck.stderr.tmp"
+if (Test-Path $stderrPath) {
+    Remove-Item -LiteralPath $stderrPath -Force
 }
-Set-Content -LiteralPath $xmlReportPath -Value $xmlContent.Trim() -Encoding UTF8
+& $cppcheckCommand @arguments 2> $stderrPath
+$exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+$stderrText = if (Test-Path $stderrPath) { (Get-Content -Raw -LiteralPath $stderrPath) } else { "" }
+Set-Content -LiteralPath $xmlReportPath -Value $stderrText.Trim() -Encoding UTF8
+if (Test-Path $stderrPath) {
+    Remove-Item -LiteralPath $stderrPath -Force
+}
 
-$status = if ($exitCode -eq 0) { "passed" } else { "reported" }
+$status = if ($exitCode -eq 0) { "passed" } elseif ($FailOnIssues) { "failed" } else { "reported" }
 $lines = @(
     '# Cppcheck',
     '',
     ('- status: `{0}`' -f $status),
-    '- gate: `report-only by default`',
-    '- failure_condition: `FailOnIssues + non-zero exit`',
+    ('- exit_code: `{0}`' -f $exitCode),
+    ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+    '- failure_condition: `FailOnIssues + non-zero cppcheck exit`',
     '- xml_report: `tests/reports/static-analysis/cppcheck/cppcheck.xml`',
-    '- detail: 当前第一版以高信号基础规则为主，历史噪声先报告不阻断。'
+    '- detail: cppcheck XML is captured from stderr; FailOnIssues makes a non-zero cppcheck exit blocking.'
 )
 Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
 

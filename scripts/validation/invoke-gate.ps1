@@ -6,8 +6,14 @@ param(
 
     [string]$ReportRoot = "",
     [string[]]$ChangedScope = @(),
+    [string[]]$SelectedStep = @(),
     [string[]]$SkipStep = @(),
     [string]$SkipJustification = "",
+    [string]$ClassificationPath = "",
+    [string]$BaseSha = "",
+    [string]$HeadSha = "",
+    [switch]$DirtyWorktree,
+    [string]$DirtyPolicy = "",
     [switch]$ForceNative,
     [switch]$ForceHil,
 
@@ -200,7 +206,34 @@ function Expand-CommandTemplate {
                 continue
             }
             "{changedScopeArgs}" {
-                $expanded += Get-NamedValueArguments -Name "-ChangedScope" -Values $Runtime.ChangedScope
+                $changedScopes = @($Runtime.ChangedScope | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                if ($changedScopes.Count -gt 0) {
+                    $expanded += @("-ChangedScope", ($changedScopes -join ","))
+                }
+                continue
+            }
+            "{changedFileArgs}" {
+                $changedFiles = @($Runtime.ChangedScope | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                if ($changedFiles.Count -gt 0) {
+                    $expanded += @("-ChangedFile", ($changedFiles -join ","))
+                }
+                continue
+            }
+            "{classificationPathArgs}" {
+                $expanded += Get-NamedScalarArgument -Name "-ClassificationPath" -Value $Runtime.ClassificationPath
+                continue
+            }
+            "{baseShaArgs}" {
+                $expanded += Get-NamedScalarArgument -Name "-BaseSha" -Value $Runtime.BaseSha
+                continue
+            }
+            "{headShaArgs}" {
+                $expanded += Get-NamedScalarArgument -Name "-HeadSha" -Value $Runtime.HeadSha
+                continue
+            }
+            "{dirtyWorktreeArgs}" {
+                $expanded += Get-SwitchArgument -Name "-DirtyWorktree" -Enabled $Runtime.DirtyWorktree
+                $expanded += Get-NamedScalarArgument -Name "-DirtyPolicy" -Value $Runtime.DirtyPolicy
                 continue
             }
             "{skipLayerArgs}" {
@@ -361,6 +394,10 @@ function Get-ToolInstallHint {
         "import-linter" { return "Run scripts/validation/install-python-deps.ps1, then ensure lint-imports is on PATH." }
         "pydeps" { return "Run scripts/validation/install-python-deps.ps1, then ensure pydeps is on PATH." }
         "cppcheck" { return "Install cppcheck and ensure cppcheck is on PATH." }
+        "git" { return "Install Git and ensure git is on PATH." }
+        "powershell" { return "Install PowerShell and ensure powershell is on PATH." }
+        "pyright" { return "Install pyright ahead of time, for example npm install -g pyright. Pre-push does not use npx fallback or download tools." }
+        "pytest" { return "Run scripts/validation/install-python-deps.ps1, then ensure pytest is available through python -m pytest." }
         default { return "Install the required tool and ensure it is on PATH." }
     }
 }
@@ -549,12 +586,75 @@ function Write-GateSummary {
     Set-Content -Path $SummaryMarkdownPath -Value $lines -Encoding UTF8
 }
 
+function Get-ChangedScopeFromGitRange {
+    param(
+        [Parameter(Mandatory = $true)][string]$RangeBaseSha,
+        [Parameter(Mandatory = $true)][string]$RangeHeadSha,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+
+    Ensure-GitCommitAvailable -Revision $RangeBaseSha -FailureMessage $FailureMessage
+    Ensure-GitCommitAvailable -Revision $RangeHeadSha -FailureMessage $FailureMessage
+
+    $gitBaseArgs = @("-c", "safe.directory=$workspaceRoot")
+    $gitOutput = @(& git @gitBaseArgs diff --name-only $RangeBaseSha $RangeHeadSha 2>&1)
+    $gitExitCode = $LASTEXITCODE
+    if ($gitExitCode -ne 0) {
+        $gitMessage = ($gitOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "; "
+        if ([string]::IsNullOrWhiteSpace($gitMessage)) {
+            $gitMessage = "git diff exited with $gitExitCode"
+        }
+        throw "$FailureMessage ($RangeBaseSha..$RangeHeadSha): $gitMessage"
+    }
+
+    $global:LASTEXITCODE = 0
+    return @($gitOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Ensure-GitCommitAvailable {
+    param(
+        [Parameter(Mandatory = $true)][string]$Revision,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+
+    $gitBaseArgs = @("-c", "safe.directory=$workspaceRoot")
+
+    & git @gitBaseArgs cat-file -e "$Revision^{commit}" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $global:LASTEXITCODE = 0
+        return
+    }
+
+    $fetchOutput = @(& git @gitBaseArgs fetch --no-tags --no-recurse-submodules origin $Revision 2>&1)
+    $fetchExitCode = $LASTEXITCODE
+    if ($fetchExitCode -ne 0) {
+        $fetchMessage = ($fetchOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "; "
+        if ([string]::IsNullOrWhiteSpace($fetchMessage)) {
+            $fetchMessage = "git fetch exited with $fetchExitCode"
+        }
+        throw "${FailureMessage}: unable to fetch missing commit '$Revision': $fetchMessage"
+    }
+
+    & git @gitBaseArgs cat-file -e "$Revision^{commit}" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "${FailureMessage}: commit '$Revision' is not available after fetch."
+    }
+    $global:LASTEXITCODE = 0
+}
+
 if (-not (Test-Path -LiteralPath $configPath)) {
     throw "Gate configuration not found: $configPath"
 }
 $ChangedScope = Expand-CommaSeparatedValues -Values $ChangedScope
+$SelectedStep = Expand-CommaSeparatedValues -Values $SelectedStep
 $SkipStep = Expand-CommaSeparatedValues -Values $SkipStep
 $SkipLayer = Expand-CommaSeparatedValues -Values $SkipLayer
+if ($ChangedScope.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($BaseSha) -and -not [string]::IsNullOrWhiteSpace($HeadSha)) {
+    $ChangedScope = Get-ChangedScopeFromGitRange `
+        -RangeBaseSha $BaseSha `
+        -RangeHeadSha $HeadSha `
+        -FailureMessage "Unable to derive changed scope from BaseSha/HeadSha"
+}
 if ($SkipStep.Count -gt 0 -and [string]::IsNullOrWhiteSpace($SkipJustification)) {
     throw "SkipJustification is required when SkipStep is not empty."
 }
@@ -591,6 +691,39 @@ $gateReportDir = Resolve-WorkspacePath -PathValue $ReportRoot
 $logsDir = Join-Path $gateReportDir "logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
+if ($Gate -eq "pre-push") {
+    if ($ChangedScope.Count -eq 0 -and [string]::IsNullOrWhiteSpace($BaseSha)) {
+        try {
+            $BaseSha = (& git rev-parse "HEAD~1").Trim()
+            $HeadSha = "HEAD"
+            $ChangedScope = @(& git diff --name-only $BaseSha $HeadSha | ForEach-Object { ([string]$_).Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        } catch {
+            throw "Unable to derive direct pre-push smoke range. Run invoke-pre-push-gate.ps1 for push-hook validation or pass -ChangedScope/-BaseSha/-HeadSha explicitly."
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($ClassificationPath)) {
+        $ClassificationPath = Join-Path $gateReportDir "pre-push-classification.json"
+        $classifyChangeScript = Join-Path $PSScriptRoot "classify-change.ps1"
+        $changedFileArgument = if ($ChangedScope.Count -gt 0) { $ChangedScope -join "," } else { "" }
+        & $classifyChangeScript `
+            -Mode "pre-push" `
+            -OutputPath $ClassificationPath `
+            -ChangedFile $changedFileArgument `
+            -BaseSha $BaseSha `
+            -HeadSha $HeadSha | Out-Null
+        if (-not (Test-Path -LiteralPath $ClassificationPath)) {
+            throw "Direct pre-push classification evidence generation failed: $ClassificationPath"
+        }
+    }
+    if ($SelectedStep.Count -eq 0 -and (Test-Path -LiteralPath $ClassificationPath)) {
+        $classification = Get-Content -Raw -Path $ClassificationPath | ConvertFrom-Json
+        $selectedPrePushSteps = ConvertTo-StringArray -Value $classification.selected_pre_push_steps
+        if ($selectedPrePushSteps.Count -gt 0) {
+            $SelectedStep = @($selectedPrePushSteps)
+        }
+    }
+}
+
 $effectiveLane = if ($PSBoundParameters.ContainsKey("Lane")) { $Lane } else { Get-DefaultGateValue -Name "Lane" -GateName $Gate }
 $effectiveRiskProfile = if ($PSBoundParameters.ContainsKey("RiskProfile")) { $RiskProfile } else { Get-DefaultGateValue -Name "RiskProfile" -GateName $Gate }
 $effectiveDesiredDepth = if ($PSBoundParameters.ContainsKey("DesiredDepth")) { $DesiredDepth } else { Get-DefaultGateValue -Name "DesiredDepth" -GateName $Gate }
@@ -601,6 +734,11 @@ $runtime = @{
     RiskProfile = $effectiveRiskProfile
     DesiredDepth = $effectiveDesiredDepth
     ChangedScope = @($ChangedScope)
+    ClassificationPath = $ClassificationPath
+    BaseSha = $BaseSha
+    HeadSha = $HeadSha
+    DirtyWorktree = $DirtyWorktree.IsPresent
+    DirtyPolicy = $DirtyPolicy
     SkipLayer = @($SkipLayer)
     SkipJustification = $SkipJustification
     IncludeHardwareSmoke = $IncludeHardwareSmoke.IsPresent
@@ -612,6 +750,22 @@ $runtime = @{
 
 $startedAt = (Get-Date).ToString("o")
 $steps = @($gateConfig.steps)
+if ($SelectedStep.Count -gt 0) {
+    $selectedStepSet = @{}
+    foreach ($selected in @($SelectedStep)) {
+        if (-not [string]::IsNullOrWhiteSpace($selected)) {
+            $selectedStepSet[$selected] = $true
+        }
+    }
+    $missingSelectedSteps = @($SelectedStep | Where-Object {
+        $requested = $_
+        -not @($steps | Where-Object { [string]$_.id -eq $requested }).Count
+    })
+    if ($missingSelectedSteps.Count -gt 0) {
+        throw "Selected pre-push step(s) are not defined in gate '$resolvedGate': $($missingSelectedSteps -join ', ')"
+    }
+    $steps = @($steps | Where-Object { $selectedStepSet.ContainsKey([string]$_.id) })
+}
 $manifestSteps = @()
 foreach ($step in $steps) {
     $stepId = [string]$step.id
@@ -620,6 +774,9 @@ foreach ($step in $steps) {
         workspaceRoot = $workspaceRoot
         gateReportDir = $gateReportDir
         stepReportDir = $stepReportDir
+        classificationPath = $ClassificationPath
+        baseSha = $BaseSha
+        headSha = $HeadSha
     }
     $manifestSteps += [pscustomobject]@{
         id = $stepId
@@ -643,6 +800,12 @@ $manifest = [ordered]@{
     config_path = $configPath
     report_root = $gateReportDir
     changed_scope = @($ChangedScope)
+    selected_step = @($SelectedStep)
+    classification_path = $ClassificationPath
+    base_sha = $BaseSha
+    head_sha = $HeadSha
+    dirty_worktree = $DirtyWorktree.IsPresent
+    dirty_policy = $DirtyPolicy
     skip_step = @($SkipStep)
     skip_justification = $SkipJustification
     force_native = $ForceNative.IsPresent
@@ -786,23 +949,19 @@ foreach ($step in $manifestSteps) {
     }
 }
 
-$gateArtifactResults = @()
-$missingGateArtifacts = @()
-if (-not $gateFailed) {
-    $gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
-        Expand-TemplateValue -Value $_ -Context @{
-            workspaceRoot = $workspaceRoot
-            gateReportDir = $gateReportDir
-            stepReportDir = $gateReportDir
-        }
-    })
-    $missingGateArtifacts = @($gateArtifactResults | Where-Object { -not $_.exists } | ForEach-Object { $_.pattern })
-    if (@($missingGateArtifacts).Count -gt 0) {
-        $gateFailed = $true
-        $failures += [pscustomobject]@{
-            step_id = "__gate__"
-            reason = "required gate artifacts missing: $($missingGateArtifacts -join ', ')"
-        }
+$gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
+    Expand-TemplateValue -Value $_ -Context @{
+        workspaceRoot = $workspaceRoot
+        gateReportDir = $gateReportDir
+        stepReportDir = $gateReportDir
+    }
+})
+$missingGateArtifacts = @($gateArtifactResults | Where-Object { -not $_.exists } | ForEach-Object { $_.pattern })
+if (@($missingGateArtifacts).Count -gt 0) {
+    $gateFailed = $true
+    $failures += [pscustomobject]@{
+        step_id = "__gate__"
+        reason = "required gate artifacts missing: $($missingGateArtifacts -join ', ')"
     }
 }
 
@@ -816,6 +975,12 @@ $summary = [ordered]@{
     started_at = $startedAt
     finished_at = $finishedAt
     changed_scope = @($ChangedScope)
+    selected_step = @($SelectedStep)
+    classification_path = $ClassificationPath
+    base_sha = $BaseSha
+    head_sha = $HeadSha
+    dirty_worktree = $DirtyWorktree.IsPresent
+    dirty_policy = $DirtyPolicy
     skipped_steps = @($SkipStep)
     skip_justification = $SkipJustification
     force_native = $ForceNative.IsPresent

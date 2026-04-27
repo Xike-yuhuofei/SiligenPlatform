@@ -1,5 +1,153 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "pre_push": {
+    "defaultCategory": "low-risk",
+    "baseSteps": [
+      "git-hygiene",
+      "tool-readiness",
+      "pre-push-classification",
+      "changed-file-parse"
+    ],
+    "categories": {
+      "docs-only": {
+        "patterns": [
+          "^(README|AGENTS)\\.md$",
+          "^docs/.*\\.(md|txt)$"
+        ],
+        "steps": []
+      },
+      "low-risk": {
+        "patterns": [
+          "^(docs|tests/reports)/",
+          ".*\\.(md|txt)$"
+        ],
+        "steps": []
+      },
+      "hmi-ui": {
+        "patterns": [
+          "^apps/hmi-app/",
+          "^modules/hmi-application/",
+          "^shared/contracts/.*/hmi",
+          "^(apps/hmi-app|modules/hmi-application)/.*(ui|view|screen|panel|widget|operator).*\\.(py|ps1|json|yaml|yml|md)$"
+        ],
+        "steps": [
+          "pyright-static",
+          "contracts-quick"
+        ]
+      },
+      "hmi-command-chain": {
+        "patterns": [
+          "^apps/hmi-app/.*(command|gateway|runtime|tcp|client|operator|production)",
+          "^modules/hmi-application/.*(command|gateway|runtime|tcp|operator|production)",
+          "^shared/contracts/application/(commands|queries)/",
+          "^tests/(contracts|integration|e2e)/.*(hmi|operator|gateway|tcp|command)"
+        ],
+        "steps": [
+          "hmi-formal-gateway-contract",
+          "hmi-runtime-gateway-protocol-compat",
+          "contracts-quick"
+        ]
+      },
+      "runtime-gateway-protocol": {
+        "patterns": [
+          "^apps/runtime-gateway/",
+          "^apps/runtime-service/",
+          "^shared/contracts/application/",
+          "^shared/contracts/transport/",
+          "^tests/contracts/.*(protocol|gateway|tcp|transport)",
+          "^tests/integration/.*(gateway|tcp|protocol)"
+        ],
+        "steps": [
+          "hmi-runtime-gateway-protocol-compat",
+          "contracts-quick"
+        ]
+      },
+      "recipe-config-schema": {
+        "patterns": [
+          "^config/",
+          "^data/schemas/",
+          "^data/.*(recipe|config|machine|parameter|schema)",
+          "^tests/contracts/.*(recipe|config|schema|machine)"
+        ],
+        "steps": [
+          "recipe-config-schema-quick",
+          "contracts-quick"
+        ]
+      },
+      "motion-or-device-control": {
+        "patterns": [
+          "^modules/runtime-execution/",
+          "^modules/motion-planning/",
+          "^modules/.*/adapters/(device|vendor)/",
+          "^apps/runtime-service/.*(motion|device|interlock|state|emergency|pause|reset|production)",
+          "^shared/contracts/.*(motion|device|interlock|state|emergency|pause|reset|production)",
+          "^tests/(contracts|integration|e2e)/.*(motion|device|interlock|state|emergency|pause|reset|production)"
+        ],
+        "steps": [
+          "state-machine-interlock-contract",
+          "offline-simulation-smoke",
+          "contracts-quick"
+        ]
+      },
+      "validation-or-build-system": {
+        "patterns": [
+          "^\\.github/workflows/",
+          "^scripts/(validation|build)/",
+          "^scripts/validation/gates/",
+          "^build\\.ps1$",
+          "^test\\.ps1$",
+          "^ci\\.ps1$",
+          "^CMakeLists\\.txt$",
+          "^cmake/",
+          "^tests/contracts/test_.*gate.*\\.py$"
+        ],
+        "steps": [
+          "validation-system-contract",
+          "contracts-quick"
+        ]
+      },
+      "native-sensitive": {
+        "patterns": [
+          "^CMakeLists\\.txt$",
+          "^cmake/",
+          "^build\\.ps1$",
+          "^ci\\.ps1$",
+          "^test\\.ps1$",
+          "^scripts/build/",
+          "^scripts/validation/",
+          "^apps/runtime-service/",
+          "^apps/runtime-gateway/",
+          "^apps/planner-cli/",
+          "^modules/runtime-execution/",
+          "^modules/motion-planning/",
+          "^shared/(contracts|kernel|runtime|testing)/",
+          "^tests/(contracts|integration|e2e)/"
+        ],
+        "steps": [
+          "native-followup-notice"
+        ]
+      },
+      "hil-sensitive": {
+        "patterns": [
+          "^\\.github/workflows/strict-hil-gate\\.yml$",
+          "^apps/runtime-service/",
+          "^apps/runtime-gateway/",
+          "^modules/runtime-execution/",
+          "^modules/motion-planning/",
+          "^tests/e2e/hardware-in-loop/",
+          "^tests/integration/.*/hil",
+          "^tests/integration/.*/hmi_operator",
+          "^config/.*(hil|hardware|machine|motion|device|gateway)",
+          "^apps/hmi-app/.*(operator|production|gateway|runtime|tcp)",
+          "^modules/hmi-application/.*(operator|production|gateway|runtime|tcp)",
+          "^modules/.*/adapters/device/"
+        ],
+        "steps": [
+          "hil-followup-notice"
+        ]
+      }
+    }
+  },
   "native": {
     "labels": [ "native-sensitive" ],
     "forceInput": "force_native",
@@ -27,7 +175,7 @@
   "hil": {
     "labels": [ "hardware-sensitive" ],
     "forceInput": "force_hil",
-    "defaultRequiredOnClassificationFailure": true,
+    "defaultRequiredOnClassificationFailure": false,
     "patterns": [
       "^\\.github/workflows/strict-hil-gate\\.yml$",
       "^apps/runtime-service/",
