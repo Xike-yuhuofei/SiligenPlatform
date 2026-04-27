@@ -83,7 +83,7 @@ class InterlockMonitor : public Domain::Safety::Ports::IInterlockSignalPort {
     explicit InterlockMonitor(
         AuditLogger& audit_logger,
         std::shared_ptr<Infrastructure::Hardware::IMultiCardWrapper> multicard = nullptr);
-    ~InterlockMonitor();
+    ~InterlockMonitor() override;
 
     // 禁止拷贝
     InterlockMonitor(const InterlockMonitor&) = delete;
