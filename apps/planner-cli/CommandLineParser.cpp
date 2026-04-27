@@ -11,7 +11,7 @@ namespace {
     throw std::runtime_error(message);
 }
 
-std::string ConsumeValue(const std::string& arg, const std::string& flag, int argc, char* argv[], int& index) {
+std::string ConsumeValue(const std::string& arg, const std::string& flag, int argc, const char* const argv[], int& index) {
     const std::string prefix = flag + "=";
     if (arg == flag) {
         if (index + 1 >= argc) {
@@ -38,7 +38,7 @@ void AssignNumber(const std::string& flag, const std::string& raw, T& value) {
     }
 }
 
-void ParsePrimaryCommand(CommandLineConfig& config, int argc, char* argv[], int& index, bool& command_set) {
+void ParsePrimaryCommand(CommandLineConfig& config, int argc, const char* const argv[], int& index, bool& command_set) {
     if (index != 1) {
         return;
     }
@@ -153,7 +153,7 @@ RunMode CommandLineParser::ParseMode(const std::string& mode_str) {
     return RunMode::NONE;
 }
 
-CommandLineConfig CommandLineParser::Parse(int argc, char* argv[]) {
+CommandLineConfig CommandLineParser::Parse(int argc, const char* const argv[]) {
     CommandLineConfig config;
     bool command_set = false;
 
