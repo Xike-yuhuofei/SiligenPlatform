@@ -223,6 +223,20 @@ function Reset-ControlAppsBuildIfSourceRootChanged {
         return
     }
 
+    $generatorLine = Get-Content $cacheFile | Where-Object { $_ -like "CMAKE_GENERATOR:INTERNAL=*" } | Select-Object -First 1
+    if (-not $generatorLine) {
+        throw "control-apps build cache is missing CMAKE_GENERATOR. Remove '$controlAppsBuild' before rerun."
+    }
+
+    $configuredGenerator = ($generatorLine -split "=", 2)[1]
+    if ($configuredGenerator -ne "Ninja") {
+        Write-Output "generator cache-check: mismatch '$configuredGenerator' vs 'Ninja'"
+        Write-Output "build-root reset: generator changed from '$configuredGenerator' to 'Ninja'"
+        Remove-Item -Path $controlAppsBuild -Recurse -Force -ErrorAction Stop
+        $script:controlAppsCmakeHomeDirectory = ""
+        return
+    }
+
     $homeDirectoryLine = Get-Content $cacheFile | Where-Object { $_ -like "CMAKE_HOME_DIRECTORY:*" } | Select-Object -First 1
     if (-not $homeDirectoryLine) {
         return
@@ -259,19 +273,19 @@ function Invoke-ControlAppsBuild {
 
     $buildTestsFlag = if ($EnableTests) { "ON" } else { "OFF" }
     $coverageFlag = if ($EnableCppCoverage) { "ON" } else { "OFF" }
-    # Validation builds favor determinism over compile acceleration. Several
-    # workspace targets already opt out of PCH on Windows/MSBuild to avoid
-    # intermittent file-lock failures under parallel builds.
+    # Validation builds use the canonical Ninja generator so native tooling can
+    # consume a stable compile database from the canonical build root.
     $usePchFlag = "OFF"
     $parallelCompileFlag = "ON"
     $parallelCompileJobs = [Math]::Max(1, [Math]::Floor([Environment]::ProcessorCount * 0.8))
-    # Keep compiler-level /MP enabled, but serialize the outer MSBuild target
-    # scheduling to avoid nondeterministic .tlog write races on Windows.
-    $parallelBuildJobs = 1
+    $parallelBuildJobs = $parallelCompileJobs
     Reset-ControlAppsBuildIfSourceRootChanged
     $controlAppsConfigureArgs = @(
         "-S", $workspaceSourceRoot,
         "-B", $controlAppsBuild,
+        "-G", "Ninja",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DSILIGEN_BUILD_TESTS=$buildTestsFlag",
         "-DSILIGEN_ENABLE_COVERAGE=$coverageFlag",
         "-DSILIGEN_USE_PCH=$usePchFlag",
@@ -282,7 +296,11 @@ function Invoke-ControlAppsBuild {
     if ($LASTEXITCODE -ne 0) {
         throw "control-apps cmake configure failed with exit code: $LASTEXITCODE"
     }
-    & cmake --build $controlAppsBuild --config Debug --target $resolvedTargets --parallel $parallelBuildJobs
+    $compileCommandsPath = Join-Path $controlAppsBuild "compile_commands.json"
+    if (-not (Test-Path -LiteralPath $compileCommandsPath)) {
+        throw "control-apps cmake configure did not produce compile database: $compileCommandsPath"
+    }
+    & cmake --build $controlAppsBuild --target $resolvedTargets --parallel $parallelBuildJobs
     if ($LASTEXITCODE -ne 0) {
         throw "control-apps cmake build failed with exit code: $LASTEXITCODE"
     }

@@ -394,6 +394,10 @@ function Get-ToolInstallHint {
         "import-linter" { return "Run scripts/validation/install-python-deps.ps1, then ensure lint-imports is on PATH." }
         "pydeps" { return "Run scripts/validation/install-python-deps.ps1, then ensure pydeps is on PATH." }
         "cppcheck" { return "Install cppcheck and ensure cppcheck is on PATH." }
+        "cmake" { return "Install CMake and ensure cmake is on PATH." }
+        "ninja" { return "Install Ninja and ensure ninja is on PATH." }
+        "clang-cl" { return "Install LLVM and ensure clang-cl is on PATH." }
+        "lld-link" { return "Install LLVM and ensure lld-link is on PATH." }
         "git" { return "Install Git and ensure git is on PATH." }
         "powershell" { return "Install PowerShell and ensure powershell is on PATH." }
         "pyright" { return "Install pyright ahead of time, for example npm install -g pyright. Pre-push does not use npx fallback or download tools." }
@@ -500,14 +504,25 @@ function Test-StepTools {
 function Test-RequiredArtifact {
     param([string]$Pattern)
 
-    $resolvedPattern = Resolve-WorkspacePath -PathValue ($Pattern.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
-    if ($resolvedPattern -notmatch '[*?]') {
+    $localPattern = $Pattern.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    if ($localPattern -notmatch '[*?]') {
+        $resolvedPattern = Resolve-WorkspacePath -PathValue $localPattern
         return (Test-Path -LiteralPath $resolvedPattern)
     }
 
-    $firstWildcard = $resolvedPattern.IndexOfAny([char[]]@("*", "?"))
-    $staticPrefix = $resolvedPattern.Substring(0, $firstWildcard)
-    $root = $staticPrefix
+    $firstWildcard = $localPattern.IndexOfAny([char[]]@("*", "?"))
+    $staticPrefix = $localPattern.Substring(0, $firstWildcard)
+    $staticRoot = $staticPrefix
+    if (-not $staticRoot.EndsWith([string][System.IO.Path]::DirectorySeparatorChar)) {
+        $staticRoot = Split-Path -Path $staticRoot -Parent
+    }
+    if ([string]::IsNullOrWhiteSpace($staticRoot)) {
+        $staticRoot = "."
+    }
+
+    $root = Resolve-WorkspacePath -PathValue $staticRoot
+    $tail = $localPattern.Substring($staticRoot.Length).TrimStart([System.IO.Path]::DirectorySeparatorChar)
+    $resolvedPattern = (Join-Path $root $tail)
     while (-not [string]::IsNullOrWhiteSpace($root) -and -not (Test-Path -LiteralPath $root)) {
         $parent = Split-Path -Path $root -Parent
         if ($parent -eq $root) {
@@ -692,7 +707,7 @@ $logsDir = Join-Path $gateReportDir "logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
 if ($Gate -eq "pre-push") {
-    if ($SelectedStep.Count -eq 0 -and $ChangedScope.Count -eq 0 -and [string]::IsNullOrWhiteSpace($BaseSha)) {
+    if ($ChangedScope.Count -eq 0 -and [string]::IsNullOrWhiteSpace($BaseSha)) {
         try {
             $BaseSha = (& git rev-parse "HEAD~1").Trim()
             $HeadSha = "HEAD"
@@ -701,7 +716,7 @@ if ($Gate -eq "pre-push") {
             throw "Unable to derive direct pre-push smoke range. Run invoke-pre-push-gate.ps1 for push-hook validation or pass -ChangedScope/-BaseSha/-HeadSha explicitly."
         }
     }
-    if ($SelectedStep.Count -eq 0 -and [string]::IsNullOrWhiteSpace($ClassificationPath)) {
+    if ([string]::IsNullOrWhiteSpace($ClassificationPath)) {
         $ClassificationPath = Join-Path $gateReportDir "pre-push-classification.json"
         $classifyChangeScript = Join-Path $PSScriptRoot "classify-change.ps1"
         $changedFileArgument = if ($ChangedScope.Count -gt 0) { $ChangedScope -join "," } else { "" }

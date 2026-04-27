@@ -87,7 +87,7 @@ function Resolve-UpdateBase {
     $defaultBaseRef = if ([string]::IsNullOrWhiteSpace($RemoteName)) { "origin/main" } else { "$RemoteName/main" }
     & git rev-parse --verify --quiet $defaultBaseRef 2>$null | Out-Null
     if ($LASTEXITCODE -eq 0) {
-        $mergeBase = (& git merge-base $defaultBaseRef $LocalSha 2>$null | Select-Object -First 1)
+        $mergeBase = (& git merge-base $defaultBaseRef $localSha 2>$null | Select-Object -First 1)
         if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($mergeBase)) {
             return $mergeBase.Trim()
         }
