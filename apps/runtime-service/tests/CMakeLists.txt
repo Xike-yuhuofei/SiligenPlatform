@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(RUNTIME_PROCESS_BOOTSTRAP_UNIT_TEST_SOURCES
+    unit/security/AuditLoggerTest.cpp
     unit/runtime/configuration/ConfigValidatorTest.cpp
     unit/runtime/configuration/ConfigFileAdapterHardwareConfigurationTest.cpp
     unit/runtime/configuration/InterlockConfigResolverTest.cpp
