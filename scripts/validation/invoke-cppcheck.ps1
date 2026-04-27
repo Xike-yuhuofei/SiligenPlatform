@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$ReportDir = "tests\reports\static-analysis\cppcheck",
+    [ValidateSet("ChangedFiles", "Project")]
+    [string]$Scope,
     [string[]]$ChangedFile = @(),
     [switch]$FailOnIssues
 )
@@ -10,10 +12,37 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "tooling-common.ps1")
 
+function ConvertTo-NativeArgument {
+    param([string]$Value)
+
+    if ($null -eq $Value) {
+        return '""'
+    }
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+    return '"' + ($Value.Replace('"', '\"')) + '"'
+}
+
 $workspaceRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $resolvedReportDir = Ensure-WorkspaceDirectory -Path (Resolve-WorkspaceReportPath -WorkspaceRoot $workspaceRoot -ReportPath $ReportDir)
 $xmlReportPath = Join-Path $resolvedReportDir "cppcheck.xml"
 $mdReportPath = Join-Path $resolvedReportDir "cppcheck-summary.md"
+
+if ([string]::IsNullOrWhiteSpace($Scope)) {
+    $lines = @(
+        '# Cppcheck',
+        '',
+        '- status: `scope-missing`',
+        ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+        '- failure_condition: `Scope must be explicitly set to ChangedFiles or Project`',
+        '- detail: invoke-cppcheck.ps1 requires -Scope ChangedFiles or -Scope Project. Implicit fallback scanning is not supported.'
+    )
+    Set-Content -LiteralPath $xmlReportPath -Value "" -Encoding UTF8
+    Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
+    Write-Output "cppcheck failed: explicit -Scope is required"
+    exit 1
+}
 
 $cppcheckCommand = Resolve-WorkspaceToolPath -ToolNames @("cppcheck")
 if ([string]::IsNullOrWhiteSpace($cppcheckCommand)) {
@@ -53,14 +82,30 @@ $changedCppFiles = @(
         Select-Object -Unique
 )
 
-if ($ChangedFile.Count -gt 0 -and $changedCppFiles.Count -eq 0) {
+if ($Scope -eq "ChangedFiles" -and $ChangedFile.Count -eq 0) {
     $lines = @(
         '# Cppcheck',
         '',
-        '- status: `passed`',
+        '- status: `changed-files-missing`',
+        ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+        '- scope: `ChangedFiles`',
+        '- failure_condition: `ChangedFiles scope requires at least one ChangedFile argument`',
+        '- detail: ChangedFiles scope is explicit and must not run against an implicit repository-wide fallback.'
+    )
+    Set-Content -LiteralPath $xmlReportPath -Value "" -Encoding UTF8
+    Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
+    Write-Output "cppcheck failed: ChangedFiles scope requires -ChangedFile"
+    exit 1
+}
+
+if ($Scope -eq "ChangedFiles" -and $changedCppFiles.Count -eq 0) {
+    $lines = @(
+        '# Cppcheck',
+        '',
+        '- status: `skipped-no-cpp-files`',
         '- exit_code: `0`',
         ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
-        '- scope: `changed-files`',
+        '- scope: `ChangedFiles`',
         '- cpp_files: `0`',
         '- failure_condition: `FailOnIssues + non-zero cppcheck exit`',
         '- detail: no changed C/C++ source files were present in the supplied change scope.'
@@ -72,6 +117,23 @@ if ($ChangedFile.Count -gt 0 -and $changedCppFiles.Count -eq 0) {
     exit 0
 }
 
+if ($Scope -eq "Project" -and -not (Test-Path $compileCommandsPath)) {
+    $lines = @(
+        '# Cppcheck',
+        '',
+        '- status: `compile-db-missing`',
+        ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+        '- scope: `Project`',
+        ('- compile_commands: `{0}`' -f (Get-WorkspaceRelativePath -WorkspaceRoot $workspaceRoot -TargetPath $compileCommandsPath)),
+        '- failure_condition: `Project scope requires compile_commands.json`',
+        '- detail: Project scope requires a compile database for the current worktree. Generate it through the canonical build preparation flow before running project-wide cppcheck.'
+    )
+    Set-Content -LiteralPath $xmlReportPath -Value "" -Encoding UTF8
+    Set-Content -LiteralPath $mdReportPath -Value ($lines -join "`r`n") -Encoding UTF8
+    Write-Output "cppcheck failed: compile_commands.json missing for Project scope"
+    exit 1
+}
+
 $arguments = @(
     "--enable=warning,style,performance,portability",
     "--quiet",
@@ -81,18 +143,15 @@ $arguments = @(
     "--suppress=missingIncludeSystem",
     "--suppress=unusedFunction"
 )
-if (Test-Path $compileCommandsPath) {
+if ($Scope -eq "Project") {
     $arguments += "--project=$compileCommandsPath"
+    $arguments += "--file-filter=*/apps/*"
+    $arguments += "--file-filter=*/modules/*"
+    $arguments += "--file-filter=*/shared/*"
+    $arguments += "--suppress=*:*/third_party/*"
 }
-elseif ($changedCppFiles.Count -gt 0) {
+elseif ($Scope -eq "ChangedFiles") {
     $arguments += @($changedCppFiles)
-}
-else {
-    $arguments += @(
-        (Join-Path $workspaceRoot "apps"),
-        (Join-Path $workspaceRoot "modules"),
-        (Join-Path $workspaceRoot "shared")
-    )
 }
 
 Write-Output "cppcheck: $cppcheckCommand $($arguments -join ' ')"
@@ -100,9 +159,27 @@ $stderrPath = Join-Path $resolvedReportDir "cppcheck.stderr.tmp"
 if (Test-Path $stderrPath) {
     Remove-Item -LiteralPath $stderrPath -Force
 }
-& $cppcheckCommand @arguments 2> $stderrPath
-$exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
-$stderrText = if (Test-Path $stderrPath) { (Get-Content -Raw -LiteralPath $stderrPath) } else { "" }
+$processStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$processStartInfo.FileName = $cppcheckCommand
+$processStartInfo.Arguments = (@($arguments) | ForEach-Object { ConvertTo-NativeArgument -Value ([string]$_) }) -join " "
+$processStartInfo.UseShellExecute = $false
+$processStartInfo.RedirectStandardError = $true
+$processStartInfo.RedirectStandardOutput = $true
+$process = [System.Diagnostics.Process]::new()
+$process.StartInfo = $processStartInfo
+try {
+    [void]$process.Start()
+    $stderrText = $process.StandardError.ReadToEnd()
+    $stdoutText = $process.StandardOutput.ReadToEnd()
+    $process.WaitForExit()
+    $exitCode = [int]$process.ExitCode
+    if (-not [string]::IsNullOrWhiteSpace($stdoutText)) {
+        Write-Output $stdoutText.Trim()
+    }
+}
+finally {
+    $process.Dispose()
+}
 Set-Content -LiteralPath $xmlReportPath -Value $stderrText.Trim() -Encoding UTF8
 if (Test-Path $stderrPath) {
     Remove-Item -LiteralPath $stderrPath -Force
@@ -115,6 +192,8 @@ $lines = @(
     ('- status: `{0}`' -f $status),
     ('- exit_code: `{0}`' -f $exitCode),
     ('- gate: `{0}`' -f $(if ($FailOnIssues) { 'blocking' } else { 'report-only' })),
+    ('- scope: `{0}`' -f $Scope),
+    ('- cpp_files: `{0}`' -f $(if ($Scope -eq "ChangedFiles") { $changedCppFiles.Count } else { 'project' })),
     '- failure_condition: `FailOnIssues + non-zero cppcheck exit`',
     '- xml_report: `tests/reports/static-analysis/cppcheck/cppcheck.xml`',
     '- detail: cppcheck XML is captured from stderr; FailOnIssues makes a non-zero cppcheck exit blocking.'

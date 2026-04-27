@@ -59,6 +59,22 @@ if (-not (Test-Path -LiteralPath $cmakeCachePath)) {
 }
 
 $cache = Get-Content -LiteralPath $cmakeCachePath -Raw
+$generatorMatch = [regex]::Match($cache, '(?m)^CMAKE_GENERATOR:INTERNAL=(.+)$')
+if (-not $generatorMatch.Success) {
+    throw "Strict native build cache CMakeCache.txt is missing CMAKE_GENERATOR; remove '$resolvedBuildRoot' manually before rerun."
+}
+
+$cachedGenerator = $generatorMatch.Groups[1].Value.Trim()
+if ($cachedGenerator -ne "Ninja") {
+    Write-Output "strict native build cache: stale generator detected."
+    Write-Output "  cached_generator=$cachedGenerator"
+    Write-Output "  expected_generator=Ninja"
+    Remove-Item -LiteralPath $resolvedBuildRoot -Recurse -Force
+    New-Item -ItemType Directory -Path $resolvedBuildRoot -Force | Out-Null
+    Write-Output "strict native build cache: stale build root removed."
+    exit 0
+}
+
 $homeMatch = [regex]::Match($cache, '(?m)^CMAKE_HOME_DIRECTORY:INTERNAL=(.+)$')
 if (-not $homeMatch.Success) {
     throw "Strict native build cache CMakeCache.txt is missing CMAKE_HOME_DIRECTORY; remove '$resolvedBuildRoot' manually before rerun."

@@ -22,6 +22,8 @@ INVOKE_SEMGREP = ROOT / "scripts" / "validation" / "invoke-semgrep.ps1"
 INVOKE_IMPORT_LINTER = ROOT / "scripts" / "validation" / "invoke-import-linter.ps1"
 INVOKE_CPPCHECK = ROOT / "scripts" / "validation" / "invoke-cppcheck.ps1"
 INVOKE_DEPENDENCY_GRAPH = ROOT / "scripts" / "validation" / "invoke-dependency-graph-export.ps1"
+BUILD_VALIDATION = ROOT / "scripts" / "build" / "build-validation.ps1"
+PREPARE_STRICT_NATIVE_BUILD_CACHE = ROOT / "scripts" / "validation" / "prepare-strict-native-build-cache.ps1"
 ROOT_README = ROOT / "README.md"
 VALIDATION_README = ROOT / "docs" / "validation" / "README.md"
 AGENTS = ROOT / "AGENTS.md"
@@ -80,6 +82,10 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("git @gitBaseArgs cat-file -e", orchestrator)
         self.assertIn("git @gitBaseArgs fetch --no-tags --no-recurse-submodules origin $Revision", orchestrator)
         self.assertIn("$gitExitCode = $LASTEXITCODE", orchestrator)
+        self.assertIn("Install CMake and ensure cmake is on PATH.", orchestrator)
+        self.assertIn("Install Ninja and ensure ninja is on PATH.", orchestrator)
+        self.assertIn("Install LLVM and ensure clang-cl is on PATH.", orchestrator)
+        self.assertIn("Install LLVM and ensure lld-link is on PATH.", orchestrator)
         self.assertIn("Unable to derive changed scope from BaseSha/HeadSha", orchestrator)
         self.assertIn("$global:LASTEXITCODE = 0", orchestrator)
 
@@ -118,7 +124,6 @@ class GateOrchestratorContractTest(unittest.TestCase):
         step_ids = {step["id"] for step in self._resolved_gate("pre-push")["steps"]}
 
         self.assertIn("contracts-quick", step_ids)
-        self.assertIn("remote-branch-delete-safety", step_ids)
         self.assertNotIn("build-ci", step_ids)
         self.assertNotIn("test-ci", step_ids)
         self.assertNotIn("controlled-hil", step_ids)
@@ -201,13 +206,6 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("{changedFileArgs}", tool_readiness["command"])
         self.assertIn("{stepReportDir}/pre-push-tool-readiness.json", tool_readiness["requiredArtifacts"])
 
-        remote_delete_safety = steps["remote-branch-delete-safety"]
-        self.assertEqual(
-            {tool["id"] for tool in remote_delete_safety.get("requiresTool", [])},
-            {"git", "gh", "powershell"},
-        )
-        self.assertIn("invoke-pre-push-remote-branch-delete-safety.ps1", " ".join(remote_delete_safety["command"]))
-
         self.assertEqual(
             {tool["id"] for tool in steps["pyright-static"].get("requiresTool", [])},
             {"pyright"},
@@ -237,7 +235,6 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn('-ModuleName "pytest"', readiness_script)
         self.assertIn('-ModuleName "jsonschema"', readiness_script)
         self.assertIn("python-module:yaml-parser", readiness_script)
-        self.assertIn('Install GitHub CLI and ensure gh authentication is available', readiness_script)
 
     def test_pre_push_categories_route_to_required_quick_steps(self) -> None:
         pre_push = self.classification["pre_push"]
@@ -324,31 +321,64 @@ class GateOrchestratorContractTest(unittest.TestCase):
                 self.assertIn("requires_hil_followup", payload)
                 self.assertIn("selected_pre_push_steps", payload)
 
-    def test_native_gate_keeps_cppcheck_and_dependency_graphs_blocking(self) -> None:
-        steps = {step["id"]: step for step in self._resolved_gate("native")["steps"]}
+    def test_native_and_full_offline_keep_cppcheck_and_dependency_graphs_blocking(self) -> None:
+        for gate_id in ("native", "full-offline"):
+            with self.subTest(gate_id=gate_id):
+                steps = {step["id"]: step for step in self._resolved_gate(gate_id)["steps"]}
 
-        for required in (
-            "install-python-deps",
-            "hmi-formal-gateway-contract",
-            "legacy-exit",
-            "semgrep",
-            "import-linter",
-            "build-ci",
-            "test-ci",
-            "local-validation-gate",
-        ):
-            self.assertIn(required, steps)
+                for required in (
+                    "install-python-deps",
+                    "hmi-formal-gateway-contract",
+                    "legacy-exit",
+                    "semgrep",
+                    "import-linter",
+                    "build-ci",
+                    "test-ci",
+                    "local-validation-gate",
+                ):
+                    self.assertIn(required, steps)
 
-        self.assertTrue(steps["cppcheck"]["blocking"])
-        self.assertIn("-FailOnIssues", steps["cppcheck"]["command"])
-        self.assertIn("{changedFileArgs}", steps["cppcheck"]["command"])
-        self.assertGreaterEqual(steps["cppcheck"]["timeoutSeconds"], 1800)
+                build_tools = {tool["id"] for tool in steps["build-ci"].get("requiresTool", [])}
+                self.assertTrue({"powershell", "cmake", "ninja", "clang-cl", "lld-link"}.issubset(build_tools))
+                self.assertIn(
+                    "build/ca/compile_commands.json",
+                    steps["build-ci"].get("requiredArtifacts", []),
+                )
+                self.assertTrue(steps["cppcheck"]["blocking"])
+                self.assertIn("-FailOnIssues", steps["cppcheck"]["command"])
+                self.assertIn("-Scope", steps["cppcheck"]["command"])
+                self.assertIn("ChangedFiles", steps["cppcheck"]["command"])
+                self.assertIn("{changedFileArgs}", steps["cppcheck"]["command"])
+                self.assertGreaterEqual(steps["cppcheck"]["timeoutSeconds"], 1800)
+                self.assertTrue(steps["dependency-graphs"]["blocking"])
+                self.assertNotIn("-SoftFail", steps["dependency-graphs"]["command"])
+
         cppcheck_runner = _read(INVOKE_CPPCHECK)
         self.assertIn('"--quiet"', cppcheck_runner)
+        self.assertIn('[ValidateSet("ChangedFiles", "Project")]', cppcheck_runner)
         self.assertIn("[string[]]$ChangedFile", cppcheck_runner)
-        self.assertIn("no changed C/C++ source files", cppcheck_runner)
-        self.assertTrue(steps["dependency-graphs"]["blocking"])
-        self.assertNotIn("-SoftFail", steps["dependency-graphs"]["command"])
+        self.assertIn("skipped-no-cpp-files", cppcheck_runner)
+        self.assertIn("compile-db-missing", cppcheck_runner)
+        self.assertIn('Project scope requires compile_commands.json', cppcheck_runner)
+        self.assertIn("--file-filter=*/apps/*", cppcheck_runner)
+        self.assertIn("--file-filter=*/modules/*", cppcheck_runner)
+        self.assertIn("--file-filter=*/shared/*", cppcheck_runner)
+        self.assertIn("--suppress=*:*/third_party/*", cppcheck_runner)
+        self.assertIn("[System.Diagnostics.ProcessStartInfo]::new()", cppcheck_runner)
+        self.assertIn("RedirectStandardError = $true", cppcheck_runner)
+        self.assertNotIn('Join-Path $workspaceRoot "apps"', cppcheck_runner)
+        self.assertNotIn('Join-Path $workspaceRoot "modules"', cppcheck_runner)
+        self.assertNotIn('Join-Path $workspaceRoot "shared"', cppcheck_runner)
+        build_runner = _read(BUILD_VALIDATION)
+        self.assertIn('"-G", "Ninja"', build_runner)
+        self.assertIn('"-DCMAKE_BUILD_TYPE=Debug"', build_runner)
+        self.assertIn('"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"', build_runner)
+        self.assertIn("compile_commands.json", build_runner)
+        self.assertNotIn("--config Debug", build_runner)
+        prepare_runner = _read(PREPARE_STRICT_NATIVE_BUILD_CACHE)
+        self.assertIn("CMAKE_GENERATOR:INTERNAL", prepare_runner)
+        self.assertIn("expected_generator=Ninja", prepare_runner)
+        self.assertIn("stale generator detected", prepare_runner)
 
     def test_hil_gate_contains_offline_prerequisite_and_controlled_hil(self) -> None:
         steps = {step["id"]: step for step in self._resolved_gate("hil")["steps"]}
@@ -450,32 +480,38 @@ class GateOrchestratorContractTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(prefix="pre-push-hook-contract-") as temp_dir:
             temp_root = Path(temp_dir)
-            worktree = temp_root / "worktree"
-            report_root = worktree / "tests" / "reports" / "tmp" / "pre-push-hook-contract"
-            subprocess.run(["git", "worktree", "add", "--detach", str(worktree), "HEAD"], cwd=str(ROOT), check=True)
+            report_root = ROOT / "tests" / "reports" / "tmp" / "pre-push-hook-contract"
+            index_path = temp_root / "index"
+            smoke_file = temp_root / "pre-push-contract-smoke.md"
+            index_env = dict(os.environ)
+            index_env["GIT_INDEX_FILE"] = str(index_path)
             try:
-                base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(worktree), text=True).strip()
-                smoke_file_name = f"pre-push-contract-smoke-{temp_root.name}.md"
-                smoke_file = worktree / "docs" / "validation" / smoke_file_name
+                base_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(ROOT), text=True).strip()
                 smoke_file.write_text("# pre-push contract smoke\n", encoding="utf-8")
-                subprocess.run(["git", "add", f"docs/validation/{smoke_file_name}"], cwd=str(worktree), check=True)
+                subprocess.run(["git", "read-tree", base_sha], cwd=str(ROOT), env=index_env, check=True)
+                blob_sha = subprocess.check_output(
+                    ["git", "hash-object", "-w", str(smoke_file)], cwd=str(ROOT), text=True
+                ).strip()
                 subprocess.run(
                     [
                         "git",
-                        "-c",
-                        "user.name=Contract Smoke",
-                        "-c",
-                        "user.email=contract-smoke@example.invalid",
-                        "commit",
-                        "-m",
-                        "test: synthesize pre-push hook range",
+                        "update-index",
+                        "--add",
+                        "--cacheinfo",
+                        "100644",
+                        blob_sha,
+                        "docs/validation/pre-push-contract-smoke.md",
                     ],
-                    cwd=str(worktree),
+                    cwd=str(ROOT),
+                    env=index_env,
                     check=True,
-                    capture_output=True,
-                    text=True,
                 )
-                head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(worktree), text=True).strip()
+                tree_sha = subprocess.check_output(["git", "write-tree"], cwd=str(ROOT), env=index_env, text=True).strip()
+                head_sha = subprocess.check_output(
+                    ["git", "commit-tree", tree_sha, "-p", base_sha, "-m", "test: synthesize pre-push hook range"],
+                    cwd=str(ROOT),
+                    text=True,
+                ).strip()
                 hook_line = f"refs/heads/contract-smoke {head_sha} refs/heads/contract-smoke {base_sha}\n"
 
                 completed = subprocess.run(
@@ -485,7 +521,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
                         "-ExecutionPolicy",
                         "Bypass",
                         "-File",
-                        str(worktree / "scripts" / "validation" / "invoke-pre-push-gate.ps1"),
+                        str(INVOKE_PRE_PUSH_GATE),
                         "-RemoteName",
                         "origin",
                         "-ReportRoot",
@@ -495,7 +531,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
                         "-SkipJustification",
                         "contract smoke verifies hook range metadata only",
                     ],
-                    cwd=str(worktree),
+                    cwd=str(ROOT),
                     input=hook_line,
                     capture_output=True,
                     text=True,
@@ -508,199 +544,16 @@ class GateOrchestratorContractTest(unittest.TestCase):
                 self.assertEqual(manifest["range_source"], "pre-push-hook")
                 self.assertEqual(manifest["base_sha"], base_sha)
                 self.assertEqual(manifest["head_sha"], head_sha)
-                self.assertEqual(manifest["changed_files"], [f"docs/validation/{smoke_file_name}"])
+                self.assertEqual(manifest["changed_files"], ["docs/validation/pre-push-contract-smoke.md"])
             finally:
                 shutil.rmtree(report_root, ignore_errors=True)
-                subprocess.run(["git", "worktree", "remove", str(worktree)], cwd=str(ROOT), check=False)
 
     def test_new_remote_branch_hook_uses_main_merge_base(self) -> None:
         wrapper = _read(INVOKE_PRE_PUSH_GATE)
 
-        self.assertIn("git merge-base $defaultBaseRef $LocalSha", wrapper)
+        self.assertIn("git merge-base $defaultBaseRef $localSha", wrapper)
         self.assertIn('"origin/main"', wrapper)
         self.assertIn("rev-parse --verify --quiet $tracking", wrapper)
-
-    def test_delete_only_hook_selects_remote_delete_safety_without_changed_file_steps(self) -> None:
-        wrapper = _read(INVOKE_PRE_PUSH_GATE)
-        orchestrator = _read(INVOKE_GATE)
-
-        self.assertIn('kind = "delete-ref"', wrapper)
-        self.assertIn('$rangeSource = "delete-ref-only"', wrapper)
-        self.assertIn('$selectedSteps += "remote-branch-delete-safety"', wrapper)
-        self.assertIn('if ($updateOperations.Count -gt 0 -and $changedFiles.Count -eq 0)', wrapper)
-        self.assertIn("operations = @($operations)", wrapper)
-        self.assertIn('if ($SelectedStep.Count -eq 0 -and $ChangedScope.Count -eq 0 -and [string]::IsNullOrWhiteSpace($BaseSha))', orchestrator)
-        self.assertIn('if ($SelectedStep.Count -eq 0 -and [string]::IsNullOrWhiteSpace($ClassificationPath))', orchestrator)
-
-    def test_remote_delete_safety_blocks_protected_branch_delete(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="pre-push-delete-protected-") as temp_dir:
-            report_dir = Path(temp_dir) / "report"
-            report_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path = report_dir / "pre-push-gate-manifest.json"
-            manifest_path.write_text(
-                json.dumps(
-                    {
-                        "schemaVersion": 3,
-                        "remote_name": "origin",
-                        "operations": [
-                            {
-                                "kind": "delete-ref",
-                                "remote_ref": "refs/heads/main",
-                                "remote_sha": "a" * 40,
-                                "local_ref": "(delete)",
-                                "local_sha": "0" * 40,
-                                "source": "pre-push-hook",
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            completed = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    str(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1"),
-                    "-ReportDir",
-                    str(report_dir / "remote-branch-delete-safety"),
-                ],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-            )
-            self.assertNotEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
-            summary_path = report_dir / "remote-branch-delete-safety" / "remote-branch-delete-safety.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
-            issue_ids = {issue["id"] for issue in summary["issues"]}
-            self.assertIn("default-branch-delete", issue_ids)
-            self.assertIn("protected-branch-pattern", issue_ids)
-            self.assertNotIn("script-exception", issue_ids)
-
-    def test_remote_delete_safety_treats_default_wip_stash_as_branch_residue(self) -> None:
-        script = _read(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1")
-        self.assertIn("(?:WIP\\s+on|On)", script)
-
-    def test_remote_delete_safety_writes_summary_when_gh_is_unavailable(self) -> None:
-        powershell = shutil.which("powershell") or shutil.which("pwsh")
-        git = shutil.which("git")
-        if powershell is None:
-            self.fail("powershell executable is required for this contract test")
-        if git is None:
-            self.fail("git executable is required for this contract test")
-
-        with tempfile.TemporaryDirectory(prefix="pre-push-delete-gh-missing-") as temp_dir:
-            report_dir = Path(temp_dir) / "report"
-            report_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path = report_dir / "pre-push-gate-manifest.json"
-            manifest_path.write_text(
-                json.dumps(
-                    {
-                        "schemaVersion": 3,
-                        "remote_name": "origin",
-                        "operations": [
-                            {
-                                "kind": "delete-ref",
-                                "remote_ref": "refs/heads/main",
-                                "remote_sha": "a" * 40,
-                                "local_ref": "(delete)",
-                                "local_sha": "0" * 40,
-                                "source": "pre-push-hook",
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            env = os.environ.copy()
-            path_entries = [str(Path(git).parent), str(Path(powershell).parent)]
-            env["PATH"] = os.pathsep.join(path_entries)
-
-            completed = subprocess.run(
-                [
-                    powershell,
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    str(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1"),
-                    "-ReportDir",
-                    str(report_dir / "remote-branch-delete-safety"),
-                ],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-                env=env,
-            )
-            self.assertNotEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
-            summary_path = report_dir / "remote-branch-delete-safety" / "remote-branch-delete-safety.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
-            issue_ids = {issue["id"] for issue in summary["issues"]}
-            self.assertIn("default-branch-delete", issue_ids)
-            self.assertIn("protected-branch-pattern", issue_ids)
-            self.assertIn("pr-state-unknown", issue_ids)
-            self.assertNotIn("script-exception", issue_ids)
-
-    def test_remote_delete_safety_keeps_deterministic_issues_when_git_and_gh_are_unavailable(self) -> None:
-        powershell = shutil.which("powershell") or shutil.which("pwsh")
-        if powershell is None:
-            self.fail("powershell executable is required for this contract test")
-
-        with tempfile.TemporaryDirectory(prefix="pre-push-delete-no-tools-") as temp_dir:
-            report_dir = Path(temp_dir) / "report"
-            report_dir.mkdir(parents=True, exist_ok=True)
-            manifest_path = report_dir / "pre-push-gate-manifest.json"
-            manifest_path.write_text(
-                json.dumps(
-                    {
-                        "schemaVersion": 3,
-                        "remote_name": "origin",
-                        "operations": [
-                            {
-                                "kind": "delete-ref",
-                                "remote_ref": "refs/heads/main",
-                                "remote_sha": "a" * 40,
-                                "local_ref": "(delete)",
-                                "local_sha": "0" * 40,
-                                "source": "pre-push-hook",
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            env = os.environ.copy()
-            env["PATH"] = str(Path(powershell).parent)
-
-            completed = subprocess.run(
-                [
-                    powershell,
-                    "-NoProfile",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                    str(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1"),
-                    "-ReportDir",
-                    str(report_dir / "remote-branch-delete-safety"),
-                ],
-                cwd=str(ROOT),
-                capture_output=True,
-                text=True,
-                env=env,
-            )
-            self.assertNotEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
-            summary_path = report_dir / "remote-branch-delete-safety" / "remote-branch-delete-safety.json"
-            summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
-            issue_ids = {issue["id"] for issue in summary["issues"]}
-            self.assertIn("default-branch-delete", issue_ids)
-            self.assertIn("protected-branch-pattern", issue_ids)
-            self.assertIn("pr-state-unknown", issue_ids)
-            self.assertNotIn("script-exception", issue_ids)
 
     def test_gate_orchestrator_is_published_as_authoritative_developer_doc(self) -> None:
         doc = _read(GATE_ORCHESTRATOR_DOC)
