@@ -44,8 +44,6 @@ class TrajectoryInterpolatorBase {
     }
 
     virtual float32 CalculateCurvature(const Point2D& p1, const Point2D& p2, const Point2D& p3) const;
-    virtual std::vector<float32> GenerateSShapeVelocityProfile(
-        float32 distance, float32 max_velocity, float32 max_acceleration, float32 max_jerk, float32 time_step) const;
 };
 
 class TrajectoryInterpolatorFactory {

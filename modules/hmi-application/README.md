@@ -16,7 +16,7 @@
 
 - 构建入口：`modules/hmi-application/CMakeLists.txt`（target：`siligen_module_hmi_application`）。
 - live Python owner 入口：`modules/hmi-application/application/hmi_application/`
-- 台账入口：`docs/architecture-audits/modules/hmi-application/residue-ledger.md`
+- 台账入口：`docs/architecture/history/audits/architecture-audits/modules/hmi-application/residue-ledger.md`
 - 测试入口：`modules/hmi-application/tests/CMakeLists.txt`。
 
 ## 边界约束

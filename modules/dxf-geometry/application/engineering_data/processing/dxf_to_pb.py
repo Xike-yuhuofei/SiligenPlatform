@@ -349,11 +349,71 @@ def add_contour(bundle, contour, meta_args):
     add_meta(bundle, *meta_args)
 
 
-def spline_points_from_geomdl(entity, max_step, samples):
+def _eval_curve_point(curve, t):
+    """Evaluate a geomdl curve at parameter t, returning (x, y)."""
+    pt = curve.evaluate_single(t)
+    return (float(pt[0]), float(pt[1]))
+
+
+def _adaptive_spline_recursive(curve, t0, t1, p0, p1, chordal, max_step, depth, max_depth, points):
+    """
+    Recursively subdivide a spline segment until chordal error is below tolerance.
+
+    For each segment, evaluates the true curve midpoint and computes
+    deviation from the chord midpoint.  If deviation exceeds tolerance
+    (or segment exceeds max_step), splits at the midpoint and recurses.
+    """
+    tm = (t0 + t1) * 0.5
+    pm = _eval_curve_point(curve, tm)
+
+    # Chord midpoint (linear interpolation between endpoints)
+    cmx = (p0[0] + p1[0]) * 0.5
+    cmy = (p0[1] + p1[1]) * 0.5
+    deviation = math.hypot(pm[0] - cmx, pm[1] - cmy)
+
+    seg_len = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+
+    do_split = False
+    if depth < max_depth:
+        if deviation > chordal:
+            do_split = True
+        elif max_step > 0 and seg_len > max_step:
+            do_split = True
+
+    if do_split:
+        _adaptive_spline_recursive(curve, t0, tm, p0, pm,
+                                   chordal, max_step, depth + 1, max_depth, points)
+        _adaptive_spline_recursive(curve, tm, t1, pm, p1,
+                                   chordal, max_step, depth + 1, max_depth, points)
+    else:
+        if not points:
+            points.append(p0)
+        points.append(p1)
+
+
+def spline_points_adaptive(entity, chordal, max_step):
+    """
+    Adaptively sample a DXF SPLINE entity with recursive chordal error control.
+
+    Uses geomdl  to  evaluate  the  true  NURBS/B-spline  curve  and
+    subdivide  the  parameter  range  until  each  chord  deviates  from  the
+    underlying curve by less than ``chordal`` mm.
+
+    Args:
+        entity:    DXF SPLINE entity (ezdxf).
+        chordal:   Maximum chordal deviation tolerance in mm.
+        max_step:  Maximum segment length in mm (0 = no limit).
+
+    Returns:
+        List of (x, y) tuples approximating the spline, or [] on failure.
+    """
     try:
         from geomdl import BSpline
         from geomdl import NURBS
+    except ImportError:
+        return []
 
+    try:
         ctrlpts = list(entity.control_points)
         if not ctrlpts:
             ctrlpts = list(entity.fit_points)
@@ -374,16 +434,22 @@ def spline_points_from_geomdl(entity, max_step, samples):
         if knots:
             curve.knotvector = list(knots)
 
-        if max_step > 0:
-            approx_len = 0.0
-            for i in range(1, len(curve.ctrlpts)):
-                approx_len += distance(curve.ctrlpts[i - 1], curve.ctrlpts[i])
-            sample_size = max(2, int(math.ceil(approx_len / max_step)) + 1)
-        else:
-            sample_size = max(2, int(samples))
+        # Valid parameter range:  knot[degree] .. knot[-(degree+1)]
+        kv = curve.knotvector
+        deg = curve.degree
+        t_min = kv[deg]
+        t_max = kv[-(deg + 1)]
 
-        curve.sample_size = sample_size
-        return [(float(p[0]), float(p[1])) for p in curve.evalpts]
+        p0 = _eval_curve_point(curve, t_min)
+        p1 = _eval_curve_point(curve, t_max)
+
+        chordal_tol = chordal if chordal > 0 else 0.005
+        max_depth = 15
+
+        points = []
+        _adaptive_spline_recursive(curve, t_min, t_max, p0, p1,
+                                   chordal_tol, max_step, 0, max_depth, points)
+        return points
     except Exception:
         return []
 
@@ -405,7 +471,7 @@ def spline_points_from_ezdxf(entity, chordal, max_seg):
 
 
 def approximate_spline_points(entity, chordal, max_seg, max_step, samples):
-    pts = spline_points_from_geomdl(entity, max_step, samples)
+    pts = spline_points_adaptive(entity, chordal, max_step)
     if pts:
         return pts
     return spline_points_from_ezdxf(entity, chordal, max_seg)

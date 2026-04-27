@@ -9,6 +9,7 @@
 
 #define NOMINMAX
 #include "TriggerCalculator.h"
+#include "TriggerTimelineSort.h"
 
 #include <algorithm>
 #include <cmath>
@@ -153,22 +154,7 @@ TriggerTimeline TriggerCalculator::CalculateTriggerTimeline(const std::vector<Tr
         timeline.cmp_channels.push_back(cmp_config.cmp_channel);
     }
 
-    // 按时间排序
-    std::vector<size_t> indices(timeline.trigger_times.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-        return timeline.trigger_times[a] < timeline.trigger_times[b];
-    });
-
-    TriggerTimeline sorted_timeline;
-    for (size_t idx : indices) {
-        sorted_timeline.trigger_times.push_back(timeline.trigger_times[idx]);
-        sorted_timeline.trigger_positions.push_back(timeline.trigger_positions[idx]);
-        sorted_timeline.pulse_widths.push_back(timeline.pulse_widths[idx]);
-        sorted_timeline.cmp_channels.push_back(timeline.cmp_channels[idx]);
-    }
-
-    return sorted_timeline;
+    return SortTimelineByTime(timeline);
 }
 
 TriggerTimeline TriggerCalculator::CalculateTriggerTimeline(const ValueObjects::MotionTrajectory& trajectory,
@@ -196,21 +182,7 @@ TriggerTimeline TriggerCalculator::CalculateTriggerTimeline(const ValueObjects::
         timeline.cmp_channels.push_back(cmp_config.cmp_channel);
     }
 
-    std::vector<size_t> indices(timeline.trigger_times.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-        return timeline.trigger_times[a] < timeline.trigger_times[b];
-    });
-
-    TriggerTimeline sorted_timeline;
-    for (size_t idx : indices) {
-        sorted_timeline.trigger_times.push_back(timeline.trigger_times[idx]);
-        sorted_timeline.trigger_positions.push_back(timeline.trigger_positions[idx]);
-        sorted_timeline.pulse_widths.push_back(timeline.pulse_widths[idx]);
-        sorted_timeline.cmp_channels.push_back(timeline.cmp_channels[idx]);
-    }
-
-    return sorted_timeline;
+    return SortTimelineByTime(timeline);
 }
 
 std::optional<int32> TriggerCalculator::FindClosestTrajectoryPoint(const std::vector<TrajectoryPoint>& trajectory,

@@ -10,6 +10,7 @@
 
 #define NOMINMAX
 #include "TrajectoryPlanner.h"
+#include "TriggerTimelineSort.h"
 
 #include <algorithm>
 #include <cmath>
@@ -143,21 +144,7 @@ TriggerTimeline TrajectoryPlanner::GenerateHybridTimeline(const TriggerTimeline&
     }
 
     // 按时间排序
-    std::vector<size_t> indices(hybrid_timeline.trigger_times.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-        return hybrid_timeline.trigger_times[a] < hybrid_timeline.trigger_times[b];
-    });
-
-    TriggerTimeline sorted_timeline;
-    for (size_t idx : indices) {
-        sorted_timeline.trigger_times.push_back(hybrid_timeline.trigger_times[idx]);
-        sorted_timeline.trigger_positions.push_back(hybrid_timeline.trigger_positions[idx]);
-        sorted_timeline.pulse_widths.push_back(hybrid_timeline.pulse_widths[idx]);
-        sorted_timeline.cmp_channels.push_back(hybrid_timeline.cmp_channels[idx]);
-    }
-
-    return sorted_timeline;
+    return SortTimelineByTime(hybrid_timeline);
 }
 
 TriggerTimeline TrajectoryPlanner::CoordinateMultiChannelCMP(const TriggerTimeline& timeline,
@@ -220,38 +207,6 @@ std::vector<float32> TrajectoryPlanner::AnalyzeTriggerAccuracy(const std::vector
     }
 
     return accuracy_results;
-}
-
-CMPConfiguration TrajectoryPlanner::AdjustTriggerParameters(float32 current_accuracy,
-                                                              float32 target_accuracy,
-                                                              const CMPConfiguration& cmp_config) const {
-    CMPConfiguration adjusted_config = cmp_config;
-
-    if (current_accuracy <= 0.0f || target_accuracy <= 0.0f) {
-        return adjusted_config;
-    }
-
-    float32 accuracy_ratio = current_accuracy / target_accuracy;
-
-    if (accuracy_ratio > 1.1f) {
-        // 精度不足，调整参数
-        if (adjusted_config.enable_compensation) {
-            // 增加补偿系数
-            adjusted_config.compensation_factor *= std::min(1.2f, accuracy_ratio);
-            adjusted_config.compensation_factor = std::min(2.0f, adjusted_config.compensation_factor);
-        }
-
-        // 减小时间容差以提高精度
-        adjusted_config.time_tolerance_ms *= 0.8f;
-        adjusted_config.time_tolerance_ms = std::max(0.1f, adjusted_config.time_tolerance_ms);
-
-    } else if (accuracy_ratio < 0.9f) {
-        // 精度过高，可以放宽要求
-        adjusted_config.time_tolerance_ms *= 1.1f;
-        adjusted_config.time_tolerance_ms = std::min(5.0f, adjusted_config.time_tolerance_ms);
-    }
-
-    return adjusted_config;
 }
 
 std::pair<int32, float32> TrajectoryPlanner::PredictTriggerPosition(const std::vector<TrajectoryPoint>& trajectory,
