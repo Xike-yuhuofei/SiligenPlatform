@@ -36,7 +36,7 @@ Result<VelocityProfile> VelocityProfileService::GenerateProfile(
 }
 
 Result<void> VelocityProfileService::ValidateConfig(
-    const VelocityProfileConfig& config) const noexcept {
+    const VelocityProfileConfig& config) noexcept {
 
     if (config.max_velocity <= 0.0f) {
         return Result<void>::Failure(
@@ -66,7 +66,7 @@ Result<void> VelocityProfileService::ValidateConfig(
 }
 
 float32 VelocityProfileService::CalculateMinDistanceFor7Seg(
-    const VelocityProfileConfig& config) const noexcept {
+    const VelocityProfileConfig& config) noexcept {
 
     // 7段S曲线最小距离 = 2 * (加速段距离)
     // 加速段距离 = v^2 / (2*a) + v*a/j (简化估算)

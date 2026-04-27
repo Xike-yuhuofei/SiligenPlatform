@@ -117,8 +117,8 @@ SCurveProfileData ComputeSegmentTimes(float32 distance, const SCurveConfig& conf
             }
         }
         v_peak = lo;
-        s_acc = ComputePhase(v0, v_peak, amax, jmax, a_t1, a_t2, a_t3, a_peak);
-        s_dec = ComputePhase(v1, v_peak, amax, jmax, d_t1, d_t2, d_t3, d_peak);
+        static_cast<void>(ComputePhase(v0, v_peak, amax, jmax, a_t1, a_t2, a_t3, a_peak));
+        static_cast<void>(ComputePhase(v1, v_peak, amax, jmax, d_t1, d_t2, d_t3, d_peak));
         data.t4 = 0;
     } else {
         data.t4 = (distance - s_acc - s_dec) / v_peak;
