@@ -62,8 +62,11 @@ class Result {
 template <>
 class Result<void> {
    public:
+    // cppcheck-suppress functionStatic ; constructors cannot be static.
     Result() : is_success_(true) {}
+    // cppcheck-suppress functionStatic ; constructors cannot be static.
     explicit Result(const Error& error) : error_(error), is_success_(false) {}
+    // cppcheck-suppress functionStatic ; constructors cannot be static.
     explicit Result(Error&& error) : error_(std::move(error)), is_success_(false) {}
 
     Result(const Result&) = default;

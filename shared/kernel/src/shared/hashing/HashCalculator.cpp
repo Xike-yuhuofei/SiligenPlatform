@@ -1,15 +1,14 @@
 #include "shared/hashing/HashCalculator.h"
 
 #include <boost/crc.hpp>
+#include <numeric>
 
 namespace Siligen {
 
 uint32 HashCalculator::GetHashCode(const std::string& str) {
-    uint32 hash = 5381;
-    for (char c : str) {
-        hash = ((hash << 5) + hash) + static_cast<uint8>(c);
-    }
-    return hash;
+    return std::accumulate(str.begin(), str.end(), static_cast<uint32>(5381), [](uint32 hash, char c) {
+        return ((hash << 5) + hash) + static_cast<uint8>(c);
+    });
 }
 
 uint32 HashCalculator::CalculateCRC32(const uint8* data, int32 length) {

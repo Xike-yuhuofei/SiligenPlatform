@@ -96,32 +96,18 @@ inline constexpr ModuleLayer GetModuleLayerV = GetModuleLayer<T>::value;
 /// @param dependency_layer 被依赖者的层级
 /// @return 是否合法
 constexpr bool IsValidDependency(ModuleLayer dependent_layer, ModuleLayer dependency_layer) {
-    // Shared层无依赖,任何层都可以依赖Shared层
-    if (dependency_layer == ModuleLayer::SHARED) {
-        return true;
+    switch (dependent_layer) {
+        case ModuleLayer::SHARED:
+            return dependency_layer == ModuleLayer::SHARED;
+        case ModuleLayer::DOMAIN:
+            return dependency_layer == ModuleLayer::SHARED;
+        case ModuleLayer::APPLICATION:
+            return dependency_layer == ModuleLayer::SHARED || dependency_layer == ModuleLayer::DOMAIN;
+        case ModuleLayer::INFRASTRUCTURE:
+            return dependency_layer == ModuleLayer::SHARED;
+        default:
+            return false;
     }
-
-    // Shared层不能依赖其他层
-    if (dependent_layer == ModuleLayer::SHARED) {
-        return false;
-    }
-
-    // Domain层只能依赖Shared层
-    if (dependent_layer == ModuleLayer::DOMAIN) {
-        return dependency_layer == ModuleLayer::SHARED;
-    }
-
-    // Application层可以依赖Domain层和Shared层
-    if (dependent_layer == ModuleLayer::APPLICATION) {
-        return dependency_layer == ModuleLayer::SHARED || dependency_layer == ModuleLayer::DOMAIN;
-    }
-
-    // Infrastructure层只能依赖Shared层
-    if (dependent_layer == ModuleLayer::INFRASTRUCTURE) {
-        return dependency_layer == ModuleLayer::SHARED;
-    }
-
-    return false;
 }
 
 /// @brief 编译时依赖方向检查

@@ -151,20 +151,14 @@
         },
         {
           "id": "remote-branch-delete-safety",
-          "name": "Validate remote branch deletion safety contract",
+          "name": "Validate remote branch delete safety",
           "blocking": true,
-          "timeoutSeconds": 120,
+          "timeoutSeconds": 180,
           "requiresTool": [
             {
               "id": "git",
               "names": [
                 "git"
-              ]
-            },
-            {
-              "id": "gh",
-              "names": [
-                "gh"
               ]
             },
             {
@@ -1207,7 +1201,9 @@
           "name": "Build workspace",
           "blocking": true,
           "timeoutSeconds": 2700,
-          "requiredArtifacts": [],
+          "requiredArtifacts": [
+            "build/ca/compile_commands.json"
+          ],
           "command": [
             "powershell",
             "-NoProfile",
@@ -1231,6 +1227,30 @@
               "names": [
                 "powershell",
                 "pwsh"
+              ]
+            },
+            {
+              "id": "cmake",
+              "names": [
+                "cmake"
+              ]
+            },
+            {
+              "id": "ninja",
+              "names": [
+                "ninja"
+              ]
+            },
+            {
+              "id": "clang-cl",
+              "names": [
+                "clang-cl"
+              ]
+            },
+            {
+              "id": "lld-link",
+              "names": [
+                "lld-link"
               ]
             }
           ]
@@ -1296,7 +1316,8 @@
             "{workspaceRoot}/scripts/validation/invoke-cppcheck.ps1",
             "-ReportDir",
             "{stepReportDir}",
-            "{changedFileArgs}",
+            "-Scope",
+            "Project",
             "-FailOnIssues"
           ],
           "requiredArtifacts": [

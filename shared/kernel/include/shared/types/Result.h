@@ -144,15 +144,18 @@ class Result {
 template <>
 class Result<void> {
    private:
-    Error error_;
-    bool is_success_;
+    Error error_{};
+    bool is_success_ = true;
 
    public:
     // 默认构造函数 - 创建成功结果
+    // cppcheck-suppress functionStatic ; constructors cannot be static.
     Result() : error_(), is_success_(true) {}
 
     // 从错误构造
+    // cppcheck-suppress functionStatic ; constructors cannot be static.
     explicit Result(const Error& error) : error_(error), is_success_(false) {}
+    // cppcheck-suppress functionStatic ; constructors cannot be static.
     explicit Result(Error&& error) : error_(std::move(error)), is_success_(false) {}
 
     // 拷贝构造和拷贝赋值
