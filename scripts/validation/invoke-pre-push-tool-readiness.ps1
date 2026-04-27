@@ -36,6 +36,7 @@ function Get-ToolHint {
     param([string]$ToolId)
     switch ($ToolId) {
         "git" { return "Install Git and ensure git is on PATH." }
+        "gh" { return "Install GitHub CLI and ensure gh authentication is available for PR state checks." }
         "python" { return "Install Python 3.11 and ensure python is on PATH." }
         "powershell" { return "Install PowerShell and ensure powershell or pwsh is on PATH." }
         "pyright" { return "Install pyright ahead of time, for example npm install -g pyright. Pre-push does not use npx fallback." }

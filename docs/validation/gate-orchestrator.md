@@ -117,16 +117,26 @@
 
 `invoke-pre-push-gate.ps1` 的变更集合推导顺序：
 
-1. Git pre-push hook stdin：使用 hook 提供的 `local_ref local_sha remote_ref remote_sha` 推导待 push range。
+1. Git pre-push hook stdin：
+   - 对普通 ref 更新，使用 hook 提供的 `local_ref local_sha remote_ref remote_sha` 推导待 push range。
+   - 对远端分支删除，识别 `local_sha=000...000` 的 `delete-ref` 操作，写入 `pre-push-gate-manifest.json.operations`，不再把“没有 changed files”误判为异常。
 2. upstream / remote tracking：没有 hook stdin 时，使用当前分支 `@{upstream}` 到 `HEAD` 的 diff。
 3. 显式 `-ChangedScope`：只用于 smoke 或诊断；真实 push 无法推导 range 时必须失败，不得静默放行。
 
-分类结果写入 `pre-push-classification.json`，随后只运行 `selected_pre_push_steps`。基础 step 固定为：
+存在 changed-files 的 update-ref 仍然写入 `pre-push-classification.json`，随后只运行 `selected_pre_push_steps`。基础 step 固定为：
 
 - `git-hygiene`
 - `tool-readiness`
 - `pre-push-classification`
 - `changed-file-parse`
+
+delete-ref 不复用 changed-files 分类语义。它必须追加 `remote-branch-delete-safety`，并按以下 fail-closed 规则阻断：
+
+- 默认分支、当前分支、受保护模式命中的分支一律不得删除。
+- 仍被任何 worktree checkout 的本地对应分支不得删除。
+- 本地对应分支仍有 stash 残留或仍领先权威基线时不得删除。
+- GitHub PR 状态为 open、unknown、ambiguous 时不得删除。
+- 只有保护判定、本地残留判定、merge 判定、PR 判定全部通过时，删除推送才允许继续。
 
 `tool-readiness` 必须读取同一份 classification evidence 和 `gates.json`，只检查 `selected_pre_push_steps` 实际可能使用的工具与 Python module。它必须生成 `pre-push-tool-readiness.json` / `.md`，不得用占位命令替代 readiness 证据。
 
