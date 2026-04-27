@@ -2,7 +2,7 @@
 
 #include "application/services/motion_planning/CmpInterpolationFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
-#include "modules/motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "motion_planning/contracts/InterpolationProgramPlanner.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
 #include "shared/types/CMPTypes.h"

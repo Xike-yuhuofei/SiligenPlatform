@@ -41,12 +41,24 @@ if(NOT TARGET siligen_runtime_host AND EXISTS "${SILIGEN_RUNTIME_EXECUTION_RUNTI
     )
 endif()
 
+if(NOT TARGET siligen_runtime_execution_hosting_public)
+    add_library(siligen_runtime_execution_hosting_public INTERFACE)
+endif()
+target_link_libraries(siligen_runtime_execution_hosting_public INTERFACE
+    siligen_runtime_host
+    siligen_event_adapters
+    siligen_task_scheduler
+    siligen_device_adapters
+    siligen_runtime_host_boost_headers
+)
+target_compile_features(siligen_runtime_execution_hosting_public INTERFACE cxx_std_17)
+
 if(NOT TARGET siligen_module_runtime_execution)
     add_library(siligen_module_runtime_execution INTERFACE)
 endif()
 target_link_libraries(siligen_module_runtime_execution INTERFACE
     siligen_runtime_execution_application_public
-    siligen_runtime_host
+    siligen_runtime_execution_hosting_public
 )
 target_compile_features(siligen_module_runtime_execution INTERFACE cxx_std_17)
 

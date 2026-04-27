@@ -1,7 +1,7 @@
 #include "application/usecases/motion/trajectory/DeterministicPathExecutionUseCase.h"
 
 #include "application/services/motion_planning/MotionPlanningFacade.h"
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "motion_planning/contracts/InterpolationProgramPlanner.h"
 #include "motion_planning/contracts/TimePlanningConfig.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "process_path/contracts/ProcessPath.h"

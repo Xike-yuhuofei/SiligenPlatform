@@ -76,7 +76,7 @@ target_link_libraries(siligen_motion_planning_integration_tests PRIVATE
     siligen_motion_planning_application_public
     siligen_motion
     siligen_runtime_execution_runtime_contracts
-    siligen_dxf_geometry_pb_path_source_adapter
+    siligen_module_dxf_geometry
     siligen_types
     siligen_utils
 )

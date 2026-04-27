@@ -2,7 +2,7 @@
 #include "domain/motion/CMPCompensation.h"
 #include "domain/motion/CMPValidator.h"
 #include "domain/motion/CircleCalculator.h"
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "motion_planning/contracts/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
 #include "motion_planning/contracts/MotionTrajectory.h"
@@ -321,7 +321,7 @@ TEST(MotionPlanningOwnerBoundaryTest, RuntimeExecutionInterpolationValidationUse
     const auto application_private_link =
         runtime_cmake.find("target_link_libraries(siligen_runtime_execution_application PRIVATE");
     EXPECT_NE(application_private_link, std::string::npos);
-    EXPECT_NE(runtime_cmake.find("siligen_motion_planning_application_headers", application_private_link),
+    EXPECT_NE(runtime_cmake.find("siligen_motion_planning_application_public", application_private_link),
               std::string::npos);
 }
 
@@ -488,26 +488,37 @@ TEST(MotionPlanningOwnerBoundaryTest, InterpolationProgramPlannerConsumersUseCon
     EXPECT_TRUE(fs::exists(migrated_owner)) << migrated_owner.string();
     EXPECT_FALSE(fs::exists(legacy_owner)) << legacy_owner.string();
 
-    const std::array<fs::path, 4> sources = {{
+    const std::array<fs::path, 4> planner_sources = {{
         repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
         migrated_owner,
-        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyServices.cpp",
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyExecutionInterpolation.cpp",
         repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
     }};
 
-    for (const auto& path : sources) {
+    for (const auto& path : planner_sources) {
         const std::string content = ReadTextFile(path);
         EXPECT_NE(content.find("InterpolationProgramPlanner"), std::string::npos)
             << path.string();
         EXPECT_EQ(content.find("InterpolationProgramFacade"), std::string::npos)
             << path.string();
+    }
+
+    const std::array<fs::path, 4> process_path_sources = {{
+        repo_root / "modules/motion-planning/tests/unit/domain/trajectory/InterpolationProgramPlannerTest.cpp",
+        migrated_owner,
+        repo_root / "modules/dispense-packaging/application/services/dispensing/PlanningAssemblyInternals.h",
+        repo_root / "modules/dispense-packaging/domain/dispensing/planning/domain-services/DispensingPlannerService.cpp",
+    }};
+
+    for (const auto& path : process_path_sources) {
+        const std::string content = ReadTextFile(path);
         EXPECT_NE(content.find("using Siligen::ProcessPath::Contracts::ProcessPath;"), std::string::npos)
             << path.string();
         EXPECT_EQ(content.find("using Siligen::Domain::Trajectory::ValueObjects::ProcessPath;"), std::string::npos)
             << path.string();
     }
 
-    const std::string workflow_interpolation_test = ReadTextFile(sources.front());
+    const std::string workflow_interpolation_test = ReadTextFile(planner_sources.front());
     EXPECT_NE(workflow_interpolation_test.find("using Siligen::MotionPlanning::Contracts::TimePlanningConfig;"),
               std::string::npos);
     EXPECT_EQ(workflow_interpolation_test.find("using Siligen::Domain::Trajectory::ValueObjects::MotionConfig;"),
