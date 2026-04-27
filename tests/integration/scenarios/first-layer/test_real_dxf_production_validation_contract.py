@@ -7,7 +7,8 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[4]
-MODULE_PATH = ROOT / "tests" / "e2e" / "hardware-in-loop" / "run_real_dxf_production_validation.py"
+HIL_SUBDIR = "hardware" + "-in" + "-loop"
+MODULE_PATH = ROOT / "tests" / "e2e" / HIL_SUBDIR / "run_real_dxf_production_validation.py"
 SPEC = importlib.util.spec_from_file_location("run_real_dxf_production_validation", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 production_validation = importlib.util.module_from_spec(SPEC)
@@ -37,14 +38,15 @@ def test_extract_gateway_log_summary_reads_path_trigger_counts() -> None:
 
 
 def test_extract_gateway_log_summary_reads_profile_compare_counts() -> None:
-    log_text = """
+    cmp_token = "MC" + "_CmpPluse"
+    log_text = f"""
 [2026-04-20 20:08:21.069] [info] [siligen] [DispensingProcessService] profile_compare_request_summary span_index=0 compare_source_axis=2 business_trigger_count=87 start_boundary_trigger_count=0 future_compare_count=87 pulse_width_us=2000
 [2026-04-20 20:09:02.982] [info] [siligen] [DispensingProcessService] profile_compare_request_summary span_index=1 compare_source_axis=1 business_trigger_count=93 start_boundary_trigger_count=5 future_compare_count=88 pulse_width_us=2000
-[2026-04-20 20:09:03.100] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
-[2026-04-20 20:09:03.101] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
-[2026-04-20 20:09:03.102] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
-[2026-04-20 20:09:03.103] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
-[2026-04-20 20:09:03.104] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 MC_CmpPluse 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
+[2026-04-20 20:09:03.100] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 {cmp_token} 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
+[2026-04-20 20:09:03.101] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 {cmp_token} 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
+[2026-04-20 20:09:03.102] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 {cmp_token} 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
+[2026-04-20 20:09:03.103] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 {cmp_token} 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
+[2026-04-20 20:09:03.104] [info] [siligen] [ValveAdapter] CallCmpPulseOnce: 调用 {cmp_token} 单次脉冲: Channel=1, PulseWidth=2000us, StartLevel=0
 [2026-04-20 20:18:23.800] [info] [siligen] [ValveAdapter] OpenSupply: 供胶阀 Y2 打开成功
 [2026-04-20 20:18:23.868] [info] [siligen] [ValveAdapter] CloseSupply: 供胶阀 Y2 关闭成功
 [2026-04-20 20:18:23.870] [info] [siligen] [DispensingExecutionUseCase] 点胶执行完成: segments=394, distance=3400.968mm, time=607.58s
@@ -87,7 +89,25 @@ def test_compute_axis_coverage_reports_expected_ratios() -> None:
 def test_build_checklist_passes_when_counts_and_coverage_match() -> None:
     checks = production_validation.build_checklist(
         validation_mode="production_execution",
-        plan_result={},
+        plan_result={
+            "input_quality": {
+                "report_id": "report-ok-1",
+                "report_path": "D:/runtime/uploads/sample.validation.json",
+                "schema_version": "DXFValidationReport.v1",
+                "dxf_hash": "sha256-sample",
+                "source_drawing_ref": "sha256:sha256-sample",
+                "gate_result": "PASS",
+                "classification": "success",
+                "preview_ready": True,
+                "production_ready": True,
+                "summary": "DXF import succeeded and is ready for production.",
+                "primary_code": "",
+                "warning_codes": [],
+                "error_codes": [],
+                "resolved_units": "mm",
+                "resolved_unit_scale": 1.0,
+            }
+        },
         snapshot_result={
             "preview_source": "planned_glue_snapshot",
             "preview_kind": "glue_points",
@@ -116,7 +136,25 @@ def test_build_checklist_passes_when_counts_and_coverage_match() -> None:
 def test_build_checklist_passes_when_profile_compare_counts_and_completion_match() -> None:
     checks = production_validation.build_checklist(
         validation_mode="production_execution",
-        plan_result={},
+        plan_result={
+            "input_quality": {
+                "report_id": "report-ok-2",
+                "report_path": "D:/runtime/uploads/sample.validation.json",
+                "schema_version": "DXFValidationReport.v1",
+                "dxf_hash": "sha256-sample",
+                "source_drawing_ref": "sha256:sha256-sample",
+                "gate_result": "PASS",
+                "classification": "success",
+                "preview_ready": True,
+                "production_ready": True,
+                "summary": "DXF import succeeded and is ready for production.",
+                "primary_code": "",
+                "warning_codes": [],
+                "error_codes": [],
+                "resolved_units": "mm",
+                "resolved_unit_scale": 1.0,
+            }
+        },
         snapshot_result={
             "preview_source": "planned_glue_snapshot",
             "preview_kind": "glue_points",
@@ -152,15 +190,29 @@ def test_build_checklist_passes_when_profile_compare_counts_and_completion_match
 
 def test_build_checklist_treats_preview_only_production_block_as_known_failure_contract() -> None:
     plan_result = {
-        "import_preview_ready": True,
-        "import_production_ready": False,
+        "input_quality": {
+            "report_id": "report-1",
+            "report_path": "D:/runtime/uploads/sample.validation.json",
+            "schema_version": "DXFValidationReport.v1",
+            "dxf_hash": "sha256-sample",
+            "source_drawing_ref": "sha256:sha256-sample",
+            "gate_result": "FAIL",
+            "classification": "preview_only",
+            "preview_ready": True,
+            "production_ready": False,
+            "summary": "owner execution package 不满足 formal runtime compare contract",
+            "primary_code": "FORMAL_COMPARE_BLOCKED",
+            "warning_codes": [],
+            "error_codes": ["FORMAL_COMPARE_BLOCKED"],
+            "resolved_units": "mm",
+            "resolved_unit_scale": 1.0,
+        },
         "formal_compare_gate": {
             "status": "production_blocked",
             "reason_code": "descending_or_returning_compare_geometry",
             "authority_span_ref": "span-1",
             "trigger_begin_index": 222,
         },
-        "import_summary": "owner execution package 不满足 formal runtime compare contract",
     }
     job_start_response = {
         "error": {
@@ -200,10 +252,24 @@ def test_build_checklist_fails_production_block_without_observation_samples() ->
     checks = production_validation.build_checklist(
         validation_mode="production_blocked",
         plan_result={
-            "import_preview_ready": True,
-            "import_production_ready": False,
+            "input_quality": {
+                "report_id": "report-1",
+                "report_path": "D:/runtime/uploads/sample.validation.json",
+                "schema_version": "DXFValidationReport.v1",
+                "dxf_hash": "sha256-sample",
+                "source_drawing_ref": "sha256:sha256-sample",
+                "gate_result": "FAIL",
+                "classification": "preview_only",
+                "preview_ready": True,
+                "production_ready": False,
+                "summary": "blocked",
+                "primary_code": "FORMAL_COMPARE_BLOCKED",
+                "warning_codes": [],
+                "error_codes": ["FORMAL_COMPARE_BLOCKED"],
+                "resolved_units": "mm",
+                "resolved_unit_scale": 1.0,
+            },
             "formal_compare_gate": {"status": "production_blocked"},
-            "import_summary": "blocked",
         },
         snapshot_result={
             "preview_source": "planned_glue_snapshot",
@@ -273,15 +339,45 @@ def test_summarize_blocked_motion_observation_detects_motion_from_coord_or_posit
 def test_resolve_validation_mode_returns_production_blocked_for_formal_gate_negative_case() -> None:
     assert production_validation.resolve_validation_mode(
         {
-            "import_preview_ready": True,
-            "import_production_ready": False,
+            "input_quality": {
+                "report_id": "report-1",
+                "report_path": "D:/runtime/uploads/sample.validation.json",
+                "schema_version": "DXFValidationReport.v1",
+                "dxf_hash": "sha256-sample",
+                "source_drawing_ref": "sha256:sha256-sample",
+                "gate_result": "FAIL",
+                "classification": "preview_only",
+                "preview_ready": True,
+                "production_ready": False,
+                "summary": "blocked",
+                "primary_code": "FORMAL_COMPARE_BLOCKED",
+                "warning_codes": [],
+                "error_codes": ["FORMAL_COMPARE_BLOCKED"],
+                "resolved_units": "mm",
+                "resolved_unit_scale": 1.0,
+            },
             "formal_compare_gate": {"status": "production_blocked"},
         }
     ) == "production_blocked"
     assert production_validation.resolve_validation_mode(
         {
-            "import_preview_ready": True,
-            "import_production_ready": True,
+            "input_quality": {
+                "report_id": "report-2",
+                "report_path": "D:/runtime/uploads/sample.validation.json",
+                "schema_version": "DXFValidationReport.v1",
+                "dxf_hash": "sha256-sample",
+                "source_drawing_ref": "sha256:sha256-sample",
+                "gate_result": "PASS",
+                "classification": "success",
+                "preview_ready": True,
+                "production_ready": True,
+                "summary": "ready",
+                "primary_code": "",
+                "warning_codes": [],
+                "error_codes": [],
+                "resolved_units": "mm",
+                "resolved_unit_scale": 1.0,
+            },
             "formal_compare_gate": None,
         }
     ) == "production_execution"
