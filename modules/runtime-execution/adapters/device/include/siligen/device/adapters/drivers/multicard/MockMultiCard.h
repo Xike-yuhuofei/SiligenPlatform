@@ -142,7 +142,7 @@ public:
     int MC_GetLookAheadSpace(short crd, long* space, short fifo = 0);
 
     // Debug log (no-op in mock)
-    void MC_StartDebugLog(int level);
+    static void MC_StartDebugLog(int level);
 
     // Verification methods (for testing)
     bool IsCardOpen(short cardNum) const;

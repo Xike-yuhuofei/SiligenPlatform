@@ -477,8 +477,8 @@ std::string ValveAdapter::BuildProfileCompareContext(const ProfileCompareArmRequ
                                                      std::size_t future_compare_count,
                                                      short abs_position_flag,
                                                      short timer_flag,
-                                                     short sdk_pulse_type,
-                                                     const std::vector<long>* compare_positions) const {
+                                             short sdk_pulse_type,
+                                             const std::vector<long>* compare_positions) {
     long first_compare_position = 0;
     long last_compare_position = 0;
     if (compare_positions && !compare_positions->empty()) {
@@ -1064,7 +1064,7 @@ void ValveAdapter::UpdateDispenserProgress() {
     }
 }
 
-std::string ValveAdapter::CreateErrorMessage(int errorCode, const std::string& operation) const {
+std::string ValveAdapter::CreateErrorMessage(int errorCode, const std::string& operation) {
     // 根据 MultiCard SDK 的错误码创建详细错误信息
     // 错误码定义来自 MultiCardCPP.h
     std::string msg = "[ValveAdapter] MultiCard API Error in " + operation + ": ";

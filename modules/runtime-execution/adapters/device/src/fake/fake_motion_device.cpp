@@ -1,5 +1,7 @@
 #include "siligen/device/adapters/fake/fake_motion_device.h"
 
+#include <algorithm>
+
 namespace Siligen::Device::Adapters::Fake {
 
 FakeMotionDevice::FakeMotionDevice() {
@@ -162,10 +164,11 @@ void FakeMotionDevice::EnsureDefaultAxes() {
 }
 
 Siligen::Device::Contracts::State::AxisState& FakeMotionDevice::FindAxis(Siligen::SharedKernel::LogicalAxisId axis) {
-    for (auto& axis_state : state_.axes) {
-        if (axis_state.axis == axis) {
-            return axis_state;
-        }
+    const auto it = std::find_if(state_.axes.begin(), state_.axes.end(), [axis](const auto& axis_state) {
+        return axis_state.axis == axis;
+    });
+    if (it != state_.axes.end()) {
+        return *it;
     }
 
     state_.axes.push_back({});
