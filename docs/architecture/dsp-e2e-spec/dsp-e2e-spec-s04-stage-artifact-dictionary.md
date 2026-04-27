@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s04：阶段产物数据字典（对象清单，修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S04
+Applies To: formal artifact object chain and lifecycle
+Owns / Covers: object fields, artifact_ref, lifecycle, diagnostics attachment, superseded and archived semantics
+Must Not Override: S01 stage chain; S02 stage responsibility; S05 module ownership; S07/S08 command-event semantics
+Read When: defining or consuming core objects, fields, references, diagnostics, lifecycle states
+Conflict Priority: use S04 for object schema and lifecycle; defer owner boundary to S05 and acceptance to S02
+Codex Keywords: artifact dictionary, artifact_ref, object lifecycle, diagnostics, superseded, archived, AlignmentCompensation, ExecutionRecord
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决核心对象清单、字段边界、引用规范、生命周期与诊断挂载位置。
+- 本文不裁决哪个模块实现接口；模块 owner 与越权边界以 S05 为准。
+- 不得并存 `artifact_ref` 与另一套对象引用口径；不得原地静默修改正式对象；回退必须产生可追溯的失效语义。
+
+---
 本版在原《s04 阶段产物数据字典》基础上合并两份正式评估的修订意见，目标不是增加更多对象，而是把以下 6 个高风险缺口彻底补齐：
 
 1. 统一对象引用与版本链表达，避免 `artifact_ref` 与 `artifact_id/artifact_version` 两套口径并存。

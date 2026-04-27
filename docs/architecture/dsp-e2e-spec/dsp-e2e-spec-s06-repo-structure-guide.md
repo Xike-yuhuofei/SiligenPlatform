@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s06：仓库目录结构建议（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S06
+Applies To: repository structure and dependency placement
+Owns / Covers: apps/modules/shared/tests/docs/config/data/scripts placement, dependency direction, test location
+Must Not Override: S04 object schema; S05 module owner; repository AGENTS.md canonical roots
+Read When: placing code, tests, docs, contracts, fixtures, or shared utilities
+Conflict Priority: use S06 for repo placement; defer business ownership to S05 and stable contract shape to S04
+Codex Keywords: repo structure, apps, modules, shared, tests, scripts, dependency direction, single repo multi module
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决正式代码、契约、测试、文档与脚本在仓库中的落位方式。
+- 本文不裁决业务 owner 或对象字段；owner 以 S05 为准，对象字段以 S04 为准。
+- 不得把业务语义放入 `shared/`；不得重引入 retired roots；adapter 与 app 入口不得成为长期业务事实源。
+
+---
 本版目标是把前面的**阶段、对象、模块边界、命令/事件、状态机、测试矩阵**真正压到可开工的工程组织形式上。
 
 重点不是“代码怎么写”，而是：

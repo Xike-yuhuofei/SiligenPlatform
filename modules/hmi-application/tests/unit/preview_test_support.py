@@ -48,6 +48,9 @@ def valid_payload(
     glue_point_count: int = 3,
     motion_source_point_count: int = 10,
     include_motion_preview: bool = True,
+    path_quality_verdict: str = "pass",
+    path_quality_blocking: bool = False,
+    path_quality_reason_codes: tuple[str, ...] = (),
 ) -> dict:
     glue_points = (
         [{"x": float(index) * 3.0, "y": 0.0} for index in range(glue_point_count)]
@@ -75,6 +78,9 @@ def valid_payload(
         generated_at="2026-03-28T00:00:00Z",
         dry_run=dry_run,
         preview_binding_layout_id="layout-1",
+        path_quality_verdict=path_quality_verdict,
+        path_quality_blocking=path_quality_blocking,
+        path_quality_reason_codes=path_quality_reason_codes,
     )
     if not include_motion_preview:
         payload.pop("motion_preview", None)

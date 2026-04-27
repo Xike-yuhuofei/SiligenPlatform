@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s03：阶段失败码与回退策略表（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S03
+Applies To: S0-S16 failure codes, rollback targets, manual release boundaries
+Owns / Covers: failure classification, error code payload, retry boundary, rollback decision rules
+Must Not Override: S01 stage I/O; S02 acceptance; S04 object lifecycle; S07/S08 state and event closure
+Read When: assigning failure ownership, rollback target, retry policy, or manual approval boundary
+Conflict Priority: use S03 for failure and rollback semantics; defer state transition syntax to S07 and object invalidation fields to S04
+Codex Keywords: failure code, rollback, retry, manual release, PreflightBlocked, FirstArticleRejected, ArtifactSuperseded
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决失败码、失败载荷、回退目标、可重试边界与人工放行边界。
+- 本文不裁决模块接口形态或测试覆盖层级；模块接口以 S05 为准，测试基线以 S09 为准。
+- 不得把可重试理解为可继续生产；不得用人工放行覆盖硬门禁；S12 设备未 ready 默认不触发规划回退。
+
+---
 本版把失败码、阻断、首件分流、回退目标、人工放行边界统一到一套可实现规则中，用于直接指导：
 
 - 状态机阻断/终止迁移

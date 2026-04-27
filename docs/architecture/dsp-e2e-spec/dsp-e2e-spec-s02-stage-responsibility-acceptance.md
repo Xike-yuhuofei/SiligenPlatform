@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s02：阶段职责与验收准则表（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S02
+Applies To: S0-S16 stage responsibilities and acceptance
+Owns / Covers: stage duties, owner handoff, acceptance criteria, no-shortcut rules
+Must Not Override: S01 stage I/O; S04 object fields; S05 module interfaces; S07/S08 state and sequence semantics; S09 test layer ownership
+Read When: judging whether a stage is complete, blocked, failed, or allowed to continue
+Conflict Priority: use S02 for stage responsibility and acceptance; defer object schema to S04 and module boundary to S05
+Codex Keywords: stage responsibility, acceptance, owner handoff, blocked, failed, no shortcut, WorkflowArchived
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决每个阶段的职责、验收条件、禁止短路条件与 owner 交接语义。
+- 本文不新增对象链或模块边界；对象链以 S04 为准，模块边界以 S05 为准。
+- 成功不得等同于函数返回成功；阻断不得等同于失败终止；回退和归档必须显式进入事件与对象生命周期。
+
+---
 本版目标是把每个阶段定义成**可开发、可联调、可验收、可追溯**的工程节点，并与以下口径保持统一：
 
 - 与 s04 的对象字典对齐

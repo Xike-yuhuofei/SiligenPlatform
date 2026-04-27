@@ -20,6 +20,13 @@ def _normalize_preview_exception_reason(reason: str) -> str:
     return text
 
 
+def _format_path_quality_reason_codes(reason_codes: tuple[str, ...]) -> str:
+    normalized = [str(item).strip() for item in reason_codes if str(item).strip()]
+    if not normalized:
+        return "path_quality 阻断"
+    return "path_quality 阻断: " + ", ".join(normalized)
+
+
 class PreviewPreflightService:
     def __init__(self, state: PreviewSessionState) -> None:
         self._state = state
@@ -57,6 +64,14 @@ class PreviewPreflightService:
             return "预览快照与执行快照不一致，请重新生成并确认"
         return "预检失败"
 
+    def production_block_message(self) -> str:
+        summary = str(self._state.path_quality_summary or "").strip()
+        if summary:
+            return summary
+        return "当前结果仅可预览，不可启动生产：" + _format_path_quality_reason_codes(
+            self._state.path_quality_reason_codes
+        )
+
     @staticmethod
     def map_preview_contract_reason(reason: StartBlockReason) -> PreflightBlockReason:
         if reason == StartBlockReason.INVALID_SOURCE:
@@ -84,12 +99,14 @@ class PreviewPreflightService:
         return summary
 
     def current_preview_diagnostic_notice(self) -> PreviewDiagnosticNotice | None:
+        if self._state.path_quality_blocking:
+            return None
         if self._state.preview_validation_classification == "fail":
             return None
         normalized_exception_reason = _normalize_preview_exception_reason(self._state.preview_exception_reason)
         if self._state.preview_diagnostic_code == "process_path_fragmentation":
             detail = (
-                "路径较碎，当前结果已按例外规则放行，可继续预览与执行。"
+                "路径较碎，当前结果需要与正式生产门禁一起解读。"
                 "这通常意味着 DXF 几何连通性较差，或导入顺序导致路径被拆成多段。"
             )
             if normalized_exception_reason:
@@ -174,6 +191,18 @@ class PreviewPreflightService:
             return PreflightDecision(False, PreflightBlockReason.PREVIEW_MODE_UNKNOWN, "预览模式未知，请刷新预览并重新确认")
         if bool(dry_run) != bool(self._state.preview_plan_dry_run):
             return PreflightDecision(False, PreflightBlockReason.PREVIEW_MODE_MISMATCH, "运行模式已变更，请刷新预览并重新确认")
+        if self._state.path_quality_source_plan_id and self._state.path_quality_source_plan_id != self._state.current_plan_id:
+            return PreflightDecision(
+                False,
+                PreflightBlockReason.PREVIEW_STALE,
+                "正式生产门禁状态已过期，请重新生成并确认预览",
+            )
+        if self._state.path_quality_blocking:
+            return PreflightDecision(
+                False,
+                PreflightBlockReason.PRODUCTION_BLOCKED,
+                self.production_block_message(),
+            )
 
         if self._state.preview_validation_classification == "fail":
             return PreflightDecision(

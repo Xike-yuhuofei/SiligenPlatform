@@ -1,5 +1,23 @@
 # internal-execution-contract-v1
 
+Status: Frozen Supplement Standard
+Authority: Supplement to S01-S10
+Applies To: internal execution data boundaries, execution semantics, controller/driver adaptation, traceability
+Owns / Covers: execution-layer contract vocabulary and internal semantic boundaries
+Must Not Override: S01-S10 formal spec axes; S04 object schema; S05 module owner; S07/S08 command-event semantics
+Read When: distinguishing process, motion, execution segment, controller adaptation, runtime feedback, and trace responsibilities
+Conflict Priority: use this document only as execution supplement; defer conflicts to S01-S10
+Codex Keywords: internal execution contract, execution segment, controller adapter, traceability, single source of truth, process execution separation
+
+---
+
+## Codex Decision Summary
+
+- 本文细化内部执行契约、执行语义边界、控制器适配与追溯责任。
+- 本文不是新的正式对象链，不覆盖 S01-S10 的阶段、对象、owner、状态机或测试基线。
+- 不得把下游执行适配层变成上游工艺或规划事实源；不得静默篡改上游主语义。
+
+---
 ## 1. 目的
 
 本文定义点胶机系统的**内部执行契约**，用于统一以下环节之间的数据边界、对象语义、引用关系与责任归属：

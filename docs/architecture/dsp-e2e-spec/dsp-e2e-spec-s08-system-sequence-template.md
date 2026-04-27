@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s08：系统时序图模板（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S08
+Applies To: end-to-end system sequence templates
+Owns / Covers: success, block, rollback, recovery, archive sequence templates and actor interactions
+Must Not Override: S01 stage chain; S03 rollback policy; S05 module owner; S07 state and command definitions
+Read When: wiring end-to-end interactions, command/event order, artifact generation points, trace side effects
+Conflict Priority: use S08 for sequence ordering; defer state legality to S07 and owner boundary to S05
+Codex Keywords: sequence template, success chain, rollback chain, recovery chain, archive chain, trace side effect
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决主成功链、首件回退链、设备阻断链、恢复链与归档链的系统时序表达。
+- 本文不裁决状态枚举或 owner 分配；状态与命令以 S07 为准，owner 以 S05 为准。
+- 命令与事件必须区分；产物生成点必须显式出现；Trace 是旁路固化，不是控制中心。
+
+---
 本版目标是把前面已经冻结的以下内容真正串成可实现的系统时序模板：
 
 - 阶段链
