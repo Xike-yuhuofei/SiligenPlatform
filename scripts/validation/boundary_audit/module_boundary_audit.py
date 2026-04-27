@@ -461,6 +461,47 @@ def evaluate_private_surface_access(workspace: Path, model: BoundaryModel, scan_
     return findings
 
 
+def evaluate_include_dependency(model: BoundaryModel, scan_file: str, include_norm: str, source_owner: str) -> dict[str, Any] | None:
+    for public_surface, target_owner in model.public_paths:
+        if (
+            public_surface.endswith(include_norm)
+            or include_norm in public_surface
+            or is_under(include_norm, public_surface)
+        ):
+            if target_owner == source_owner:
+                return None
+            if model.dependency_forbidden(source_owner, target_owner):
+                return finding(
+                    "forbidden_dependency",
+                    "forbidden-public-include-dependency",
+                    scan_file,
+                    source_owner,
+                    f"{source_owner} is forbidden to include public surface owned by {target_owner}",
+                    dependency=include_norm,
+                    dependency_owner=target_owner,
+                )
+            if model.dependency_allowed(source_owner, target_owner):
+                return finding(
+                    "allowed_dependency",
+                    "allowed-public-include-dependency",
+                    scan_file,
+                    source_owner,
+                    f"{source_owner} includes public surface owned by {target_owner}",
+                    dependency=include_norm,
+                    dependency_owner=target_owner,
+                )
+            return finding(
+                "unknown_dependency",
+                "public-include-dependency-not-allowed-by-owner-model",
+                scan_file,
+                source_owner,
+                f"{source_owner} include dependency on {target_owner} is not declared in allowed_dependencies",
+                dependency=include_norm,
+                dependency_owner=target_owner,
+            )
+    return None
+
+
 def bridge_status_for_target(model: BoundaryModel, target: str, scan_file: str) -> tuple[str, dict[str, Any] | None]:
     bridge = model.bridge_allowed_for_file(target, scan_file)
     if bridge is not None:
@@ -659,6 +700,9 @@ def evaluate_scan_files(workspace: Path, model: BoundaryModel, scan_files: list[
         findings.extend(evaluate_private_surface_access(workspace, model, rel_file, text))
         for include in INCLUDE_RE.findall(text):
             include_norm = norm_path(include)
+            include_dependency = evaluate_include_dependency(model, rel_file, include_norm, source_owner)
+            if include_dependency is not None:
+                findings.append(include_dependency)
             for private_surface, target_owner in model.private_paths:
                 if (
                     private_surface.endswith(include_norm)

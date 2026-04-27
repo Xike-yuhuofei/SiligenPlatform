@@ -197,6 +197,19 @@ class ModuleBoundaryAuditContractTest(unittest.TestCase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("private_surface_access", {item["kind"] for item in audit["blocking_findings"]})
 
+    def test_public_cross_module_include_still_requires_allowed_dependency(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="module-boundary-audit-public-include-") as temp_dir:
+            workspace = Path(temp_dir)
+            changed = "modules/process-path/application/Bad.cpp"
+            _write(
+                workspace,
+                changed,
+                '#include "modules/workflow/application/Foo.h"\n',
+            )
+            completed, audit = self._run_audit(workspace, changed)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("unknown_dependency", {item["kind"] for item in audit["blocking_findings"]})
+
     def test_forbidden_compat_target_blocks_pr_audit(self) -> None:
         with tempfile.TemporaryDirectory(prefix="module-boundary-audit-compat-") as temp_dir:
             workspace = Path(temp_dir)
