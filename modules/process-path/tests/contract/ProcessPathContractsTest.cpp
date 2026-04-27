@@ -25,11 +25,25 @@ using Siligen::ProcessPath::Contracts::PathSourceResult;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::ProcessPath::Contracts::TopologyRepairPolicy;
 
+template <typename T, typename = void>
+struct HasPathSourceSuccessField : std::false_type {};
+
+template <typename T>
+struct HasPathSourceSuccessField<T, std::void_t<decltype(std::declval<T>().success)>> : std::true_type {};
+
+template <typename T, typename = void>
+struct HasPathSourceErrorMessageField : std::false_type {};
+
+template <typename T>
+struct HasPathSourceErrorMessageField<T, std::void_t<decltype(std::declval<T>().error_message)>> : std::true_type {};
+
 static_assert(std::is_same_v<ProcessPathBuildRequest, PathGenerationRequest>);
 static_assert(std::is_same_v<ProcessPathBuildResult, PathGenerationResult>);
 static_assert(std::is_default_constructible_v<PathGenerationRequest>);
 static_assert(std::is_default_constructible_v<PathGenerationResult>);
 static_assert(std::is_abstract_v<IPathSourcePort>);
+static_assert(!HasPathSourceSuccessField<PathSourceResult>::value);
+static_assert(!HasPathSourceErrorMessageField<PathSourceResult>::value);
 static_assert(std::is_same_v<typename decltype(std::declval<PathSourceResult>().metadata)::value_type, PathPrimitiveMeta>);
 static_assert(std::is_same_v<typename decltype(std::declval<PathSourceResult>().primitives)::value_type,
                              Siligen::ProcessPath::Contracts::Primitive>);

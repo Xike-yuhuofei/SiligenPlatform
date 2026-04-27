@@ -26,7 +26,7 @@ using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 
 namespace {
-constexpr float32 kEpsilon = 1e-6f;
+using Siligen::ProcessPath::Contracts::kGeometryEpsilon;
 using Siligen::Shared::Types::kDegToRad;
 using Siligen::Shared::Types::kPi;
 using Siligen::Shared::Types::kRadToDeg;
@@ -42,11 +42,85 @@ bool UpdateArcStart(ArcPrimitive& arc, const Point2D& start, float32 tolerance) 
 }
 
 float32 EstimateEllipsePerimeter(float32 a, float32 b) {
-    if (a <= kEpsilon || b <= kEpsilon) {
+    if (a <= kGeometryEpsilon || b <= kGeometryEpsilon) {
         return 0.0f;
     }
     float32 h = (a - b) * (a - b) / ((a + b) * (a + b));
     return kPi * (a + b) * (1.0f + (3.0f * h) / (10.0f + std::sqrt(4.0f - 3.0f * h)));
+}
+
+float32 ResolveEllipseSweep(const EllipsePrimitive& ellipse) {
+    float32 start = ellipse.start_param;
+    float32 end = ellipse.end_param;
+    if (std::abs(end - start) <= kGeometryEpsilon) {
+        end = start + 2.0f * kPi;
+    }
+    float32 sweep = end - start;
+    if (ellipse.clockwise) {
+        if (sweep > 0.0f) {
+            sweep -= 2.0f * kPi;
+        }
+    } else if (sweep < 0.0f) {
+        sweep += 2.0f * kPi;
+    }
+    return sweep;
+}
+
+size_t EstimateEllipseSegmentCount(const EllipsePrimitive& ellipse, const NormalizationConfig& config) {
+    const float32 a = ellipse.major_axis.Length();
+    const float32 b = a * ellipse.ratio;
+    if (a <= kGeometryEpsilon || b <= kGeometryEpsilon) {
+        return 0U;
+    }
+    const float32 sweep = ResolveEllipseSweep(ellipse);
+    const float32 perimeter = EstimateEllipsePerimeter(a, b);
+    const float32 length_est = perimeter * (std::abs(sweep) / (2.0f * kPi));
+    float32 step_mm = (config.curve_flatten_max_step_mm > kGeometryEpsilon) ? config.curve_flatten_max_step_mm : 1.0f;
+    if (config.curve_flatten_max_error_mm > kGeometryEpsilon) {
+        const float32 major = std::max(a, b);
+        const float32 minor = std::min(a, b);
+        const float32 min_curvature_radius = (minor * minor) / std::max(major, kGeometryEpsilon);
+        const float32 error_step = std::sqrt(8.0f * min_curvature_radius * config.curve_flatten_max_error_mm);
+        if (error_step > kGeometryEpsilon && std::isfinite(error_step)) {
+            step_mm = std::min(step_mm, error_step);
+        }
+    }
+    constexpr float32 kMinEllipseStepMm = 0.01f;
+    step_mm = std::max(step_mm, kMinEllipseStepMm);
+    return static_cast<size_t>(std::max(4.0f, std::ceil(length_est / step_mm)));
+}
+
+size_t EstimatePrimitiveSegmentCount(const Primitive& primitive, const NormalizationConfig& config) {
+    using PrimitiveType = Siligen::ProcessPath::Contracts::PrimitiveType;
+    switch (primitive.type) {
+        case PrimitiveType::Line:
+        case PrimitiveType::Arc:
+        case PrimitiveType::Circle:
+        case PrimitiveType::Point:
+            return 1U;
+        case PrimitiveType::Ellipse:
+            return EstimateEllipseSegmentCount(primitive.ellipse, config);
+        case PrimitiveType::Contour: {
+            size_t count = 0U;
+            for (const auto& element : primitive.contour.elements) {
+                Primitive nested;
+                if (element.type == ContourElementType::Line) {
+                    nested.type = PrimitiveType::Line;
+                    nested.line = element.line;
+                } else if (element.type == ContourElementType::Arc) {
+                    nested.type = PrimitiveType::Arc;
+                    nested.arc = element.arc;
+                } else if (element.type == ContourElementType::Spline) {
+                    nested.type = PrimitiveType::Spline;
+                }
+                count += EstimatePrimitiveSegmentCount(nested, config);
+            }
+            return count;
+        }
+        case PrimitiveType::Spline:
+        default:
+            return 0U;
+    }
 }
 
 }  // namespace
@@ -54,9 +128,13 @@ float32 EstimateEllipsePerimeter(float32 a, float32 b) {
 NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primitives,
                                              const NormalizationConfig& config) const noexcept {
     NormalizedPath result;
-    result.path.segments.reserve(primitives.size());
+    size_t estimated_segments = 0U;
+    for (const auto& primitive : primitives) {
+        estimated_segments += EstimatePrimitiveSegmentCount(primitive, config);
+    }
+    result.path.segments.reserve(std::max(primitives.size(), estimated_segments));
 
-    if (config.unit_scale <= kEpsilon) {
+    if (config.unit_scale <= kGeometryEpsilon) {
         result.report.invalid_unit_scale = true;
         return result;
     }
@@ -69,7 +147,7 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
         segment.line.end = end;
         segment.length = segment.line.start.DistanceTo(segment.line.end);
         segment.is_point = is_point;
-        if (segment.length <= kEpsilon && !segment.is_point) {
+        if (segment.length <= kGeometryEpsilon && !segment.is_point) {
             return;
         }
         result.path.segments.push_back(segment);
@@ -83,7 +161,7 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
         segment.type = SegmentType::Arc;
         segment.arc = arc;
         segment.length = ComputeArcLength(segment.arc);
-        if (segment.length <= kEpsilon) {
+        if (segment.length <= kGeometryEpsilon) {
             return;
         }
         result.path.segments.push_back(segment);
@@ -97,35 +175,12 @@ NormalizedPath GeometryNormalizer::Normalize(const std::vector<Primitive>& primi
     auto append_ellipse_segments = [&](const EllipsePrimitive& ellipse) {
         float32 a = ellipse.major_axis.Length();
         float32 b = a * ellipse.ratio;
-        if (a <= kEpsilon || b <= kEpsilon) {
+        if (a <= kGeometryEpsilon || b <= kGeometryEpsilon) {
             return;
         }
         float32 start = ellipse.start_param;
-        float32 end = ellipse.end_param;
-        if (std::abs(end - start) <= kEpsilon) {
-            end = start + 2.0f * kPi;
-        }
-        float32 sweep = end - start;
-        if (ellipse.clockwise) {
-            if (sweep > 0.0f) {
-                sweep -= 2.0f * kPi;
-            }
-        } else {
-            if (sweep < 0.0f) {
-                sweep += 2.0f * kPi;
-            }
-        }
-        float32 perimeter = EstimateEllipsePerimeter(a, b);
-        float32 length_est = perimeter * (std::abs(sweep) / (2.0f * kPi));
-        float32 step_mm = (config.curve_flatten_max_step_mm > kEpsilon) ? config.curve_flatten_max_step_mm : 1.0f;
-        if (step_mm <= kEpsilon) {
-            step_mm = 1.0f;
-        }
-        constexpr float32 kMinEllipseStepMm = 0.01f;
-        if (step_mm < kMinEllipseStepMm) {
-            step_mm = kMinEllipseStepMm;
-        }
-        size_t segments = static_cast<size_t>(std::max(4.0f, std::ceil(length_est / step_mm)));
+        const float32 sweep = ResolveEllipseSweep(ellipse);
+        const size_t segments = EstimateEllipseSegmentCount(ellipse, config);
         float32 step = (segments > 0) ? (sweep / static_cast<float32>(segments)) : sweep;
         Point2D prev = EllipsePoint(ellipse, start);
         for (size_t i = 1; i <= segments; ++i) {

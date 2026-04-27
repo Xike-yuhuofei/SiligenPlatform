@@ -38,7 +38,6 @@ class SinglePrimitivePathSourceStub final : public IPathSourcePort {
         loaded_paths.push_back(filepath);
 
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(primitive_);
 
         PathPrimitiveMeta meta;

@@ -20,7 +20,7 @@ using Siligen::Shared::Types::kDegToRad;
 using Siligen::Shared::Types::kRadToDeg;
 
 namespace {
-constexpr float32 kEpsilon = 1e-6f;
+using Siligen::ProcessPath::Contracts::kGeometryEpsilon;
 
 struct ResolvedConfig {
     float32 collinear_angle_tolerance_deg = 0.5f;
@@ -114,11 +114,11 @@ float32 ClampNonNegative(float32 value) {
 
 Point2D CanonicalDirection(const Point2D& delta) {
     float32 len = delta.Length();
-    if (len <= kEpsilon) {
+    if (len <= kGeometryEpsilon) {
         return Point2D(0.0f, 0.0f);
     }
     Point2D dir = delta / len;
-    if (dir.x < -kEpsilon || (std::abs(dir.x) <= kEpsilon && dir.y < 0.0f)) {
+    if (dir.x < -kGeometryEpsilon || (std::abs(dir.x) <= kGeometryEpsilon && dir.y < 0.0f)) {
         dir = dir * -1.0f;
     }
     return dir;
@@ -148,7 +148,7 @@ struct EndpointIndexHasher {
 
 struct EndpointIndex {
     explicit EndpointIndex(float32 cell_size)
-        : cell_size_(std::max(cell_size, kEpsilon)),
+        : cell_size_(std::max(cell_size, kGeometryEpsilon)),
           inv_cell_size_(1.0f / cell_size_) {}
 
     EndpointIndexKey ToKey(const Point2D& point) const {
@@ -233,13 +233,13 @@ ResolvedConfig ResolveConfig(const std::vector<DXFSegment>& segments,
     }
 
     auto resolve_tol = [&](float32 value, float32 fallback) {
-        if (value > kEpsilon) {
+        if (value > kGeometryEpsilon) {
             return value;
         }
-        if (fallback > kEpsilon) {
+        if (fallback > kGeometryEpsilon) {
             return fallback;
         }
-        return kEpsilon;
+        return kGeometryEpsilon;
     };
 
     resolved.collinear_distance_tolerance =
@@ -254,16 +254,16 @@ ResolvedConfig ResolveConfig(const std::vector<DXFSegment>& segments,
     resolved.arc_radius_tolerance =
         resolve_tol(config.arc_radius_tolerance, base_tol * 2.0f);
     resolved.arc_gap_tolerance_deg =
-        (config.arc_gap_tolerance_deg > kEpsilon)
+        (config.arc_gap_tolerance_deg > kGeometryEpsilon)
             ? config.arc_gap_tolerance_deg
             : resolved.collinear_angle_tolerance_deg;
 
-    if (resolved.collinear_angle_tolerance_deg <= kEpsilon) {
+    if (resolved.collinear_angle_tolerance_deg <= kGeometryEpsilon) {
         resolved.cos_threshold = 1.0f;
     } else {
         resolved.cos_threshold = std::cos(resolved.collinear_angle_tolerance_deg * kDegToRad);
     }
-    if (diag <= kEpsilon) {
+    if (diag <= kGeometryEpsilon) {
         diag = 1.0f;
     }
     resolved.line_probe_length = diag * 2.0f;
@@ -298,12 +298,12 @@ std::vector<DXFSegment> MergeCollinearLines(const std::vector<DXFSegment>& lines
     for (const auto& line : lines) {
         Point2D delta = line.end_point - line.start_point;
         float32 length = delta.Length();
-        if (length <= std::max(kEpsilon, config.min_line_length)) {
+        if (length <= std::max(kGeometryEpsilon, config.min_line_length)) {
             continue;
         }
 
         Point2D dir = CanonicalDirection(delta);
-        if (dir.Length() <= kEpsilon) {
+        if (dir.Length() <= kGeometryEpsilon) {
             continue;
         }
         Point2D normal(-dir.y, dir.x);
@@ -311,7 +311,7 @@ std::vector<DXFSegment> MergeCollinearLines(const std::vector<DXFSegment>& lines
 
         LineGroup* selected = nullptr;
         size_t selected_index = 0;
-        if (config.enable_bucket_acceleration && angle_tol > kEpsilon && distance_tol > kEpsilon) {
+        if (config.enable_bucket_acceleration && angle_tol > kGeometryEpsilon && distance_tol > kGeometryEpsilon) {
             float32 angle_deg = std::atan2(dir.y, dir.x) * kRadToDeg;
             int angle_bucket = static_cast<int>(std::llround(angle_deg / angle_tol));
             int offset_bucket = static_cast<int>(std::llround(offset / distance_tol));
@@ -363,13 +363,13 @@ std::vector<DXFSegment> MergeCollinearLines(const std::vector<DXFSegment>& lines
             group.dir = dir;
             group.normal = normal;
             group.offset = offset;
-            const float32 probe_len = std::max(config.line_probe_length, kEpsilon);
+            const float32 probe_len = std::max(config.line_probe_length, kGeometryEpsilon);
             group.probe_start = line.start_point - dir * probe_len;
             group.probe_end = line.start_point + dir * probe_len;
             groups.push_back(std::move(group));
             selected_index = groups.size() - 1;
             selected = &groups.back();
-            if (config.enable_bucket_acceleration && angle_tol > kEpsilon && distance_tol > kEpsilon) {
+            if (config.enable_bucket_acceleration && angle_tol > kGeometryEpsilon && distance_tol > kGeometryEpsilon) {
                 float32 angle_deg = std::atan2(dir.y, dir.x) * kRadToDeg;
                 int angle_bucket = static_cast<int>(std::llround(angle_deg / angle_tol));
                 int offset_bucket = static_cast<int>(std::llround(offset / distance_tol));
@@ -415,11 +415,11 @@ std::vector<DXFSegment> MergeCollinearLines(const std::vector<DXFSegment>& lines
                     sxy += dx0 * dy0 + dx1 * dy1;
                     syy += dy0 * dy0 + dy1 * dy1;
                 }
-                if (std::abs(sxx) > kEpsilon || std::abs(syy) > kEpsilon) {
+                if (std::abs(sxx) > kGeometryEpsilon || std::abs(syy) > kGeometryEpsilon) {
                     const double angle = 0.5 * std::atan2(2.0 * sxy, sxx - syy);
                     Point2D dir(static_cast<float32>(std::cos(angle)),
                                 static_cast<float32>(std::sin(angle)));
-                    if (dir.Length() > kEpsilon) {
+                    if (dir.Length() > kGeometryEpsilon) {
                         if (dir.Dot(group.dir) < 0.0f) {
                             dir = dir * -1.0f;
                         }
@@ -463,7 +463,7 @@ std::vector<DXFSegment> MergeCollinearLines(const std::vector<DXFSegment>& lines
 
         for (const auto& interval : merged) {
             float32 length = interval.second - interval.first;
-            if (length <= std::max(kEpsilon, config.min_line_length)) {
+            if (length <= std::max(kGeometryEpsilon, config.min_line_length)) {
                 continue;
             }
             DXFSegment segment;
@@ -645,7 +645,7 @@ bool FitCircleTaubin(const std::vector<Point2D>& points, Point2D& center, float3
     center = Point2D(static_cast<float32>(center_x + mean_x),
                      static_cast<float32>(center_y + mean_y));
     radius = static_cast<float32>(std::sqrt(radius_sq));
-    return radius > kEpsilon;
+    return radius > kGeometryEpsilon;
 }
 
 Point2D ComputeArcMidPoint(const DXFSegment& arc) {
@@ -668,13 +668,13 @@ std::vector<DXFSegment> MergeCoCircularArcs(const std::vector<DXFSegment>& arcs,
     const float32 center_tol_sq = center_tol * center_tol;
 
     for (const auto& arc : arcs) {
-        if (arc.type != DXFSegmentType::ARC || arc.radius <= kEpsilon) {
+        if (arc.type != DXFSegmentType::ARC || arc.radius <= kGeometryEpsilon) {
             continue;
         }
         ArcGroup* selected = nullptr;
         size_t selected_index = 0;
 
-        if (config.enable_bucket_acceleration && center_tol > kEpsilon && radius_tol > kEpsilon) {
+        if (config.enable_bucket_acceleration && center_tol > kGeometryEpsilon && radius_tol > kGeometryEpsilon) {
             int cx_bucket = static_cast<int>(std::llround(arc.center_point.x / center_tol));
             int cy_bucket = static_cast<int>(std::llround(arc.center_point.y / center_tol));
             int r_bucket = static_cast<int>(std::llround(arc.radius / radius_tol));
@@ -731,7 +731,7 @@ std::vector<DXFSegment> MergeCoCircularArcs(const std::vector<DXFSegment>& arcs,
             groups.push_back(std::move(group));
             selected_index = groups.size() - 1;
             selected = &groups.back();
-            if (config.enable_bucket_acceleration && center_tol > kEpsilon && radius_tol > kEpsilon) {
+            if (config.enable_bucket_acceleration && center_tol > kGeometryEpsilon && radius_tol > kGeometryEpsilon) {
                 int cx_bucket = static_cast<int>(std::llround(arc.center_point.x / center_tol));
                 int cy_bucket = static_cast<int>(std::llround(arc.center_point.y / center_tol));
                 int r_bucket = static_cast<int>(std::llround(arc.radius / radius_tol));
@@ -743,7 +743,7 @@ std::vector<DXFSegment> MergeCoCircularArcs(const std::vector<DXFSegment>& arcs,
         selected->segments.push_back(arc);
         selected->samples.push_back(arc.start_point);
         selected->samples.push_back(arc.end_point);
-        if (arc.radius > kEpsilon) {
+        if (arc.radius > kGeometryEpsilon) {
             selected->samples.push_back(ComputeArcMidPoint(arc));
         }
     }
@@ -801,7 +801,7 @@ std::vector<DXFSegment> MergeCoCircularArcs(const std::vector<DXFSegment>& arcs,
 
         for (const auto& interval : merged) {
             float32 sweep = interval.end_deg - interval.start_deg;
-            if (sweep <= kEpsilon) {
+            if (sweep <= kGeometryEpsilon) {
                 continue;
             }
             DXFSegment arc;
@@ -1049,7 +1049,7 @@ RegularizedPath PathRegularizer::Regularize(const std::vector<DXFSegment>& segme
         merged_segments.push_back(seg);
     }
 
-    const float32 tolerance = std::max(resolved.connectivity_tolerance, kEpsilon);
+    const float32 tolerance = std::max(resolved.connectivity_tolerance, kGeometryEpsilon);
     result.contours = BuildContours(merged_segments, tolerance, result.report);
     return result;
 }

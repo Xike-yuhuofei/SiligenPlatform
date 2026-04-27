@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -17,13 +19,14 @@ using Siligen::ProcessPath::Contracts::ComputeArcSweep;
 using Siligen::ProcessPath::Contracts::EllipsePoint;
 using Siligen::ProcessPath::Contracts::NormalizeAngle;
 using Siligen::ProcessPath::Contracts::TopologyRepairPolicy;
+using Siligen::ProcessPath::Contracts::LinePrimitive;
 using Siligen::ProcessPath::Contracts::PrimitiveType;
 using Siligen::Shared::Geometry::Distance;
 using Siligen::Shared::Types::Point2D;
 
 namespace {
 
-constexpr float32 kEpsilon = 1e-6f;
+using Siligen::ProcessPath::Contracts::kGeometryEpsilon;
 
 Point2D ContourElementStartPoint(const Siligen::ProcessPath::Contracts::ContourElement& element) {
     using Siligen::ProcessPath::Contracts::ContourElementType;
@@ -200,7 +203,7 @@ bool FormsImmediateLineBacktrack(const ContractsPrimitive& previous,
     const auto next_vec = next.line.end - next.line.start;
     const float32 prev_len = prev_vec.Length();
     const float32 next_len = next_vec.Length();
-    if (prev_len <= kEpsilon || next_len <= kEpsilon) {
+    if (prev_len <= kGeometryEpsilon || next_len <= kGeometryEpsilon) {
         return false;
     }
 
@@ -208,7 +211,7 @@ bool FormsImmediateLineBacktrack(const ContractsPrimitive& previous,
         return false;
     }
 
-    const float32 normalized_cross = std::abs(prev_vec.Cross(next_vec)) / std::max(kEpsilon, prev_len * next_len);
+    const float32 normalized_cross = std::abs(prev_vec.Cross(next_vec)) / std::max(kGeometryEpsilon, prev_len * next_len);
     const float32 normalized_dot = prev_vec.Dot(next_vec) / (prev_len * next_len);
     return normalized_cross <= 1e-3f && normalized_dot < -0.95f;
 }
@@ -253,10 +256,121 @@ struct SplitLineResult {
     std::vector<PathPrimitiveMeta> metadata;
     int original_count = 0;
     int split_count = 0;
+    int candidate_pairs = 0;
+    int tested_pairs = 0;
     int intersection_pairs = 0;
     int collinear_pairs = 0;
     bool applied = false;
 };
+
+struct LineAabb {
+    float32 min_x = 0.0f;
+    float32 min_y = 0.0f;
+    float32 max_x = 0.0f;
+    float32 max_y = 0.0f;
+};
+
+struct GridCellKey {
+    int x = 0;
+    int y = 0;
+
+    bool operator==(const GridCellKey& other) const {
+        return x == other.x && y == other.y;
+    }
+};
+
+struct GridCellHasher {
+    size_t operator()(const GridCellKey& key) const {
+        return (static_cast<size_t>(static_cast<std::uint32_t>(key.x)) << 32) ^
+               static_cast<size_t>(static_cast<std::uint32_t>(key.y));
+    }
+};
+
+LineAabb BuildLineAabb(const LinePrimitive& line, float32 tolerance) {
+    const float32 expansion = std::max(tolerance, kGeometryEpsilon);
+    LineAabb box;
+    box.min_x = std::min(line.start.x, line.end.x) - expansion;
+    box.min_y = std::min(line.start.y, line.end.y) - expansion;
+    box.max_x = std::max(line.start.x, line.end.x) + expansion;
+    box.max_y = std::max(line.start.y, line.end.y) + expansion;
+    return box;
+}
+
+bool AabbOverlaps(const LineAabb& lhs, const LineAabb& rhs) {
+    return lhs.min_x <= rhs.max_x && lhs.max_x >= rhs.min_x &&
+           lhs.min_y <= rhs.max_y && lhs.max_y >= rhs.min_y;
+}
+
+std::vector<GridCellKey> CoveredCells(const LineAabb& box, float32 cell_size) {
+    const float32 inv_cell_size = 1.0f / std::max(cell_size, kGeometryEpsilon);
+    const int min_x = static_cast<int>(std::floor(box.min_x * inv_cell_size));
+    const int min_y = static_cast<int>(std::floor(box.min_y * inv_cell_size));
+    const int max_x = static_cast<int>(std::floor(box.max_x * inv_cell_size));
+    const int max_y = static_cast<int>(std::floor(box.max_y * inv_cell_size));
+
+    std::vector<GridCellKey> cells;
+    cells.reserve(static_cast<size_t>((max_x - min_x + 1) * (max_y - min_y + 1)));
+    for (int x = min_x; x <= max_x; ++x) {
+        for (int y = min_y; y <= max_y; ++y) {
+            cells.push_back({x, y});
+        }
+    }
+    return cells;
+}
+
+std::uint64_t PackPairKey(size_t lhs, size_t rhs) {
+    if (lhs > rhs) {
+        std::swap(lhs, rhs);
+    }
+    return (static_cast<std::uint64_t>(lhs) << 32) ^ static_cast<std::uint64_t>(rhs);
+}
+
+float32 ResolveIntersectionGridCellSize(const std::vector<LineAabb>& boxes, float32 tolerance) {
+    if (boxes.empty()) {
+        return std::max(tolerance, 1.0f);
+    }
+    double total_extent = 0.0;
+    for (const auto& box : boxes) {
+        total_extent += static_cast<double>(std::max(box.max_x - box.min_x, box.max_y - box.min_y));
+    }
+    const float32 average_extent = static_cast<float32>(total_extent / static_cast<double>(boxes.size()));
+    return std::max({tolerance * 8.0f, average_extent, 1.0f});
+}
+
+std::vector<std::pair<size_t, size_t>> BuildLineIntersectionCandidates(
+    const std::vector<ContractsPrimitive>& primitives,
+    const std::vector<LineAabb>& boxes,
+    float32 tolerance) {
+    std::vector<std::pair<size_t, size_t>> candidates;
+    std::unordered_map<GridCellKey, std::vector<size_t>, GridCellHasher> grid;
+    std::unordered_set<std::uint64_t> seen_pairs;
+    grid.reserve(primitives.size() * 2U);
+    seen_pairs.reserve(primitives.size() * 2U);
+
+    const float32 cell_size = ResolveIntersectionGridCellSize(boxes, tolerance);
+    for (size_t i = 0; i < primitives.size(); ++i) {
+        const auto cells = CoveredCells(boxes[i], cell_size);
+        for (const auto& cell : cells) {
+            auto found = grid.find(cell);
+            if (found == grid.end()) {
+                continue;
+            }
+            for (size_t j : found->second) {
+                const std::uint64_t pair_key = PackPairKey(i, j);
+                if (!seen_pairs.insert(pair_key).second) {
+                    continue;
+                }
+                if (AabbOverlaps(boxes[i], boxes[j])) {
+                    candidates.emplace_back(j, i);
+                }
+            }
+        }
+        for (const auto& cell : cells) {
+            grid[cell].push_back(i);
+        }
+    }
+    return candidates;
+}
 
 SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<ContractsPrimitive>& primitives,
                                                   const std::vector<PathPrimitiveMeta>& metadata,
@@ -280,42 +394,51 @@ SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<ContractsPri
         split_points[i].push_back(primitives[i].line.end);
     }
 
-    for (size_t i = 0; i < count; ++i) {
+    std::vector<LineAabb> boxes;
+    boxes.reserve(count);
+    for (const auto& primitive : primitives) {
+        boxes.push_back(BuildLineAabb(primitive.line, tolerance));
+    }
+
+    const auto candidate_pairs = BuildLineIntersectionCandidates(primitives, boxes, tolerance);
+    result.candidate_pairs = static_cast<int>(candidate_pairs.size());
+    for (const auto& candidate : candidate_pairs) {
+        const size_t i = candidate.first;
+        const size_t j = candidate.second;
         const auto& a = primitives[i].line.start;
         const auto& b = primitives[i].line.end;
-        for (size_t j = i + 1; j < count; ++j) {
-            const auto& c = primitives[j].line.start;
-            const auto& d = primitives[j].line.end;
+        const auto& c = primitives[j].line.start;
+        const auto& d = primitives[j].line.end;
 
-            bool collinear = false;
-            Point2D intersection;
-            if (Siligen::Shared::Geometry::ComputeSegmentIntersection(a, b, c, d, tolerance, intersection, collinear)) {
-                split_points[i].push_back(intersection);
-                split_points[j].push_back(intersection);
-                result.intersection_pairs += 1;
-                continue;
+        result.tested_pairs += 1;
+        bool collinear = false;
+        Point2D intersection;
+        if (Siligen::Shared::Geometry::ComputeSegmentIntersection(a, b, c, d, tolerance, intersection, collinear)) {
+            split_points[i].push_back(intersection);
+            split_points[j].push_back(intersection);
+            result.intersection_pairs += 1;
+            continue;
+        }
+        if (collinear) {
+            bool added = false;
+            if (Siligen::Shared::Geometry::IsPointOnSegment(c, a, b, tolerance)) {
+                split_points[i].push_back(c);
+                added = true;
             }
-            if (collinear) {
-                bool added = false;
-                if (Siligen::Shared::Geometry::IsPointOnSegment(c, a, b, tolerance)) {
-                    split_points[i].push_back(c);
-                    added = true;
-                }
-                if (Siligen::Shared::Geometry::IsPointOnSegment(d, a, b, tolerance)) {
-                    split_points[i].push_back(d);
-                    added = true;
-                }
-                if (Siligen::Shared::Geometry::IsPointOnSegment(a, c, d, tolerance)) {
-                    split_points[j].push_back(a);
-                    added = true;
-                }
-                if (Siligen::Shared::Geometry::IsPointOnSegment(b, c, d, tolerance)) {
-                    split_points[j].push_back(b);
-                    added = true;
-                }
-                if (added) {
-                    result.collinear_pairs += 1;
-                }
+            if (Siligen::Shared::Geometry::IsPointOnSegment(d, a, b, tolerance)) {
+                split_points[i].push_back(d);
+                added = true;
+            }
+            if (Siligen::Shared::Geometry::IsPointOnSegment(a, c, d, tolerance)) {
+                split_points[j].push_back(a);
+                added = true;
+            }
+            if (Siligen::Shared::Geometry::IsPointOnSegment(b, c, d, tolerance)) {
+                split_points[j].push_back(b);
+                added = true;
+            }
+            if (added) {
+                result.collinear_pairs += 1;
             }
         }
     }
@@ -327,7 +450,7 @@ SplitLineResult SplitLinePrimitivesByIntersection(const std::vector<ContractsPri
         const Point2D end = primitives[i].line.end;
         const Point2D dir = end - start;
         const float32 len2 = dir.Dot(dir);
-        if (len2 <= kEpsilon) {
+        if (len2 <= kGeometryEpsilon) {
             continue;
         }
 
@@ -674,7 +797,7 @@ std::vector<SegmentWithDirection> OptimizeContoursByNearestNeighbor(
         }
         const float32 last_length = last_direction.Length();
         const float32 candidate_length = candidate_direction.Length();
-        if (last_length <= kEpsilon || candidate_length <= kEpsilon) {
+        if (last_length <= kGeometryEpsilon || candidate_length <= kGeometryEpsilon) {
             return 0.0f;
         }
         const Point2D n1 = last_direction / last_length;
@@ -686,13 +809,13 @@ std::vector<SegmentWithDirection> OptimizeContoursByNearestNeighbor(
         return (cos_threshold - dot) / (cos_threshold + 1.0f);
     };
     auto immediate_backtrack_penalty = [&](const Point2D& entry_point, const Point2D& candidate_direction) -> float32 {
-        if (!has_last_direction || Distance(current, entry_point) > kEpsilon) {
+        if (!has_last_direction || Distance(current, entry_point) > kGeometryEpsilon) {
             return 0.0f;
         }
 
         const float32 last_length = last_direction.Length();
         const float32 candidate_length = candidate_direction.Length();
-        if (last_length <= kEpsilon || candidate_length <= kEpsilon) {
+        if (last_length <= kGeometryEpsilon || candidate_length <= kGeometryEpsilon) {
             return 0.0f;
         }
 
@@ -744,7 +867,7 @@ std::vector<SegmentWithDirection> OptimizeContoursByNearestNeighbor(
         last_direction = reversed
             ? (segments[nearest_index].start_point - segments[nearest_index].end_point)
             : (segments[nearest_index].end_point - segments[nearest_index].start_point);
-        has_last_direction = last_direction.Length() > kEpsilon;
+        has_last_direction = last_direction.Length() > kGeometryEpsilon;
     }
 
     return order;
@@ -783,7 +906,7 @@ std::vector<SegmentWithDirection> TwoOptImproveContourOrder(
                     new_distance += DistanceCost(get_exit_point(reversed_i1), get_entry_point(order[j + 1]));
                 }
 
-                if (new_distance + kEpsilon < old_distance) {
+                if (new_distance + kGeometryEpsilon < old_distance) {
                     std::reverse(order.begin() + static_cast<std::ptrdiff_t>(i + 1),
                                  order.begin() + static_cast<std::ptrdiff_t>(j + 1));
                     for (size_t index = i + 1; index <= j; ++index) {
@@ -887,7 +1010,7 @@ TopologyRepairResult TopologyRepairService::Repair(const std::vector<ContractsPr
     result.diagnostics.repaired_primitive_count = static_cast<int>(primitives.size());
     result.diagnostics.metadata_valid = IsMetadataValid(primitives, metadata);
 
-    const float32 tolerance = continuity_tolerance_mm > kEpsilon ? continuity_tolerance_mm : 0.1f;
+    const float32 tolerance = continuity_tolerance_mm > kGeometryEpsilon ? continuity_tolerance_mm : 0.1f;
     result.diagnostics.discontinuity_before = CountPrimitiveDiscontinuity(primitives, tolerance);
     result.diagnostics.discontinuity_after = result.diagnostics.discontinuity_before;
 
@@ -899,8 +1022,11 @@ TopologyRepairResult TopologyRepairService::Repair(const std::vector<ContractsPr
 
     if (config.split_intersections && IsMetadataValid(result.primitives, result.metadata)) {
         const auto split = SplitLinePrimitivesByIntersection(result.primitives, result.metadata, tolerance);
+        result.diagnostics.intersection_candidate_pairs = split.candidate_pairs;
+        result.diagnostics.intersection_tested_pairs = split.tested_pairs;
         result.diagnostics.intersection_pairs = split.intersection_pairs;
         result.diagnostics.collinear_pairs = split.collinear_pairs;
+        result.diagnostics.split_segment_count = split.split_count;
         if (split.applied && !split.primitives.empty()) {
             result.primitives = split.primitives;
             result.metadata = split.metadata;

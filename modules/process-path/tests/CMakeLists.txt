@@ -10,6 +10,7 @@ set(PROCESS_PATH_TEST_SOURCES
     regression/TopologyRepairContourOrderingRegressionTest.cpp
     regression/TopologyRepairNoOpRegressionTest.cpp
     unit/domain/trajectory/PathRegularizerTest.cpp
+    unit/domain/trajectory/ProcessPathGeometryConvergenceTest.cpp
     unit/domain/trajectory/TrajectoryShaperTest.cpp
     unit/application/services/process_path/AlignmentSemanticTest.cpp
     unit/application/services/process_path/FinalPathDiagnosticsTest.cpp

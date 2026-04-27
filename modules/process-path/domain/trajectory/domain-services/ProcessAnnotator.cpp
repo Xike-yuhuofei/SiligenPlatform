@@ -25,10 +25,10 @@ using Siligen::Shared::Types::Point2D;
 using Siligen::Shared::Types::kRadToDeg;
 
 namespace {
-constexpr float32 kEpsilon = 1e-6f;
+using Siligen::ProcessPath::Contracts::kGeometryEpsilon;
 
 float32 SegmentLength(const Segment& segment) {
-    if (segment.length > kEpsilon) {
+    if (segment.length > kGeometryEpsilon) {
         return segment.length;
     }
     if (segment.type == SegmentType::Line) {
@@ -41,7 +41,7 @@ bool IsCurveChainCandidate(const Segment& prev_seg,
                            const Segment& curr_seg,
                            float32 angle_deg,
                            const ProcessConfig& config) {
-    if (config.curve_chain_angle_deg <= kEpsilon || config.curve_chain_max_segment_mm <= kEpsilon) {
+    if (config.curve_chain_angle_deg <= kGeometryEpsilon || config.curve_chain_max_segment_mm <= kGeometryEpsilon) {
         return false;
     }
     if (prev_seg.type != SegmentType::Line || curr_seg.type != SegmentType::Line) {
@@ -108,7 +108,7 @@ Segment MakeLineSegment(const Point2D& start, const Point2D& end) {
 Segment SplitArcSegment(const Segment& arc_seg, float32 split_dist, bool first_part) {
     Segment seg = arc_seg;
     float32 length = SegmentLength(arc_seg);
-    if (length <= kEpsilon || arc_seg.type != SegmentType::Arc) {
+    if (length <= kGeometryEpsilon || arc_seg.type != SegmentType::Arc) {
         return seg;
     }
     float32 ratio = Clamp(split_dist / length, 0.0f, 1.0f);
@@ -141,11 +141,11 @@ ProcessPath ProcessAnnotator::Annotate(const Path& path, const ProcessConfig& co
     std::vector<Segment> segments = path.segments;
 
     // lead-on segment
-    if (config.approach_dist > kEpsilon) {
+    if (config.approach_dist > kGeometryEpsilon) {
         const Segment& first = segments.front();
         Point2D start = SegmentStart(first);
         Point2D dir = SegmentTangentAtStart(first);
-        if (dir.Length() > kEpsilon) {
+        if (dir.Length() > kGeometryEpsilon) {
             Point2D lead_start = start - dir * config.approach_dist;
             ProcessSegment lead_seg;
             lead_seg.geometry = MakeLineSegment(lead_start, start);
@@ -160,7 +160,7 @@ ProcessPath ProcessAnnotator::Annotate(const Path& path, const ProcessConfig& co
     for (size_t i = 0; i < segments.size(); ++i) {
         Segment seg = segments[i];
         float32 length = SegmentLength(seg);
-        if (length <= kEpsilon && !seg.is_point) {
+        if (length <= kGeometryEpsilon && !seg.is_point) {
             continue;
         }
 
@@ -204,7 +204,7 @@ ProcessPath ProcessAnnotator::Annotate(const Path& path, const ProcessConfig& co
             }
         }
 
-        if (i == segments.size() - 1 && config.lead_off_dist > kEpsilon && length > config.lead_off_dist) {
+        if (i == segments.size() - 1 && config.lead_off_dist > kGeometryEpsilon && length > config.lead_off_dist) {
             float32 split_dist = length - config.lead_off_dist;
             ProcessSegment main_seg;
             ProcessSegment tail_seg;

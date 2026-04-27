@@ -12,8 +12,6 @@ namespace Siligen::ProcessPath::Contracts {
 using Siligen::Shared::Types::Result;
 
 struct PathSourceResult {
-    bool success = false;
-    std::string error_message;
     std::vector<Primitive> primitives;
     std::vector<PathPrimitiveMeta> metadata;
 };

@@ -1,4 +1,4 @@
-#include "../../../../domain/trajectory/domain-services/TrajectoryShaper.h"
+#include "domain/trajectory/domain-services/TrajectoryShaper.h"
 #include "process_path/contracts/GeometryUtils.h"
 
 #include <gtest/gtest.h>

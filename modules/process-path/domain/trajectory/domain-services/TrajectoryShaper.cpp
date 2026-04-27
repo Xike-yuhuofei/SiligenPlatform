@@ -10,9 +10,11 @@ namespace Siligen::Domain::Trajectory::DomainServices {
 using Siligen::ProcessPath::Contracts::ArcPoint;
 using Siligen::ProcessPath::Contracts::ArcPrimitive;
 using Siligen::ProcessPath::Contracts::ArcTangent;
+using Siligen::ProcessPath::Contracts::ArcTangentAt;
 using Siligen::ProcessPath::Contracts::Clamp;
 using Siligen::ProcessPath::Contracts::ComputeArcLength;
 using Siligen::ProcessPath::Contracts::ComputeArcSweep;
+using Siligen::ProcessPath::Contracts::IsAngleOnArc;
 using Siligen::ProcessPath::Contracts::LineDirection;
 using Siligen::ProcessPath::Contracts::LinePrimitive;
 using Siligen::ProcessPath::Contracts::NormalizeAngle;
@@ -27,24 +29,10 @@ using Siligen::ProcessPath::Contracts::SegmentType;
 using Siligen::Shared::Types::Point2D;
 
 namespace {
-constexpr float32 kEpsilon = 1e-6f;
+using Siligen::ProcessPath::Contracts::kGeometryEpsilon;
 constexpr float32 kPi = 3.14159265359f;
 constexpr float32 kDegToRad = kPi / 180.0f;
 constexpr float32 kRadToDeg = 180.0f / kPi;
-
-Point2D ArcTangentAt(float32 angle_deg, bool clockwise) {
-    float32 angle_rad = angle_deg * kDegToRad;
-    if (clockwise) {
-        return Point2D(std::sin(angle_rad), -std::cos(angle_rad));
-    }
-    return Point2D(-std::sin(angle_rad), std::cos(angle_rad));
-}
-
-bool IsAngleOnArc(const ArcPrimitive& arc, float32 angle_deg) {
-    float32 total = ComputeArcSweep(arc.start_angle_deg, arc.end_angle_deg, arc.clockwise);
-    float32 sweep = ComputeArcSweep(arc.start_angle_deg, angle_deg, arc.clockwise);
-    return sweep <= total + 1e-3f;
-}
 
 struct LineArcBlendSolution {
     Point2D center{};
@@ -69,7 +57,7 @@ int LineCircleIntersections(const Point2D& line_point,
     float32 b = 2.0f * f.Dot(line_dir);
     float32 c = f.Dot(f) - radius * radius;
     float32 disc = b * b - 4.0f * c;
-    if (disc < -kEpsilon) {
+    if (disc < -kGeometryEpsilon) {
         return 0;
     }
     float32 sqrt_disc = std::sqrt(std::max(0.0f, disc));
@@ -77,7 +65,7 @@ int LineCircleIntersections(const Point2D& line_point,
     float32 t2 = (-b + sqrt_disc) * 0.5f;
     out_a = line_point + line_dir * t1;
     out_b = line_point + line_dir * t2;
-    if (disc <= kEpsilon) {
+    if (disc <= kGeometryEpsilon) {
         return 1;
     }
     return 2;
@@ -105,7 +93,7 @@ bool EvaluateLineArcCandidate(const Point2D& center,
 
     Point2D v = center - arc.center;
     float32 dist = v.Length();
-    if (dist <= kEpsilon) {
+    if (dist <= kGeometryEpsilon) {
         return false;
     }
     Point2D arc_point = arc.center + v * (arc.radius / dist);
@@ -171,17 +159,17 @@ bool FindLineArcBlendSolution(const LinePrimitive& line,
                               const TrajectoryShaperConfig& config,
                               LineArcBlendSolution& best_solution) {
     float32 line_length = line.start.DistanceTo(line.end);
-    if (line_length <= kEpsilon || arc.radius <= kEpsilon) {
+    if (line_length <= kGeometryEpsilon || arc.radius <= kGeometryEpsilon) {
         return false;
     }
 
     float32 arc_length = ComputeArcLength(arc);
-    if (arc_length <= kEpsilon) {
+    if (arc_length <= kGeometryEpsilon) {
         return false;
     }
 
     Point2D line_dir = LineDirection(line);
-    if (line_dir.Length() <= kEpsilon) {
+    if (line_dir.Length() <= kGeometryEpsilon) {
         return false;
     }
 
@@ -202,7 +190,7 @@ bool FindLineArcBlendSolution(const LinePrimitive& line,
 
     float32 radius = config.corner_smoothing_radius;
     float32 deviation_denom = 1.0f - std::cos(angle * 0.5f);
-    if (config.corner_max_deviation_mm > kEpsilon && deviation_denom > kEpsilon) {
+    if (config.corner_max_deviation_mm > kGeometryEpsilon && deviation_denom > kGeometryEpsilon) {
         radius = std::min(radius, config.corner_max_deviation_mm / deviation_denom);
     }
     if (radius < config.corner_min_radius_mm) {
@@ -219,7 +207,7 @@ bool FindLineArcBlendSolution(const LinePrimitive& line,
 
     for (const auto& offset_point : offset_points) {
         for (float32 dist : dist_candidates) {
-            if (dist <= kEpsilon) {
+            if (dist <= kGeometryEpsilon) {
                 continue;
             }
             Point2D i0;
@@ -311,7 +299,7 @@ bool CanBlendLineLine(const ProcessSegment& prev,
     Point2D v2 = next.geometry.line.end - next.geometry.line.start;
     float32 len1 = v1.Length();
     float32 len2 = v2.Length();
-    if (len1 < kEpsilon || len2 < kEpsilon) {
+    if (len1 < kGeometryEpsilon || len2 < kGeometryEpsilon) {
         return false;
     }
 
@@ -327,7 +315,7 @@ bool CanBlendLineLine(const ProcessSegment& prev,
 
     float32 radius = config.corner_smoothing_radius;
     float32 deviation_denom = 1.0f - std::cos(angle * 0.5f);
-    if (config.corner_max_deviation_mm > kEpsilon && deviation_denom > kEpsilon) {
+    if (config.corner_max_deviation_mm > kGeometryEpsilon && deviation_denom > kGeometryEpsilon) {
         radius = std::min(radius, config.corner_max_deviation_mm / deviation_denom);
     }
 
@@ -337,7 +325,7 @@ bool CanBlendLineLine(const ProcessSegment& prev,
 
     float32 half_angle = angle * 0.5f;
     float32 tan_half = std::tan(half_angle);
-    if (tan_half <= kEpsilon) {
+    if (tan_half <= kGeometryEpsilon) {
         return false;
     }
 
@@ -359,7 +347,7 @@ bool CanBlendLineLine(const ProcessSegment& prev,
     // center outside the corner and can produce a major arc sweep.
     Point2D bis = (dir2 - dir1);
     float32 bis_len = bis.Length();
-    if (bis_len < kEpsilon) {
+    if (bis_len < kGeometryEpsilon) {
         return false;
     }
     bis = bis / bis_len;
@@ -520,7 +508,7 @@ bool AreCollinearLines(const LinePrimitive& a, const LinePrimitive& b, float32 t
     Point2D dir2 = b.end - b.start;
     float32 len1 = dir1.Length();
     float32 len2 = dir2.Length();
-    if (len1 <= kEpsilon || len2 <= kEpsilon) {
+    if (len1 <= kGeometryEpsilon || len2 <= kGeometryEpsilon) {
         return false;
     }
     float32 cross_dir = std::abs(dir1.Cross(dir2));
