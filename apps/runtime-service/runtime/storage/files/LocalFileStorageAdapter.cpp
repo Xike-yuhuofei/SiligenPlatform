@@ -232,13 +232,12 @@ Result<void> LocalFileStorageAdapter::ValidateFile(const Domain::Configuration::
         std::string extension = file_data.original_name.substr(dot_pos);
         std::string normalized_extension = NormalizeExtension(extension);
 
-        bool is_allowed = false;
-        for (const auto& ext : allowed_extensions) {
-            if (normalized_extension == NormalizeExtension(ext)) {
-                is_allowed = true;
-                break;
-            }
-        }
+        const bool is_allowed = std::any_of(
+            allowed_extensions.begin(),
+            allowed_extensions.end(),
+            [&normalized_extension, &NormalizeExtension](const auto& ext) {
+                return normalized_extension == NormalizeExtension(ext);
+            });
 
         if (!is_allowed) {
             return Result<void>::Failure(Error(ErrorCode::FILE_TYPE_INVALID,

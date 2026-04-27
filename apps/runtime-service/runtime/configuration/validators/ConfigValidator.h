@@ -72,10 +72,6 @@ class ConfigValidator {
     static ValidationResult ValidateMotionBestPractices(const MachineConfig& config);
 
    private:
-    // 内部辅助方法
-    static bool IsInRange(float32 value, float32 min_val, float32 max_val);
-    static bool IsInRange(int32 value, int32 min_val, int32 max_val);
-    static std::string FormatParameterName(const std::string& param_name);
     static std::string FormatRangeError(const std::string& param_name, float32 value, float32 min_val, float32 max_val);
     static std::string FormatRangeError(const std::string& param_name, int32 value, int32 min_val, int32 max_val);
 };

@@ -16,7 +16,7 @@ using namespace Shared::Types;
 
 ConfigFileAdapter::ConfigFileAdapter(const std::string& config_file_path)
     : config_file_path_(config_file_path), config_loaded_(false) {
-    auto load_result = LoadConfiguration();
+    auto load_result = LoadConfigurationCore();
     if (load_result.IsError()) {
         throw std::runtime_error("配置加载失败: " + load_result.GetError().GetMessage());
     }
@@ -25,6 +25,10 @@ ConfigFileAdapter::ConfigFileAdapter(const std::string& config_file_path)
 // === 配置加载和保存 ===
 
 Result<SystemConfig> ConfigFileAdapter::LoadConfiguration() {
+    return LoadConfigurationCore();
+}
+
+Result<SystemConfig> ConfigFileAdapter::LoadConfigurationCore() {
     config_loaded_ = false;
     ini_cache_loaded_ = false;
     ini_cache_.clear();

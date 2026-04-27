@@ -86,7 +86,7 @@ class LocalFileStorageAdapter
      * @param directory 目录路径
      * @return Result<void> 创建结果
      */
-    Result<void> EnsureDirectoryExists(const std::string& directory);
+    static Result<void> EnsureDirectoryExists(const std::string& directory);
 };
 
 }  // namespace Adapters
