@@ -384,7 +384,7 @@ Result<PreparedInputArtifact> DxfPbPreparationService::PrepareInputArtifact(cons
     return LoadPreparedInputArtifact(std::filesystem::path(ready_result.Value()));
 }
 
-Result<void> DxfPbPreparationService::CleanupPreparedInput(const std::string& source_path) const {
+Result<void> DxfPbPreparationService::CleanupPreparedInput(const std::string& source_path) {
     auto prepared_path_result = ResolvePreparedArtifactPath(source_path);
     if (prepared_path_result.IsError()) {
         return Result<void>::Failure(prepared_path_result.GetError());

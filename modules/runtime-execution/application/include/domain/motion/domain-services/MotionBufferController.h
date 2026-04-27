@@ -18,7 +18,7 @@ class MotionBufferController {
     bool ClearBuffer(short crd_num);
     bool CheckBufferHealth(short crd_num, uint32& underflow_count);
     bool HandleBufferOverflow(short crd_num);
-    bool HandleBufferUnderflow(short crd_num);
+    static bool HandleBufferUnderflow(short crd_num);
 
    private:
     explicit MotionBufferController(

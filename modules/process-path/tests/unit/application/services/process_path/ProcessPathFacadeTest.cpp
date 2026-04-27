@@ -691,6 +691,7 @@ TEST(ProcessPathFacadeTest, PreservesPointNoiseThroughTopologyRepairPipeline) {
     EXPECT_EQ(result.failed_stage, Siligen::ProcessPath::Contracts::PathGenerationStage::None);
     EXPECT_TRUE(result.error_message.empty());
     EXPECT_TRUE(result.topology_diagnostics.repair_requested);
+    EXPECT_TRUE(result.topology_diagnostics.repair_applied);
     EXPECT_EQ(result.normalized.report.point_primitive_count, 2);
     EXPECT_EQ(CountPointSegments(result.process_path), 2U);
     EXPECT_EQ(CountPointSegments(result.shaped_path), 2U);

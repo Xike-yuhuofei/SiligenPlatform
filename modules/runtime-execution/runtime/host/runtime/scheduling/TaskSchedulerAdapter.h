@@ -98,7 +98,7 @@ class TaskSchedulerAdapter : public ITaskSchedulerPort {
      * 2. 唤醒所有工作线程
      * 3. 等待所有线程join
      */
-    ~TaskSchedulerAdapter();
+    ~TaskSchedulerAdapter() override;
 
     // 禁止拷贝和移动
     TaskSchedulerAdapter(const TaskSchedulerAdapter&) = delete;
@@ -182,7 +182,7 @@ class TaskSchedulerAdapter : public ITaskSchedulerPort {
      * 4. 捕获异常并更新状态
      * 5. 记录结束时间
      */
-    void ExecuteTask(std::shared_ptr<TaskExecutionContext> context);
+    static void ExecuteTask(std::shared_ptr<TaskExecutionContext> context);
 
     /**
      * @brief 任务ID计数器

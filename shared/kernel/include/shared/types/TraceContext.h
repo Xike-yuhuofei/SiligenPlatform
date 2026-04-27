@@ -80,9 +80,9 @@ class TraceContext {
     static std::string GetAttribute(const std::string& key, const std::string& default_value = "");
 
     /// @brief 获取所有属性
-    /// @return 属性映射表的副本
+    /// @return 属性映射表的const引用
     /// @note 用于结构化日志输出
-    static std::unordered_map<std::string, std::string> GetAllAttributes();
+    static const std::unordered_map<std::string, std::string>& GetAllAttributes();
 
     /// @brief 检查是否有追踪上下文
     /// @return true=有追踪ID, false=无追踪上下文

@@ -579,9 +579,7 @@ ProcessPathBuildRequest BuildProcessPathRequest(
     if (request.curve_chain_max_segment_mm > kEpsilon) {
         process_path_request.process.curve_chain_max_segment_mm = request.curve_chain_max_segment_mm;
     }
-    process_path_request.topology_repair.policy = request.optimize_path
-        ? Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Auto
-        : Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Off;
+    process_path_request.topology_repair.policy = Siligen::ProcessPath::Contracts::TopologyRepairPolicy::Auto;
     process_path_request.topology_repair.start_position = Siligen::Shared::Types::Point2D(request.start_x, request.start_y);
     process_path_request.topology_repair.two_opt_iterations = request.two_opt_iterations;
 

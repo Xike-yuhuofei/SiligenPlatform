@@ -39,7 +39,7 @@ MachineExecutionStateStore::MachineExecutionStateStore() {
     snapshot_.has_pending_tasks = false;
 }
 
-Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot
+const Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot&
 MachineExecutionStateStore::ReadSnapshot() const {
     return snapshot_;
 }

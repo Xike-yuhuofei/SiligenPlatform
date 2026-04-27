@@ -11,7 +11,7 @@ class MachineExecutionStateStore {
    public:
     MachineExecutionStateStore();
 
-    Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot ReadSnapshot() const;
+    const Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot& ReadSnapshot() const;
     Siligen::Shared::Types::Result<void> SetPhase(
         Siligen::RuntimeExecution::Contracts::System::MachineExecutionPhase phase);
     Siligen::Shared::Types::Result<void> SetPendingTaskCount(std::int32_t pending_task_count);

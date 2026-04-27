@@ -58,8 +58,8 @@ std::string TraceContext::GetAttribute(const std::string& key, const std::string
     return default_value;
 }
 
-std::unordered_map<std::string, std::string> TraceContext::GetAllAttributes() {
-    return attributes_;  // 返回副本
+const std::unordered_map<std::string, std::string>& TraceContext::GetAllAttributes() {
+    return attributes_;
 }
 
 bool TraceContext::HasTraceContext() {

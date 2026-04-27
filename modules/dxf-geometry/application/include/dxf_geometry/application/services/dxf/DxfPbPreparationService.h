@@ -47,7 +47,7 @@ class DxfPbPreparationService {
 
     Result<std::string> EnsurePbReady(const std::string& filepath) const;
     Result<PreparedInputArtifact> PrepareInputArtifact(const std::string& filepath) const;
-    Result<void> CleanupPreparedInput(const std::string& source_path) const;
+    static Result<void> CleanupPreparedInput(const std::string& source_path);
 
    private:
     std::shared_ptr<Siligen::Domain::Configuration::Ports::IConfigurationPort> config_port_;

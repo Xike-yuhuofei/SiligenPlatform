@@ -235,12 +235,17 @@ bool ShouldRebuildByConnectivity(const std::vector<ContractsPrimitive>& primitiv
         return false;
     }
 
+    size_t supported_count = 0;
     for (size_t i = 0; i < primitives.size(); ++i) {
-        if (!SupportsConnectivityRebuild(primitives[i])) {
+        if (SupportsConnectivityRebuild(primitives[i])) {
+            ++supported_count;
+            continue;
+        }
+        if (primitives[i].type != PrimitiveType::Point) {
             return false;
         }
     }
-    return true;
+    return supported_count >= 2;
 }
 
 struct SplitLineResult {
@@ -390,8 +395,14 @@ ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Cont
     result.metadata.reserve(count);
 
     int contour_id = 0;
+    std::vector<size_t> deferred_standalone_indices;
     for (size_t i = 0; i < count; ++i) {
         if (used[i]) {
+            continue;
+        }
+        if (!SupportsConnectivityRebuild(primitives[i])) {
+            used[i] = true;
+            deferred_standalone_indices.push_back(i);
             continue;
         }
 
@@ -416,6 +427,9 @@ ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Cont
 
             for (size_t j = 0; j < count; ++j) {
                 if (used[j]) {
+                    continue;
+                }
+                if (!SupportsConnectivityRebuild(primitives[j])) {
                     continue;
                 }
 
@@ -466,6 +480,14 @@ ConnectivityRebuildResult RebuildPrimitivesByConnectivity(const std::vector<Cont
             result.metadata[index].entity_closed = closed;
         }
         ++contour_id;
+    }
+
+    // POINT primitives are standalone process semantics. They must not veto
+    // connectivity rebuild for path-carrying geometry, and they must not be
+    // silently folded into a carrier path.
+    for (const auto index : deferred_standalone_indices) {
+        result.primitives.push_back(primitives[index]);
+        result.metadata.push_back(metadata[index]);
     }
 
     result.contour_count = contour_id;

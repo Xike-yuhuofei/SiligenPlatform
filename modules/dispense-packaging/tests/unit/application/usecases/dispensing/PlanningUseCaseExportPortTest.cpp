@@ -37,6 +37,7 @@ using Siligen::ProcessPath::Contracts::IPathSourcePort;
 using Siligen::ProcessPath::Contracts::PathGenerationResult;
 using Siligen::ProcessPath::Contracts::PathGenerationStatus;
 using Siligen::ProcessPath::Contracts::PathSourceResult;
+using Siligen::ProcessPath::Contracts::TopologyRepairPolicy;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
@@ -268,7 +269,10 @@ public:
 class DistinctAuthorityProcessPathPort final : public Siligen::Application::Ports::Dispensing::IProcessPathBuildPort {
 public:
     Siligen::Application::Ports::Dispensing::ProcessPathBuildResult Build(
-        const Siligen::Application::Ports::Dispensing::ProcessPathBuildRequest&) const override {
+        const Siligen::Application::Ports::Dispensing::ProcessPathBuildRequest& request) const override {
+        ++build_calls;
+        last_request = request;
+
         PathGenerationResult result;
         result.status = PathGenerationStatus::Success;
 
@@ -279,6 +283,9 @@ public:
         };
         return result;
     }
+
+    mutable int build_calls = 0;
+    mutable Siligen::Application::Ports::Dispensing::ProcessPathBuildRequest last_request;
 };
 
 std::shared_ptr<Siligen::Application::Services::Dispensing::IWorkflowPlanningAssemblyOperations> CreatePlanningOperations() {
@@ -534,6 +541,36 @@ TEST(PlanningUseCaseExportPortTest, WorkflowUsesCanonicalExecutionPathAsDownstre
     EXPECT_FLOAT_EQ(export_port->last_request.process_path.segments.front().geometry.line.end.x, 4.0f);
     EXPECT_FLOAT_EQ(export_port->last_request.process_path.segments.back().geometry.line.start.x, 4.0f);
     EXPECT_FLOAT_EQ(export_port->last_request.process_path.segments.back().geometry.line.end.x, 10.0f);
+
+    std::error_code ec;
+    std::filesystem::remove(temp_pb, ec);
+}
+
+TEST(PlanningUseCaseExportPortTest, PrepareAuthorityPreviewUsesAutoTopologyRepairIndependentOfOptimizePath) {
+    auto temp_pb = MakeTempPbPath();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    auto path_source = std::make_shared<FakePathSourcePort>();
+    auto export_port = std::make_shared<FakePlanningArtifactExportPort>();
+    auto pb_service = std::make_shared<DxfPbPreparationService>();
+    auto process_path_port = std::make_shared<DistinctAuthorityProcessPathPort>();
+
+    PlanningUseCase use_case(
+        path_source,
+        process_path_port,
+        CreateMotionPlanningPort(),
+        CreatePlanningOperations(),
+        config_port,
+        CreatePlanningInputPreparationPort(pb_service),
+        export_port);
+
+    auto request = MakePlanningRequest(temp_pb);
+    request.optimize_path = false;
+
+    const auto authority_result = use_case.PrepareAuthorityPreview(request);
+
+    ASSERT_TRUE(authority_result.IsSuccess()) << authority_result.GetError().ToString();
+    EXPECT_EQ(process_path_port->build_calls, 1);
+    EXPECT_EQ(process_path_port->last_request.topology_repair.policy, TopologyRepairPolicy::Auto);
 
     std::error_code ec;
     std::filesystem::remove(temp_pb, ec);
@@ -987,7 +1024,7 @@ TEST(PlanningUseCaseExportPortTest, AuthorityCacheKeyIncludesMachineSoftLimits) 
     std::filesystem::remove(temp_pb, ec);
 }
 
-TEST(PlanningUseCaseExportPortTest, Demo1DxfModuleLocalAssemblyBuildsProductionReadyFormalContract) {
+TEST(PlanningUseCaseExportPortTest, Demo1DxfModuleLocalAssemblySurfacesFormalCompareProductionBlock) {
     const auto workspace_root = ResolveWorkspaceRoot();
     ASSERT_FALSE(workspace_root.empty());
 
@@ -1021,12 +1058,14 @@ TEST(PlanningUseCaseExportPortTest, Demo1DxfModuleLocalAssemblyBuildsProductionR
     ASSERT_TRUE(assembly_result.IsSuccess()) << assembly_result.GetError().ToString();
 
     const auto& response = assembly_result.Value();
-    EXPECT_TRUE(response.execution_contract_ready);
-    EXPECT_FALSE(response.formal_compare_gate.HasValue());
+    EXPECT_FALSE(response.execution_contract_ready);
+    ASSERT_TRUE(response.formal_compare_gate.HasValue());
+    EXPECT_TRUE(response.formal_compare_gate.IsProductionBlocked());
+    EXPECT_EQ(response.formal_compare_gate.reason_code, "descending_or_returning_compare_geometry");
     EXPECT_FALSE(response.authority_trigger_layout.trigger_points.empty());
     ASSERT_TRUE(static_cast<bool>(response.execution_package));
-    EXPECT_FALSE(response.execution_package->execution_plan.profile_compare_program.trigger_points.empty());
-    EXPECT_FALSE(response.execution_package->execution_plan.profile_compare_program.spans.empty());
+    EXPECT_TRUE(response.execution_package->execution_plan.profile_compare_program.trigger_points.empty());
+    EXPECT_TRUE(response.execution_package->execution_plan.profile_compare_program.spans.empty());
 }
 
 

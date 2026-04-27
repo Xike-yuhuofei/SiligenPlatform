@@ -61,11 +61,9 @@ Result<std::vector<DiagnosticInfo>> DiagnosticsPortAdapter::GetDiagnostics(Diagn
     std::vector<DiagnosticInfo> result;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        for (const auto& info : diagnostics_) {
-            if (IsAtLeast(info.level, min_level)) {
-                result.push_back(info);
-            }
-        }
+        std::copy_if(diagnostics_.begin(), diagnostics_.end(), std::back_inserter(result), [min_level](const auto& info) {
+            return IsAtLeast(info.level, min_level);
+        });
     }
 
     return Result<std::vector<DiagnosticInfo>>::Success(std::move(result));
@@ -96,14 +94,12 @@ Result<void> DiagnosticsPortAdapter::ResetPerformanceMetrics() {
 
 Result<bool> DiagnosticsPortAdapter::IsComponentHealthy(const std::string& component) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    for (const auto& info : diagnostics_) {
-        if (info.component == component &&
-            (info.level == DiagnosticLevel::ERR || info.level == DiagnosticLevel::CRITICAL)) {
-            return Result<bool>::Success(false);
-        }
-    }
+    const bool has_error = std::any_of(diagnostics_.begin(), diagnostics_.end(), [&component](const auto& info) {
+        return info.component == component &&
+               (info.level == DiagnosticLevel::ERR || info.level == DiagnosticLevel::CRITICAL);
+    });
 
-    return Result<bool>::Success(true);
+    return Result<bool>::Success(!has_error);
 }
 
 Result<std::vector<std::string>> DiagnosticsPortAdapter::GetUnhealthyComponents() const {
@@ -153,7 +149,7 @@ DiagnosticLevel DiagnosticsPortAdapter::ToDiagnosticLevel(DeviceFaultSeverity se
     }
 }
 
-HealthState DiagnosticsPortAdapter::EvaluateHealthState(const MachineHealthSnapshot& health) const {
+HealthState DiagnosticsPortAdapter::EvaluateHealthState(const MachineHealthSnapshot& health) {
     if (!health.connected) {
         return HealthState::CRITICAL;
     }
@@ -183,7 +179,7 @@ HealthState DiagnosticsPortAdapter::EvaluateHealthState(const MachineHealthSnaps
 
 void DiagnosticsPortAdapter::AppendHardwareDiagnostics(
     const MachineHealthSnapshot& health,
-    std::vector<DiagnosticInfo>& output) const {
+    std::vector<DiagnosticInfo>& output) {
     for (const auto& fault : health.active_faults) {
         DiagnosticInfo info;
         info.level = ToDiagnosticLevel(fault.severity);
