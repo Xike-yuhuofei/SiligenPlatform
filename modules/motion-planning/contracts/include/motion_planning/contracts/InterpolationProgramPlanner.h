@@ -9,11 +9,11 @@
 
 namespace Siligen::Domain::Motion::DomainServices {
 
-using Siligen::Shared::Types::Result;
-using Siligen::Shared::Types::float32;
 using Siligen::MotionPlanning::Contracts::MotionTrajectory;
 using Siligen::ProcessPath::Contracts::ProcessPath;
 using Siligen::RuntimeExecution::Contracts::Motion::InterpolationData;
+using Siligen::Shared::Types::float32;
+using Siligen::Shared::Types::Result;
 
 class InterpolationProgramPlanner {
 public:

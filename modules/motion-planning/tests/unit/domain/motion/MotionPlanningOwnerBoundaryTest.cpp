@@ -2,7 +2,7 @@
 #include "domain/motion/CMPCompensation.h"
 #include "domain/motion/CMPValidator.h"
 #include "domain/motion/CircleCalculator.h"
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "motion_planning/contracts/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/TimeTrajectoryPlanner.h"
 #include "domain/motion/domain-services/TrajectoryPlanner.h"
 #include "motion_planning/contracts/MotionTrajectory.h"

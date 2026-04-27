@@ -21,12 +21,6 @@ if(NOT TARGET siligen_dispense_packaging_contracts_public)
     )
 endif()
 
-if(NOT TARGET siligen_dispense_packaging_domain_dispensing)
-    add_subdirectory(
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/domain/dispensing"
-        "${CMAKE_BINARY_DIR}/_p/rea_dpd"
-    )
-endif()
 if(NOT TARGET siligen_dispense_packaging_application_public)
     add_subdirectory(
         "${CMAKE_CURRENT_SOURCE_DIR}/../../dispense-packaging/application"
@@ -90,7 +84,7 @@ target_include_directories(siligen_runtime_execution_application_headers INTERFA
 )
 target_link_libraries(siligen_runtime_execution_application_headers INTERFACE
     siligen_runtime_execution_runtime_contracts
-    siligen_dispense_packaging_application_headers
+    siligen_dispense_packaging_application_public
     siligen_dispense_packaging_contracts_public
     siligen_job_ingest_contracts
     siligen_process_planning_contracts_public
@@ -163,7 +157,7 @@ target_link_libraries(siligen_runtime_execution_motion_execution_services PUBLIC
     siligen_runtime_execution_runtime_contracts
     siligen_types
     siligen_utils
-    siligen_motion
+    siligen_motion_planning_application_public
     siligen_runtime_execution_safety_services
     siligen_process_planning_contracts_public
 )
@@ -213,8 +207,8 @@ target_link_libraries(siligen_runtime_execution_application PUBLIC
     siligen_geometry
 )
 target_link_libraries(siligen_runtime_execution_application PRIVATE
-    siligen_motion_planning_application_headers
     siligen_dispense_packaging_application_public
+    siligen_motion_planning_application_public
     siligen_shared_runtime_contracts
 )
 if(TARGET siligen_device_contracts)
@@ -284,13 +278,9 @@ target_link_libraries(siligen_application_motion PUBLIC
     siligen_types
     siligen_utils
     siligen_geometry
-    siligen_motion
     siligen_runtime_execution_motion_execution_services
     siligen_process_planning_contracts_public
     siligen_motion_planning_application_public
-)
-target_link_libraries(siligen_application_motion PRIVATE
-    siligen_dispense_packaging_domain_dispensing
 )
 target_compile_features(siligen_application_motion PUBLIC cxx_std_17)
 set_target_properties(siligen_application_motion PROPERTIES

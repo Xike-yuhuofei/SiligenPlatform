@@ -6,7 +6,7 @@
 #include "application/services/motion_planning/MotionPlanningFacade.h"
 #include "application/services/process_path/ProcessPathFacade.h"
 #include "application/services/motion_planning/TrajectoryInterpolationFacade.h"
-#include "modules/motion-planning/domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "motion_planning/contracts/InterpolationProgramPlanner.h"
 #include "domain/dispensing/domain-services/TriggerPlanner.h"
 #include "process_path/contracts/GeometryUtils.h"
 #include "process_path/contracts/Path.h"

@@ -1,4 +1,4 @@
-#include "domain/motion/domain-services/interpolation/InterpolationProgramPlanner.h"
+#include "motion_planning/contracts/InterpolationProgramPlanner.h"
 #include "domain/motion/domain-services/MotionPlanner.h"
 
 #include <gtest/gtest.h>

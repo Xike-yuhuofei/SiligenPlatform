@@ -97,7 +97,6 @@ target_link_libraries(siligen_dispense_packaging_planning_legacy_dxf_quarantine_
     siligen_types
     siligen_utils
     siligen_geometry
-    siligen_motion
     siligen_process_path_application_public
     ${SILIGEN_DISPENSE_PACKAGING_TEST_MOTION_PLANNING_APP_TARGET}
 )
@@ -105,8 +104,7 @@ target_compile_features(siligen_dispense_packaging_planning_legacy_dxf_quarantin
 
 target_link_libraries(siligen_dispense_packaging_unit_tests PRIVATE
     siligen_dispense_packaging_application_public
-    siligen_dxf_geometry_application_public
-    siligen_dxf_geometry_pb_path_source_adapter
+    siligen_module_dxf_geometry
     siligen_process_path_application_public
     ${SILIGEN_DISPENSE_PACKAGING_TEST_MOTION_PLANNING_APP_TARGET}
     siligen_dispense_packaging_planning_owner_residual

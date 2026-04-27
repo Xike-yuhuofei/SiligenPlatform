@@ -1,4 +1,4 @@
-#include "InterpolationProgramPlanner.h"
+#include "motion_planning/contracts/InterpolationProgramPlanner.h"
 
 #include "process_path/contracts/GeometryUtils.h"
 #include "shared/types/Error.h"
