@@ -49,7 +49,11 @@ function Test-BranchMatchesProtectedPattern {
 function Get-CurrentWorktreeBranches {
     $branches = New-Object System.Collections.Generic.List[string]
     $current = ""
-    foreach ($line in @(git worktree list --porcelain)) {
+    $worktreeList = Invoke-CommandLines -CommandName "git" -Arguments @("worktree", "list", "--porcelain")
+    if (-not $worktreeList.success) {
+        return @()
+    }
+    foreach ($line in @($worktreeList.lines)) {
         $text = [string]$line
         if ($text.StartsWith("branch refs/heads/")) {
             $current = $text.Substring("branch refs/heads/".Length).Trim()
@@ -63,7 +67,11 @@ function Get-CurrentWorktreeBranches {
 
 function Get-StashBranches {
     $branches = New-Object System.Collections.Generic.List[string]
-    foreach ($line in @(git stash list)) {
+    $stashList = Invoke-CommandLines -CommandName "git" -Arguments @("stash", "list")
+    if (-not $stashList.success) {
+        return @()
+    }
+    foreach ($line in @($stashList.lines)) {
         $text = [string]$line
         if ($text -match ':\s+(?:WIP\s+on|On)\s+([^:]+):') {
             $branch = $Matches[1].Trim()
@@ -80,15 +88,56 @@ function Test-CommandAvailable {
     return $null -ne (Get-Command $CommandName -ErrorAction SilentlyContinue)
 }
 
+function Invoke-CommandLines {
+    param(
+        [string]$CommandName,
+        [string[]]$Arguments
+    )
+
+    if (-not (Test-CommandAvailable -CommandName $CommandName)) {
+        return [pscustomobject]@{
+            available = $false
+            success = $false
+            lines = @()
+            reason = "$CommandName CLI unavailable"
+        }
+    }
+
+    try {
+        $lines = @(& $CommandName @Arguments 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            return [pscustomobject]@{
+                available = $true
+                success = $false
+                lines = @()
+                reason = "$CommandName exited with code $LASTEXITCODE"
+            }
+        }
+        return [pscustomobject]@{
+            available = $true
+            success = $true
+            lines = @($lines)
+            reason = ""
+        }
+    } catch {
+        return [pscustomobject]@{
+            available = $true
+            success = $false
+            lines = @()
+            reason = $_.Exception.Message
+        }
+    }
+}
+
 function Get-DefaultBranchName {
     param(
         [string]$RemoteName,
         [string]$BaseBranch
     )
     if (-not [string]::IsNullOrWhiteSpace($RemoteName)) {
-        $symbolic = @(git symbolic-ref "refs/remotes/$RemoteName/HEAD" 2>$null | Select-Object -First 1)
-        if ($LASTEXITCODE -eq 0 -and $symbolic.Count -gt 0) {
-            $ref = [string]$symbolic[0]
+        $symbolic = Invoke-CommandLines -CommandName "git" -Arguments @("symbolic-ref", "refs/remotes/$RemoteName/HEAD")
+        if ($symbolic.success -and $symbolic.lines.Count -gt 0) {
+            $ref = [string]$symbolic.lines[0]
             if ($ref -match "^refs/remotes/$RemoteName/(.+)$") {
                 return $Matches[1]
             }
@@ -102,8 +151,8 @@ function Get-DefaultBranchName {
 
 function Test-LocalBranchExists {
     param([string]$BranchName)
-    git show-ref --verify --quiet "refs/heads/$BranchName"
-    return ($LASTEXITCODE -eq 0)
+    $result = Invoke-CommandLines -CommandName "git" -Arguments @("show-ref", "--verify", "--quiet", "refs/heads/$BranchName")
+    return ($result.success)
 }
 
 function Get-LocalBranchMergeState {
@@ -119,8 +168,8 @@ function Get-LocalBranchMergeState {
             reason = "base branch unavailable"
         }
     }
-    $counts = @(git rev-list --left-right --count "$BaseBranch...$BranchName" 2>$null | Select-Object -First 1)
-    if ($LASTEXITCODE -ne 0 -or $counts.Count -eq 0) {
+    $counts = Invoke-CommandLines -CommandName "git" -Arguments @("rev-list", "--left-right", "--count", "$BaseBranch...$BranchName")
+    if (-not $counts.success -or $counts.lines.Count -eq 0) {
         return [pscustomobject]@{
             known = $false
             ahead = -1
@@ -128,7 +177,7 @@ function Get-LocalBranchMergeState {
             reason = "unable to compute merge state"
         }
     }
-    $parts = @(([string]$counts[0]).Trim() -split '\s+')
+    $parts = @(([string]$counts.lines[0]).Trim() -split '\s+')
     if ($parts.Count -lt 2) {
         return [pscustomobject]@{
             known = $false
@@ -158,8 +207,8 @@ function Get-PullRequestState {
     }
 
     try {
-        $ghOutput = @(gh pr list --state all --head $BranchName --json number,state,isDraft,headRefName,baseRefName,title 2>$null)
-        if ($LASTEXITCODE -ne 0) {
+        $ghOutput = Invoke-CommandLines -CommandName "gh" -Arguments @("pr", "list", "--state", "all", "--head", $BranchName, "--json", "number,state,isDraft,headRefName,baseRefName,title")
+        if (-not $ghOutput.success) {
             return [pscustomobject]@{
                 known = $false
                 state = "unknown"
@@ -168,7 +217,7 @@ function Get-PullRequestState {
             }
         }
 
-        $json = $ghOutput -join [Environment]::NewLine
+        $json = $ghOutput.lines -join [Environment]::NewLine
         if ([string]::IsNullOrWhiteSpace($json)) {
             $prs = @()
         } else {
@@ -321,9 +370,9 @@ $protectedPatterns = if ($null -ne $whitelist -and $null -ne $whitelist.protecte
     @($defaultProtectedPatterns)
 }
 $defaultBranchName = Get-DefaultBranchName -RemoteName $remoteName -BaseBranch $baseBranch
-$currentBranchOutput = @(git branch --show-current 2>$null | Select-Object -First 1)
-$currentBranch = if ($currentBranchOutput.Count -gt 0 -and $null -ne $currentBranchOutput[0]) {
-    ([string]$currentBranchOutput[0]).Trim()
+$currentBranchResult = Invoke-CommandLines -CommandName "git" -Arguments @("branch", "--show-current")
+$currentBranch = if ($currentBranchResult.success -and $currentBranchResult.lines.Count -gt 0 -and $null -ne $currentBranchResult.lines[0]) {
+    ([string]$currentBranchResult.lines[0]).Trim()
 } else {
     ""
 }

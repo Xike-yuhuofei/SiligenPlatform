@@ -645,6 +645,63 @@ class GateOrchestratorContractTest(unittest.TestCase):
             self.assertIn("pr-state-unknown", issue_ids)
             self.assertNotIn("script-exception", issue_ids)
 
+    def test_remote_delete_safety_keeps_deterministic_issues_when_git_and_gh_are_unavailable(self) -> None:
+        powershell = shutil.which("powershell") or shutil.which("pwsh")
+        if powershell is None:
+            self.fail("powershell executable is required for this contract test")
+
+        with tempfile.TemporaryDirectory(prefix="pre-push-delete-no-tools-") as temp_dir:
+            report_dir = Path(temp_dir) / "report"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = report_dir / "pre-push-gate-manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 3,
+                        "remote_name": "origin",
+                        "operations": [
+                            {
+                                "kind": "delete-ref",
+                                "remote_ref": "refs/heads/main",
+                                "remote_sha": "a" * 40,
+                                "local_ref": "(delete)",
+                                "local_sha": "0" * 40,
+                                "source": "pre-push-hook",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["PATH"] = str(Path(powershell).parent)
+
+            completed = subprocess.run(
+                [
+                    powershell,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1"),
+                    "-ReportDir",
+                    str(report_dir / "remote-branch-delete-safety"),
+                ],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertNotEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
+            summary_path = report_dir / "remote-branch-delete-safety" / "remote-branch-delete-safety.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
+            issue_ids = {issue["id"] for issue in summary["issues"]}
+            self.assertIn("default-branch-delete", issue_ids)
+            self.assertIn("protected-branch-pattern", issue_ids)
+            self.assertIn("pr-state-unknown", issue_ids)
+            self.assertNotIn("script-exception", issue_ids)
+
     def test_gate_orchestrator_is_published_as_authoritative_developer_doc(self) -> None:
         doc = _read(GATE_ORCHESTRATOR_DOC)
         self.assertIn("权威文档", doc)
