@@ -607,6 +607,10 @@ class GuiContractRunner:
         glue_point_count = int(context.get("glue_point_count", 0) or 0)
         snapshot_hash = str(context.get("snapshot_hash") or "")
         confirmed_snapshot_hash = str(context.get("confirmed_snapshot_hash") or "null")
+        path_quality_verdict = str(context.get("path_quality_verdict") or "null")
+        path_quality_blocking = str(bool(context.get("path_quality_blocking", False))).lower()
+        path_quality_reason_codes = self._context_token(context.get("path_quality_reason_codes") or "null")
+        path_quality_summary = self._context_token(context.get("path_quality_summary") or "null")
         current_operation = self._context_token(context.get("current_operation") or "null")
         completed_count = str(context.get("completed_count") or "0/0").replace(" ", "")
         job_id = str(context.get("job_id") or "null")
@@ -628,6 +632,10 @@ class GuiContractRunner:
             f"preview_gate_error={last_error_message} "
             f"snapshot_hash={snapshot_hash or 'null'} "
             f"confirmed_snapshot_hash={confirmed_snapshot_hash} "
+            f"path_quality_verdict={self._context_token(path_quality_verdict)} "
+            f"path_quality_blocking={path_quality_blocking} "
+            f"path_quality_reason_codes={path_quality_reason_codes} "
+            f"path_quality_summary={path_quality_summary} "
             f"snapshot_ready={str(bool(context.get('snapshot_ready', False))).lower()} "
             f"job_id={job_id} "
             f"target_count={target_count} "
@@ -806,6 +814,14 @@ class GuiContractRunner:
             timeout_ms=10000,
         ):
             self._record_operator_stage_failure("production-start-failed", "operator production start failed screenshot")
+            return
+        if self._operator_context_satisfies(
+            lambda context: bool(context.get("preview_confirmed", False))
+            and bool(context.get("path_quality_blocking", False))
+            and not bool(str(context.get("job_id") or "").strip())
+        ):
+            self._emit_operator_context("production-blocked")
+            self._capture_screenshot("operator production blocked screenshot", stage_name="production-blocked")
             return
         if not self._wait_for(
             "operator production enters running state",

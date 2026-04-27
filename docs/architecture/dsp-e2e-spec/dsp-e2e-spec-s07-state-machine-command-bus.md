@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s07：状态机与命令总线模板（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S07
+Applies To: workflow state machines, command bus, events, idempotency, archive and invalidation state cooperation
+Owns / Covers: state definitions, command envelope semantics, event closure, idempotency, legal transitions
+Must Not Override: S01 stage chain; S03 rollback policy; S04 object lifecycle; S05 module owner
+Read When: defining state transitions, commands, events, idempotency, blocked/recovery/archive behavior
+Conflict Priority: use S07 for state and command semantics; defer sequence illustrations to S08 and failure classification to S03
+Codex Keywords: state machine, command bus, idempotency, event closure, PreflightBlocked, ArtifactSuperseded, WorkflowArchived
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决状态机、命令总线、事件闭环、幂等、阻断、恢复、失效与归档协作。
+- 本文不裁决对象字段或模块 owner；对象字段以 S04 为准，模块 owner 以 S05 为准。
+- 不得用状态改写代替对象版本链；不得让失败隐式终止；所有重入命令必须有幂等语义。
+
+---
 本版目标是把“状态、命令、事件、幂等、持久化、回退、归档”彻底闭合。相较原稿，本版重点修复：
 
 - 显式区分 `ExecutionPackageBuilt` 与 `ExecutionPackageValidated`

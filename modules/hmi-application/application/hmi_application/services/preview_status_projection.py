@@ -73,10 +73,18 @@ class PreviewStatusProjectionService:
 
         return f"{source_text}({self._state.motion_preview_point_count}点)"
 
+    def production_gate_text(self) -> str:
+        if self._state.path_quality_blocking:
+            return "阻断"
+        if self._state.path_quality_verdict:
+            return "允许"
+        return "未知"
+
     def info_label_text(self) -> str:
         return (
             f"段数: {self._state.dxf_segment_count} | 长度: {self._state.dxf_total_length_mm:.1f}mm | "
             f"预估: {self._state.dxf_estimated_time_text} | 预览: {self.preview_state_text()} | "
+            f"生产门禁: {self.production_gate_text()} | "
             f"来源: {self.preview_source_text()} | 轨迹: {self.motion_preview_summary_text()}"
         )
 

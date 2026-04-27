@@ -279,6 +279,51 @@ def production_baseline_metadata(
     return normalize_production_baseline(payload.get("production_baseline"), source=source)
 
 
+def normalize_input_quality(input_quality_payload: Any) -> dict[str, Any]:
+    if not isinstance(input_quality_payload, dict):
+        raise RuntimeError("input_quality missing or invalid")
+
+    normalized = {
+        "report_id": str(input_quality_payload.get("report_id", "")).strip(),
+        "report_path": str(input_quality_payload.get("report_path", "")).strip(),
+        "schema_version": str(input_quality_payload.get("schema_version", "")).strip(),
+        "dxf_hash": str(input_quality_payload.get("dxf_hash", "")).strip(),
+        "source_drawing_ref": str(input_quality_payload.get("source_drawing_ref", "")).strip(),
+        "gate_result": str(input_quality_payload.get("gate_result", "")).strip(),
+        "classification": str(input_quality_payload.get("classification", "")).strip(),
+        "preview_ready": bool(input_quality_payload.get("preview_ready", False)),
+        "production_ready": bool(input_quality_payload.get("production_ready", False)),
+        "summary": str(input_quality_payload.get("summary", "")).strip(),
+        "primary_code": str(input_quality_payload.get("primary_code", "")).strip(),
+        "warning_codes": list(input_quality_payload.get("warning_codes", []) or []),
+        "error_codes": list(input_quality_payload.get("error_codes", []) or []),
+        "resolved_units": str(input_quality_payload.get("resolved_units", "")).strip(),
+        "resolved_unit_scale": input_quality_payload.get("resolved_unit_scale", 0.0),
+    }
+
+    missing: list[str] = []
+    for key in (
+        "report_id",
+        "report_path",
+        "schema_version",
+        "dxf_hash",
+        "source_drawing_ref",
+        "gate_result",
+        "classification",
+    ):
+        if not normalized[key]:
+            missing.append(key)
+    if missing:
+        raise RuntimeError("input_quality missing fields: " + ",".join(missing))
+    return normalized
+
+
+def input_quality_metadata(payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise RuntimeError("response payload missing")
+    return normalize_input_quality(payload.get("input_quality"))
+
+
 def ensure_matching_production_baseline(
     expected: dict[str, Any],
     actual: dict[str, Any],

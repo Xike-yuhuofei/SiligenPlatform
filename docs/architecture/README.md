@@ -66,7 +66,8 @@
 历史材料统一放在 [history/](./history/README.md)，当前已分为：
 
 - `history/module-boundary/`：模块边界评审、置信度审计、阶段性 owner 审查
-- `history/audits/`：专项审计与盘点报告
+- `history/audits/`：专项审计与盘点报告（含原 `architecture-audits/` 合并内容）
+- `history/audits/architecture-audits/`：从顶层迁移而来的专项审计包（DXF 分析、模块 residue-ledger 等）
 - `history/baselines/`：历史基线与旧阶段指标快照
 - `history/progress/`：strangler/progress 过程记录
 - `history/closeouts/`：阶段性 closeout 记录

@@ -35,6 +35,11 @@ class PreviewSessionState:
     preview_exception_reason: str = ""
     preview_failure_reason: str = ""
     preview_diagnostic_code: str = ""
+    path_quality_verdict: str = ""
+    path_quality_blocking: bool = False
+    path_quality_reason_codes: tuple[str, ...] = ()
+    path_quality_summary: str = ""
+    path_quality_source_plan_id: str = ""
     current_plan_id: str = ""
     current_plan_fingerprint: str = ""
     preview_plan_dry_run: bool | None = None
@@ -69,6 +74,7 @@ class PreflightBlockReason(str, Enum):
     INVALID_KIND = "invalid_kind"
     EMPTY_GLUE_POINTS = "empty_glue_points"
     PREVIEW_CONFIRM_REQUIRED = "preview_confirm_required"
+    PRODUCTION_BLOCKED = "production_blocked"
     PREVIEW_FAILED = "preview_failed"
     PREVIEW_STALE = "preview_stale"
     HASH_MISMATCH = "hash_mismatch"

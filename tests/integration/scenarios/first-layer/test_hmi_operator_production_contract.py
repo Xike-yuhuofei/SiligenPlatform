@@ -540,6 +540,24 @@ def test_summarize_operator_output_fail_closes_when_production_started_job_id_mi
     assert summary["contract_ok"] is False
 
 
+def test_summarize_operator_output_preserves_formal_production_blocked_stage() -> None:
+    output = "\n".join(
+        [
+            "OPERATOR_CONTEXT stage=preview-ready artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=null path_quality_verdict=blocked path_quality_blocking=true path_quality_reason_codes=process_path_fragmentation,path_discontinuity path_quality_summary=blocked snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
+            "OPERATOR_CONTEXT stage=preview-refreshed artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=null path_quality_verdict=blocked path_quality_blocking=true path_quality_reason_codes=process_path_fragmentation,path_discontinuity path_quality_summary=blocked snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=false",
+            "OPERATOR_CONTEXT stage=production-blocked artifact_id=artifact-1 plan_id=plan-1 plan_fingerprint=fp-1 preview_source=planned_glue_snapshot preview_kind=glue_points glue_point_count=2 preview_gate_state=ready_signed preview_gate_error=null snapshot_hash=hash-1 confirmed_snapshot_hash=hash-1 path_quality_verdict=blocked path_quality_blocking=true path_quality_reason_codes=process_path_fragmentation,path_discontinuity path_quality_summary=blocked snapshot_ready=true job_id=null target_count=1 completed_count=0/1 global_progress_percent=0 current_operation=空闲 preview_confirmed=true",
+            "HMI_SCREENSHOT stage=production-blocked path=D:/reports/03-production-blocked.png",
+        ]
+    )
+
+    summary = operator_runner.summarize_operator_output(output)
+
+    assert summary["production_blocked_stage_observed"] is True
+    assert summary["blocked_sequence_ok"] is True
+    assert summary["path_quality_blocking"] is True
+    assert summary["path_quality_verdict"] == "blocked"
+
+
 def test_evaluate_operator_execution_requires_next_job_ready_stage() -> None:
     summary = {
         "stage_sequence_ok": False,
@@ -824,6 +842,43 @@ def test_build_report_emits_canonical_schema_and_timing_metadata() -> None:
     assert "generated_at" not in report
     assert "input" not in report
     assert "operation_issues" not in report
+
+
+def test_build_report_treats_production_blocked_as_start_coverage() -> None:
+    report = operator_runner.build_report(
+        args=SimpleNamespace(
+            dxf_file=Path("D:/Projects/SiligenSuite/samples/dxf/Demo-1.dxf"),
+            gateway_exe=Path("D:/build/ca/bin/Debug/siligen_runtime_gateway.exe"),
+            config_path=Path("D:/Projects/SiligenSuite/config/machine/machine_config.ini"),
+            host="127.0.0.1",
+        ),
+        effective_port=61234,
+        started_at="2026-04-24T08:40:07+00:00",
+        finished_at="2026-04-24T08:47:55+00:00",
+        duration_seconds=468.0,
+        overall_status="failed",
+        steps=[],
+        operator_execution={
+            "status": "failed",
+            "issues": [],
+            "operator_context": {
+                "operator_context_stages": list(operator_runner.BLOCKED_OPERATOR_STAGES),
+            },
+        },
+        traceability={"status": "failed"},
+        observation_alignment={"status": "insufficient_evidence"},
+        observation_integrity={"status": "failed"},
+        artifacts={},
+        snapshot_result={},
+        log_summary={},
+        observer_poll_errors=[],
+        observer_poll_failures=[],
+        error_message="",
+        hmi_command=["python", "ui_qtest.py"],
+    )
+
+    assert report["control_script_capability"]["covers_production_start"] is True
+    assert report["control_script_capability"]["status"] == "allow"
 
 
 def test_build_report_markdown_explicitly_marks_runtime_log_gap() -> None:

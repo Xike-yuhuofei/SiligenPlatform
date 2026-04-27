@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s01：阶段输入输出矩阵（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S01
+Applies To: S0-S16 stage chain
+Owns / Covers: stage inputs, outputs, success events, failure events, rollback entry points
+Must Not Override: S02 stage responsibilities; S04 object fields; S05 module owner boundaries; S07/S08 command-event closure; S09 acceptance baseline
+Read When: defining stage I/O, event ownership, rollback entry points, stage chain consistency
+Conflict Priority: use S01 for stage I/O; defer object schema to S04 and owner boundary to S05
+Codex Keywords: stage chain, S0-S16, object event state, ExecutionPackageBuilt, ExecutionPackageValidated, PreflightBlocked, ArtifactSuperseded, WorkflowArchived
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决 S0-S16 阶段链的输入、输出、成功事件、失败事件与回退入口。
+- 本文不裁决对象字段细节或模块接口实现；对象字段以 S04 为准，模块 owner 以 S05 为准。
+- 不得合并 S11A/S11B，不得用隐式跳过替代 `AlignmentCompensation(not_required)`，不得把 S12 门禁阻断回写成规划失败。
+
+---
 本版用于把端到端流程固定为一组**可编排、可审计、可回退、可测试**的阶段节点，并与以下修订口径保持一致：
 
 1. `ExecutionPackageBuilt` 与 `ExecutionPackageValidated` 必须分离，因此 S11 拆为 **S11A 执行包组装** 与 **S11B 离线校验**。

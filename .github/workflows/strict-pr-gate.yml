@@ -1,0 +1,45 @@
+name: Strict PR Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: strict-pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  strict-pr-gate:
+    name: Strict PR Gate
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run strict CI gate
+        shell: pwsh
+        run: |
+          .\ci.ps1 `
+            -Suite all `
+            -ReportDir tests\reports\github-actions\strict-pr-gate `
+            -Lane full-offline-gate `
+            -RiskProfile high `
+            -DesiredDepth full-offline
+
+      - name: Upload strict gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-pr-gate-evidence
+          path: tests/reports/github-actions/strict-pr-gate
+          if-no-files-found: warn

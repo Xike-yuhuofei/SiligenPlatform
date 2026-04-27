@@ -10,7 +10,7 @@ This skill MUST NOT diagnose root cause or modify static-gate policies.
 
 # Scope Boundaries
 - Owns only `L0`.
-- Treats `pyrightconfig.json`, `scripts/validation/run-pyright-gate.ps1`, and `tools/testing/check_no_loose_mock.py` as current L0 authority anchors.
+- Treats `pyrightconfig.json`, `scripts/validation/run-pyright-gate.ps1`, and `scripts/testing/check_no_loose_mock.py` as current L0 authority anchors.
 - MUST NOT claim `L1-L6` success.
 - MUST NOT route to another skill; routing belongs to `test-route`.
 

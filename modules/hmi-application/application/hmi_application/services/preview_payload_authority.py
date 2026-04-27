@@ -78,6 +78,11 @@ class PreviewPayloadAuthorityService:
         self._state.preview_exception_reason = ""
         self._state.preview_failure_reason = ""
         self._state.preview_diagnostic_code = ""
+        self._state.path_quality_verdict = ""
+        self._state.path_quality_blocking = False
+        self._state.path_quality_reason_codes = ()
+        self._state.path_quality_summary = ""
+        self._state.path_quality_source_plan_id = ""
         self._playback.clear()
 
     def reset_for_loaded_dxf(self, *, segment_count: int = 0) -> None:
@@ -286,6 +291,38 @@ class PreviewPayloadAuthorityService:
                 title="胶点预览生成失败",
                 detail="返回结果缺少非空 glue_points。请核对 runtime-gateway 是否已升级到 planned_glue_snapshot 契约。",
             )
+        path_quality_payload = payload.get("path_quality")
+        if not isinstance(path_quality_payload, dict):
+            return self.handle_local_failure(
+                gate_error_message="运行时快照缺少 path_quality",
+                title="胶点预览生成失败",
+                detail="返回结果缺少正式生产门禁字段 path_quality。",
+            )
+        path_quality_verdict = str(path_quality_payload.get("verdict", "") or "").strip().lower()
+        if not path_quality_verdict:
+            return self.handle_local_failure(
+                gate_error_message="运行时快照返回了非法 path_quality.verdict",
+                title="胶点预览生成失败",
+                detail="返回结果缺少有效的 path_quality.verdict。",
+            )
+        path_quality_reason_codes_raw = path_quality_payload.get("reason_codes", [])
+        if not isinstance(path_quality_reason_codes_raw, list):
+            return self.handle_local_failure(
+                gate_error_message="运行时快照返回了非法 path_quality.reason_codes",
+                title="胶点预览生成失败",
+                detail="返回结果的 path_quality.reason_codes 不是数组。",
+            )
+        path_quality_reason_codes = tuple(
+            str(item).strip().lower()
+            for item in path_quality_reason_codes_raw
+            if str(item).strip()
+        )
+        path_quality_blocking = bool(path_quality_payload.get("blocking", False))
+        path_quality_summary = self.build_path_quality_summary(
+            verdict=path_quality_verdict,
+            blocking=path_quality_blocking,
+            reason_codes=path_quality_reason_codes,
+        )
         if not motion_preview:
             return self.handle_local_failure(
                 gate_error_message="运行时快照缺少 motion_preview",
@@ -363,6 +400,11 @@ class PreviewPayloadAuthorityService:
         self._state.motion_preview_source_point_count = motion_preview_meta.source_point_count
         self._state.motion_preview_sampling_strategy = motion_preview_meta.sampling_strategy
         self._state.motion_preview_is_sampled = motion_preview_meta.is_sampled
+        self._state.path_quality_verdict = path_quality_verdict
+        self._state.path_quality_blocking = path_quality_blocking
+        self._state.path_quality_reason_codes = path_quality_reason_codes
+        self._state.path_quality_summary = path_quality_summary
+        self._state.path_quality_source_plan_id = current_plan_id
 
         snapshot = PreviewSnapshotMeta(
             snapshot_id=snapshot_id,
@@ -399,6 +441,8 @@ class PreviewPayloadAuthorityService:
         elif self.gate.state == PreviewGateState.READY_SIGNED:
             if preview_source == "mock_synthetic":
                 status_message = "模拟胶点预览已更新（仅供联调，非真实几何）"
+            elif path_quality_blocking:
+                status_message = path_quality_summary
             elif preview_validation_classification == "fail":
                 status_message = preview_failure_reason or "胶点预览已更新，但当前结果存在阻断原因"
             else:
@@ -406,6 +450,8 @@ class PreviewPayloadAuthorityService:
         else:
             if preview_source == "mock_synthetic":
                 status_message = "模拟胶点预览已更新，非真实几何"
+            elif path_quality_blocking:
+                status_message = path_quality_summary
             elif preview_validation_classification == "fail":
                 status_message = preview_failure_reason or "胶点预览已更新，但当前结果存在阻断原因"
             else:
@@ -464,6 +510,19 @@ class PreviewPayloadAuthorityService:
         payload.setdefault("preview_failure_reason", self._state.preview_failure_reason)
         payload.setdefault("preview_diagnostic_code", self._state.preview_diagnostic_code)
         return payload
+
+    @staticmethod
+    def build_path_quality_summary(*, verdict: str, blocking: bool, reason_codes: tuple[str, ...]) -> str:
+        normalized_verdict = str(verdict or "").strip().lower()
+        if not blocking:
+            if normalized_verdict == "pass":
+                return "当前预览已通过正式生产门禁。"
+            if normalized_verdict:
+                return f"当前预览正式生产门禁状态：{normalized_verdict}。"
+            return "当前预览已通过正式生产门禁。"
+        if reason_codes:
+            return "当前结果仅可预览，不可启动生产：path_quality 阻断（" + ", ".join(reason_codes) + "）"
+        return "当前结果仅可预览，不可启动生产：path_quality 阻断。"
 
     def handle_invalid_resync_payload(self) -> PreviewPayloadResult:
         self.clear_resync_pending()

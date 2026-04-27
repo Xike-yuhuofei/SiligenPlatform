@@ -55,6 +55,11 @@ REQUIRED_OPERATOR_STAGES = (
     "production-completed",
     "next-job-ready",
 )
+BLOCKED_OPERATOR_STAGES = (
+    "preview-ready",
+    "preview-refreshed",
+    "production-blocked",
+)
 REQUIRED_SCREENSHOT_STAGES = (
     "production-running",
     "production-completed",
@@ -428,11 +433,13 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
     production_running = by_stage.get("production-running", {})
     production_completed = by_stage.get("production-completed", {})
     next_job_ready = by_stage.get("next-job-ready", {})
+    production_blocked = by_stage.get("production-blocked", {})
 
     missing_screenshot_stages = [
         stage for stage in REQUIRED_SCREENSHOT_STAGES if stage not in screenshots_by_stage
     ]
     stage_sequence_ok = _contains_stage_sequence(stages, REQUIRED_OPERATOR_STAGES)
+    blocked_sequence_ok = _contains_stage_sequence(stages, BLOCKED_OPERATOR_STAGES)
     preview_source = str(
         preview_refreshed.get("preview_source")
         or preview_ready.get("preview_source")
@@ -474,6 +481,10 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
     plan_fingerprint = _latest_field(events, "plan_fingerprint")
     preview_gate_state = _latest_field(events, "preview_gate_state")
     preview_gate_error = _latest_field(events, "preview_gate_error")
+    path_quality_verdict = _latest_field(events, "path_quality_verdict")
+    path_quality_blocking = _latest_field(events, "path_quality_blocking", default="false").lower() == "true"
+    path_quality_reason_codes = _latest_field(events, "path_quality_reason_codes")
+    path_quality_summary = _latest_field(events, "path_quality_summary")
 
     contract_ok = (
         stage_sequence_ok
@@ -503,6 +514,7 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
         "operator_context_stages": stages,
         "failure_stages": failure_stages,
         "stage_sequence_ok": stage_sequence_ok,
+        "blocked_sequence_ok": blocked_sequence_ok,
         "artifact_id": str(
             preview_refreshed.get("artifact_id")
             or preview_ready.get("artifact_id")
@@ -521,6 +533,10 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
         "glue_point_count": glue_point_count,
         "preview_gate_state": preview_gate_state,
         "preview_gate_error": preview_gate_error,
+        "path_quality_verdict": path_quality_verdict,
+        "path_quality_blocking": path_quality_blocking,
+        "path_quality_reason_codes": path_quality_reason_codes,
+        "path_quality_summary": path_quality_summary,
         "snapshot_hash": snapshot_hash,
         "confirmed_snapshot_hash": confirmed_snapshot_hash,
         "snapshot_ready": str(preview_refreshed.get("snapshot_ready") or preview_ready.get("snapshot_ready") or "false")
@@ -561,6 +577,7 @@ def summarize_operator_output(output: str) -> dict[str, Any]:
         "missing_screenshot_stages": missing_screenshot_stages,
         "contract_ok": contract_ok,
         "contract_error": contract_error,
+        "production_blocked_stage_observed": bool(production_blocked),
     }
 
 
@@ -779,6 +796,8 @@ def evaluate_operator_execution(
     combined_output: str,
 ) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
+    production_blocked = bool(operator_summary.get("production_blocked_stage_observed", False))
+    path_quality_blocking = bool(operator_summary.get("path_quality_blocking", False))
     if hmi_exit_code != 0:
         issues.append(
             build_operator_issue(
@@ -790,7 +809,7 @@ def evaluate_operator_execution(
                 owner_layer="apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
             )
         )
-    if not bool(operator_summary.get("stage_sequence_ok", False)):
+    if not bool(operator_summary.get("stage_sequence_ok", False)) and not production_blocked:
         issues.append(
             build_operator_issue(
                 issue_type="阻塞类",
@@ -818,6 +837,25 @@ def evaluate_operator_execution(
                     ensure_ascii=False,
                 ),
                 owner_layer="apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
+            )
+        )
+    if production_blocked:
+        issues.append(
+            build_operator_issue(
+                issue_type="阻塞类",
+                phenomenon="operator_production 在启动前被正式生产门禁阻断。",
+                impact="本轮样本仅证明 HMI 能正确消费正式门禁，不能证明该样本可执行生产。",
+                reproduction_steps="检查 production-blocked 阶段与 path_quality 字段。",
+                current_evidence=json.dumps(
+                    {
+                        "path_quality_verdict": operator_summary.get("path_quality_verdict", "null"),
+                        "path_quality_blocking": operator_summary.get("path_quality_blocking", False),
+                        "path_quality_reason_codes": operator_summary.get("path_quality_reason_codes", "null"),
+                        "path_quality_summary": operator_summary.get("path_quality_summary", "null"),
+                    },
+                    ensure_ascii=False,
+                ),
+                owner_layer="apps/hmi-app/src/hmi_client/ui/main_window.py",
             )
         )
     if str(operator_summary.get("preview_source", "")).strip() != "planned_glue_snapshot":
@@ -854,7 +892,7 @@ def evaluate_operator_execution(
             )
         )
     final_state = str(final_job_status.get("state", "")).strip().lower()
-    if final_state != "completed":
+    if final_state != "completed" and not production_blocked:
         issues.append(
             build_operator_issue(
                 issue_type="阻塞类",
@@ -885,7 +923,7 @@ def evaluate_operator_execution(
                 owner_layer="apps/hmi-app/src/hmi_client/ui/main_window.py",
             )
         )
-    if "next-job-ready" not in tuple(operator_summary.get("operator_context_stages", ())):
+    if "next-job-ready" not in tuple(operator_summary.get("operator_context_stages", ())) and not production_blocked:
         issues.append(
             build_operator_issue(
                 issue_type="恢复类",
@@ -896,7 +934,7 @@ def evaluate_operator_execution(
                 owner_layer="apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
             )
         )
-    if str(operator_summary.get("contract_error", "")).strip():
+    if str(operator_summary.get("contract_error", "")).strip() and not production_blocked:
         issues.append(
             build_operator_issue(
                 issue_type="阻塞类",
@@ -904,6 +942,17 @@ def evaluate_operator_execution(
                 impact="本轮 HMI 正式入口证据不收敛。",
                 reproduction_steps="检查 OPERATOR_CONTEXT / HMI_SCREENSHOT 输出。",
                 current_evidence=str(operator_summary.get("contract_error", "")).strip(),
+                owner_layer="apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
+            )
+        )
+    if path_quality_blocking and not production_blocked:
+        issues.append(
+            build_operator_issue(
+                issue_type="误导类",
+                phenomenon="HMI 观察到 path_quality 已阻断，但 operator 上下文未收敛到 production-blocked。",
+                impact="正式生产门禁状态与操作阶段语义仍可能漂移。",
+                reproduction_steps="检查 OPERATOR_CONTEXT 是否缺少 production-blocked 阶段。",
+                current_evidence=json.dumps(operator_summary, ensure_ascii=False)[:1200],
                 owner_layer="apps/hmi-app/src/hmi_client/tools/ui_qtest.py",
             )
         )
@@ -1173,11 +1222,11 @@ def build_report(
     hmi_command: list[str],
 ) -> dict[str, Any]:
     stages = tuple(operator_execution.get("operator_context", {}).get("operator_context_stages", ()))
-    control_script_allowed = "production-started" in stages
+    control_script_allowed = ("production-started" in stages) or ("production-blocked" in stages)
     control_script_gaps: list[str] = []
     if not control_script_allowed:
-        control_script_gaps.append("未观察到 production-started 阶段")
-    if "next-job-ready" not in stages:
+        control_script_gaps.append("未观察到 production-started / production-blocked 阶段")
+    if "production-started" in stages and "next-job-ready" not in stages:
         control_script_gaps.append("未观察到 next-job-ready 阶段")
 
     return {
