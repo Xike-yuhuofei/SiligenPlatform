@@ -74,7 +74,7 @@ class AuditLogger {
     std::vector<AuditEntry> QueryLogs(const QueryFilter& filter) const;
 
     // T057: 导出审计日志到JSON文件
-    bool ExportToJSON(const std::string& output_file, const std::vector<AuditEntry>& entries) const;
+    static bool ExportToJSON(const std::string& output_file, const std::vector<AuditEntry>& entries);
 
     // T058: 清理旧日志(保留最近N天)
     bool CleanOldLogs(int32 retention_days = 90);
@@ -89,7 +89,7 @@ class AuditLogger {
     std::mutex mutex_;
 
     // 生成JSON格式日志
-    std::string ToJSON(const AuditEntry& entry) const;
+    static std::string ToJSON(const AuditEntry& entry);
 
     // 生成日志文件名
     std::string GenerateLogFileName() const;
@@ -104,11 +104,11 @@ class AuditLogger {
     static std::string TimestampToString(const std::chrono::system_clock::time_point& tp);
 
     // 解析函数
-    bool ParseJSONLine(const std::string& line, AuditEntry& entry) const;
-    std::chrono::system_clock::time_point ParseTimestamp(const std::string& ts_str) const;
-    AuditCategory StringToCategory(const std::string& str) const;
-    AuditLevel StringToLevel(const std::string& str) const;
-    AuditStatus StringToStatus(const std::string& str) const;
+    static bool ParseJSONLine(const std::string& line, AuditEntry& entry);
+    static std::chrono::system_clock::time_point ParseTimestamp(const std::string& ts_str);
+    static AuditCategory StringToCategory(const std::string& str);
+    static AuditLevel StringToLevel(const std::string& str);
+    static AuditStatus StringToStatus(const std::string& str);
 };
 
 }  // namespace Siligen

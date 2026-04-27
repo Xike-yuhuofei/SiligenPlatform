@@ -178,7 +178,7 @@ void AuditLogger::RotateIfNeeded(int32 max_size_mb) {
     }
 }
 
-std::string AuditLogger::ToJSON(const AuditEntry& entry) const {
+std::string AuditLogger::ToJSON(const AuditEntry& entry) {
     std::ostringstream oss;
     oss << "{"
         << "\"timestamp\":\"" << TimestampToString(entry.timestamp) << "\","
@@ -323,7 +323,7 @@ std::vector<AuditEntry> AuditLogger::QueryLogs(const QueryFilter& filter) const 
 }
 
 // T057: 导出审计日志到JSON文件
-bool AuditLogger::ExportToJSON(const std::string& output_file, const std::vector<AuditEntry>& entries) const {
+bool AuditLogger::ExportToJSON(const std::string& output_file, const std::vector<AuditEntry>& entries) {
     std::ofstream out(output_file);
     if (!out.is_open()) {
         SecurityLogHelper::Log(LogLevel::ERR, "AuditLogger", "无法创建导出文件: " + output_file);
@@ -397,82 +397,120 @@ int32 AuditLogger::GetAvailableDiskSpaceMB() const {
 }
 
 // 辅助函数：解析JSON行
-bool AuditLogger::ParseJSONLine(const std::string& line, AuditEntry& entry) const {
+bool AuditLogger::ParseJSONLine(const std::string& line, AuditEntry& entry) {
     // 简单的JSON解析（针对我们自己生成的格式）
     size_t pos = 0;
 
     // 解析timestamp
     pos = line.find("\"timestamp\":\"");
-    if (pos != std::string::npos) {
-        size_t start = pos + 13;
-        size_t end = line.find("\"", start);
-        std::string ts_str = line.substr(start, end - start);
-        entry.timestamp = ParseTimestamp(ts_str);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    {
+        const size_t start = pos + 13;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
+        entry.timestamp = ParseTimestamp(line.substr(start, end - start));
     }
 
     // 解析category
     pos = line.find("\"category\":\"");
-    if (pos != std::string::npos) {
-        size_t start = pos + 12;
-        size_t end = line.find("\"", start);
-        std::string cat_str = line.substr(start, end - start);
-        entry.category = StringToCategory(cat_str);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    {
+        const size_t start = pos + 12;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
+        entry.category = StringToCategory(line.substr(start, end - start));
     }
 
     // 解析level
     pos = line.find("\"level\":\"");
-    if (pos != std::string::npos) {
-        size_t start = pos + 9;
-        size_t end = line.find("\"", start);
-        std::string lvl_str = line.substr(start, end - start);
-        entry.level = StringToLevel(lvl_str);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    {
+        const size_t start = pos + 9;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
+        entry.level = StringToLevel(line.substr(start, end - start));
     }
 
     // 解析status
     pos = line.find("\"status\":\"");
-    if (pos != std::string::npos) {
-        size_t start = pos + 10;
-        size_t end = line.find("\"", start);
-        std::string st_str = line.substr(start, end - start);
-        entry.status = StringToStatus(st_str);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    {
+        const size_t start = pos + 10;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
+        entry.status = StringToStatus(line.substr(start, end - start));
     }
 
-    // 解析username
     pos = line.find("\"username\":\"");
-    if (pos != std::string::npos) {
-        size_t start = pos + 12;
-        size_t end = line.find("\"", start);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    {
+        const size_t start = pos + 12;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
         entry.username = line.substr(start, end - start);
     }
 
-    // 解析action
     pos = line.find("\"action\":\"");
-    if (pos != std::string::npos) {
-        size_t start = pos + 10;
-        size_t end = line.find("\"", start);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    {
+        const size_t start = pos + 10;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
         entry.action = line.substr(start, end - start);
     }
 
-    // 解析details
     pos = line.find("\"details\":\"");
-    if (pos != std::string::npos) {
-        size_t start = pos + 11;
-        size_t end = line.find("\"", start);
+    if (pos == std::string::npos) {
+        return false;
+    }
+    {
+        const size_t start = pos + 11;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
         entry.details = line.substr(start, end - start);
     }
 
     // 解析ip (可选)
     pos = line.find("\"ip\":\"");
     if (pos != std::string::npos) {
-        size_t start = pos + 6;
-        size_t end = line.find("\"", start);
+        const size_t start = pos + 6;
+        const size_t end = line.find("\"", start);
+        if (end == std::string::npos) {
+            return false;
+        }
         entry.ip_address = line.substr(start, end - start);
     }
 
     return true;
 }
 
-std::chrono::system_clock::time_point AuditLogger::ParseTimestamp(const std::string& ts_str) const {
+std::chrono::system_clock::time_point AuditLogger::ParseTimestamp(const std::string& ts_str) {
     std::tm tm = {};
     int ms = 0;
     std::istringstream ss(ts_str);
@@ -492,7 +530,7 @@ std::chrono::system_clock::time_point AuditLogger::ParseTimestamp(const std::str
     return tp;
 }
 
-AuditCategory AuditLogger::StringToCategory(const std::string& str) const {
+AuditCategory AuditLogger::StringToCategory(const std::string& str) {
     if (str == "认证") return AuditCategory::AUTHENTICATION;
     if (str == "权限") return AuditCategory::AUTHORIZATION;
     if (str == "运动控制") return AuditCategory::MOTION_CONTROL;
@@ -504,7 +542,7 @@ AuditCategory AuditLogger::StringToCategory(const std::string& str) const {
     return AuditCategory::AUTHENTICATION;
 }
 
-AuditLevel AuditLogger::StringToLevel(const std::string& str) const {
+AuditLevel AuditLogger::StringToLevel(const std::string& str) {
     if (str == "INFO") return AuditLevel::INFO;
     if (str == "WARNING") return AuditLevel::WARNING;
     if (str == "ERROR") return AuditLevel::ERROR;
@@ -512,7 +550,7 @@ AuditLevel AuditLogger::StringToLevel(const std::string& str) const {
     return AuditLevel::INFO;
 }
 
-AuditStatus AuditLogger::StringToStatus(const std::string& str) const {
+AuditStatus AuditLogger::StringToStatus(const std::string& str) {
     if (str == "SUCCESS") return AuditStatus::SUCCESS;
     if (str == "FAILURE") return AuditStatus::FAILURE;
     if (str == "DENIED") return AuditStatus::DENIED;
