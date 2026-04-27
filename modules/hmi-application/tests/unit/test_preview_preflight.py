@@ -30,6 +30,7 @@ class PreviewPreflightServiceTest(unittest.TestCase):
         assert notice is not None
         self.assertEqual(notice.title, "路径碎片化提示")
         self.assertIn("短闭环按例外保留", notice.detail)
+        self.assertIn("正式生产门禁", notice.detail)
 
     def test_current_preview_diagnostic_notice_normalizes_generic_exception_reason(self) -> None:
         payload = valid_payload()
@@ -44,6 +45,16 @@ class PreviewPreflightServiceTest(unittest.TestCase):
         self.assertEqual(notice.title, "可继续提示")
         self.assertIn("已按例外规则放行", notice.detail)
         self.assertNotIn("span spacing outside configured window", notice.detail)
+
+    def test_current_preview_diagnostic_notice_suppresses_fragmentation_notice_when_path_quality_blocks(self) -> None:
+        payload = valid_payload(path_quality_blocking=True, path_quality_reason_codes=["process_path_fragmentation"])
+        payload["preview_validation_classification"] = "pass_with_exception"
+        payload["preview_diagnostic_code"] = "process_path_fragmentation"
+
+        result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        self.assertIsNone(self.preflight.current_preview_diagnostic_notice())
 
     def test_build_preflight_decision_requires_preview_confirmation(self) -> None:
         self._ready_payload()
@@ -132,6 +143,25 @@ class PreviewPreflightServiceTest(unittest.TestCase):
         self.assertFalse(decision.allowed)
         self.assertEqual(decision.reason, PreflightBlockReason.HASH_MISMATCH)
         self.assertIn("执行快照不一致", decision.message)
+
+    def test_build_preflight_decision_rejects_blocking_path_quality(self) -> None:
+        payload = valid_payload(path_quality_blocking=True, path_quality_reason_codes=["process_path_fragmentation"])
+        result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
+        self.assertTrue(result.ok)
+        self.state.gate.confirm_current_snapshot()
+
+        decision = self.preflight.build_preflight_decision(
+            online_ready=True,
+            connected=True,
+            hardware_connected=True,
+            runtime_status_fault=False,
+            status=FakeStatus(),
+            dry_run=False,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, PreflightBlockReason.PRODUCTION_BLOCKED)
+        self.assertIn("不可启动生产", decision.message)
 
     def test_apply_confirmation_payload_rejects_hash_mismatch(self) -> None:
         self._ready_payload()

@@ -1516,6 +1516,10 @@ class MainWindow(QMainWindow):
         state = self._preview_session.state
         self._preview_gate = state.gate
         self._preview_source = state.preview_source
+        self._path_quality_verdict = state.path_quality_verdict
+        self._path_quality_blocking = state.path_quality_blocking
+        self._path_quality_reason_codes = state.path_quality_reason_codes
+        self._path_quality_summary = state.path_quality_summary
         self._current_plan_id = state.current_plan_id
         self._current_plan_fingerprint = state.current_plan_fingerprint
         self._preview_plan_dry_run = state.preview_plan_dry_run
@@ -3129,6 +3133,10 @@ class MainWindow(QMainWindow):
             "confirmed_snapshot_hash": confirmed_snapshot_hash,
             "snapshot_ready": bool(snapshot is not None),
             "preview_confirmed": bool(confirmed_snapshot_hash),
+            "path_quality_verdict": str(getattr(preview_state, "path_quality_verdict", "") or ""),
+            "path_quality_blocking": bool(getattr(preview_state, "path_quality_blocking", False)),
+            "path_quality_reason_codes": ",".join(getattr(preview_state, "path_quality_reason_codes", ()) or ()),
+            "path_quality_summary": str(getattr(preview_state, "path_quality_summary", "") or ""),
             "job_id": str(getattr(self, "_current_job_id", "") or ""),
             "target_count": target_count,
             "completed_count": f"{completed_count}/{target_count}",
@@ -3281,6 +3289,8 @@ class MainWindow(QMainWindow):
         preview_exception_reason: str = "",
         preview_failure_reason: str = "",
         preview_diagnostic_code: str = "",
+        path_quality_blocking: bool = False,
+        path_quality_summary: str = "",
     ) -> str:
         normalized_source = str(preview_source or "").strip().lower()
         effective_motion_preview = list(motion_preview or [])
@@ -3312,7 +3322,15 @@ class MainWindow(QMainWindow):
                 "</div>"
             )
         validation_banner = ""
-        if preview_diagnostic_notice is not None:
+        if path_quality_blocking:
+            blocking_text = path_quality_summary or preview_failure_reason or "当前结果仅可预览，不可启动生产"
+            validation_banner = (
+                "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #7f1d1d;"
+                "background:#3a1717;color:#ffd5d5;'>"
+                f"<strong>生产阻断。</strong> {html.escape(blocking_text)}"
+                "</div>"
+            )
+        elif preview_diagnostic_notice is not None:
             validation_banner = (
                 "<div style='margin-bottom:14px;padding:12px 14px;border:1px solid #854d0e;"
                 "background:#2d2110;color:#fde68a;'>"
@@ -3575,6 +3593,9 @@ class MainWindow(QMainWindow):
         motion_preview_meta: MotionPreviewMeta | None = None,
         preview_validation_classification: str = "",
         preview_diagnostic_code: str = "",
+        path_quality_verdict: str = "",
+        path_quality_blocking: bool = False,
+        path_quality_reason_codes: tuple[str, ...] = (),
     ) -> str:
         mode_text = "空跑" if dry_run else "生产"
         generated_at = html.escape(snapshot.generated_at or "-")
@@ -3622,6 +3643,9 @@ class MainWindow(QMainWindow):
             f"<tr><td style='padding:4px 16px 4px 0;'>运动轨迹语义</td><td>{motion_preview_kind}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>校验分类</td><td>{html.escape(preview_validation_classification or 'pass')}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>诊断码</td><td>{html.escape(preview_diagnostic_code or '-')}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>生产门禁 verdict</td><td>{html.escape(path_quality_verdict or '-')}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>生产门禁 blocking</td><td>{'true' if path_quality_blocking else 'false'}</td></tr>"
+            f"<tr><td style='padding:4px 16px 4px 0;'>生产门禁 reason_codes</td><td>{html.escape(', '.join(path_quality_reason_codes) if path_quality_reason_codes else '-')}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>模式</td><td>{mode_text}</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>速度</td><td>{speed_mm_s:.3f} mm/s</td></tr>"
             f"<tr><td style='padding:4px 16px 4px 0;'>段数</td><td>{snapshot.segment_count}</td></tr>"
@@ -3708,6 +3732,8 @@ class MainWindow(QMainWindow):
                 preview_exception_reason=self._preview_session.state.preview_exception_reason,
                 preview_failure_reason=self._preview_session.state.preview_failure_reason,
                 preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
+                path_quality_blocking=self._preview_session.state.path_quality_blocking,
+                path_quality_summary=self._preview_session.state.path_quality_summary,
             )
             debug_html = self._render_preview_debug_html(
                 snapshot=result.snapshot,
@@ -3720,6 +3746,9 @@ class MainWindow(QMainWindow):
                 preview_kind=result.preview_kind,
                 preview_validation_classification=self._preview_session.state.preview_validation_classification,
                 preview_diagnostic_code=self._preview_session.state.preview_diagnostic_code,
+                path_quality_verdict=self._preview_session.state.path_quality_verdict,
+                path_quality_blocking=self._preview_session.state.path_quality_blocking,
+                path_quality_reason_codes=self._preview_session.state.path_quality_reason_codes,
             )
         except ValueError as exc:
             preview_result = self._preview_session.handle_local_failure(
