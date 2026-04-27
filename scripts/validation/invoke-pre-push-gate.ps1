@@ -60,9 +60,46 @@ function Test-AllZeroSha {
     return ($Sha -match '^0{40}$')
 }
 
-function Get-CommitRangeFromHook {
+function Resolve-UpdateBase {
+    param(
+        [string]$RemoteRef,
+        [string]$RemoteSha,
+        [string]$LocalSha
+    )
+
+    if (-not (Test-AllZeroSha -Sha $RemoteSha)) {
+        return $RemoteSha
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($RemoteRef)) {
+        $tracking = $RemoteRef
+        if ($RemoteRef -match '^refs/heads/(.+)$' -and -not [string]::IsNullOrWhiteSpace($RemoteName)) {
+            $tracking = "$RemoteName/$($Matches[1])"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($tracking)) {
+            & git rev-parse --verify --quiet $tracking 2>$null | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($tracking) -and $LASTEXITCODE -eq 0) {
+            return $tracking
+        }
+    }
+
+    $defaultBaseRef = if ([string]::IsNullOrWhiteSpace($RemoteName)) { "origin/main" } else { "$RemoteName/main" }
+    & git rev-parse --verify --quiet $defaultBaseRef 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $mergeBase = (& git merge-base $defaultBaseRef $LocalSha 2>$null | Select-Object -First 1)
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($mergeBase)) {
+            return $mergeBase.Trim()
+        }
+    }
+
+    return ""
+}
+
+function Get-PrePushOperationsFromHook {
     param([string[]]$Lines)
-    $ranges = @()
+
+    $operations = @()
     foreach ($line in @($Lines)) {
         $parts = @($line -split '\s+')
         if ($parts.Count -lt 4) { continue }
@@ -70,49 +107,67 @@ function Get-CommitRangeFromHook {
         $localSha = $parts[1]
         $remoteRef = $parts[2]
         $remoteSha = $parts[3]
-        if (Test-AllZeroSha -Sha $localSha) { continue }
-        $base = ""
-        if (-not (Test-AllZeroSha -Sha $remoteSha)) {
-            $base = $remoteSha
-        } elseif (-not [string]::IsNullOrWhiteSpace($remoteRef)) {
-            $tracking = $remoteRef
-            if ($remoteRef -match '^refs/heads/(.+)$' -and -not [string]::IsNullOrWhiteSpace($RemoteName)) {
-                $tracking = "$RemoteName/$($Matches[1])"
+
+        if (Test-AllZeroSha -Sha $localSha) {
+            $operations += [pscustomobject]@{
+                kind = "delete-ref"
+                source = "pre-push-hook"
+                local_ref = $localRef
+                local_sha = $localSha
+                remote_ref = $remoteRef
+                remote_sha = $remoteSha
             }
-            if (-not [string]::IsNullOrWhiteSpace($tracking)) {
-                & git rev-parse --verify --quiet $tracking 2>$null | Out-Null
-            }
-            if (-not [string]::IsNullOrWhiteSpace($tracking) -and $LASTEXITCODE -eq 0) {
-                $base = $tracking
-            } else {
-                $defaultBaseRef = if ([string]::IsNullOrWhiteSpace($RemoteName)) { "origin/main" } else { "$RemoteName/main" }
-                & git rev-parse --verify --quiet $defaultBaseRef 2>$null | Out-Null
-                if ($LASTEXITCODE -eq 0) {
-                    $mergeBase = (& git merge-base $defaultBaseRef $localSha 2>$null | Select-Object -First 1)
-                    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($mergeBase)) {
-                        $base = $mergeBase.Trim()
-                    }
-                }
-            }
+            continue
         }
-        if (-not [string]::IsNullOrWhiteSpace($base)) {
-            $ranges += [pscustomobject]@{ Base = $base; Head = $localSha; Source = "pre-push-hook"; LocalRef = $localRef; RemoteRef = $remoteRef }
+
+        $base = Resolve-UpdateBase -RemoteRef $remoteRef -RemoteSha $remoteSha -LocalSha $localSha
+        $operations += [pscustomobject]@{
+            kind = "update-ref"
+            source = "pre-push-hook"
+            local_ref = $localRef
+            local_sha = $localSha
+            remote_ref = $remoteRef
+            remote_sha = $remoteSha
+            base = $base
+            head = $localSha
         }
     }
-    return @($ranges)
+    return @($operations)
 }
 
-function Get-CommitRangeFromUpstream {
+function Get-PrePushOperationFromUpstream {
     $upstream = ""
-    $upstreamOutput = git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $previousNativeCommandPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    if ($null -ne $previousNativeCommandPreference) {
+        $PSNativeCommandUseErrorActionPreference = $false
+    }
+    try {
+        $upstreamOutput = @(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null)
+    } finally {
+        if ($null -ne $previousNativeCommandPreference) {
+            $PSNativeCommandUseErrorActionPreference = [bool]$previousNativeCommandPreference.Value
+        }
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($LASTEXITCODE -eq 0 -and $upstreamOutput.Count -gt 0) {
         $upstream = ($upstreamOutput | Select-Object -First 1).Trim()
     }
     if ([string]::IsNullOrWhiteSpace($upstream)) {
         return $null
     }
     $head = (git rev-parse HEAD).Trim()
-    return [pscustomobject]@{ Base = $upstream; Head = $head; Source = "upstream"; LocalRef = "HEAD"; RemoteRef = $upstream }
+    return [pscustomobject]@{
+        kind = "update-ref"
+        source = "upstream"
+        local_ref = "HEAD"
+        local_sha = $head
+        remote_ref = $upstream
+        remote_sha = ""
+        base = $upstream
+        head = $head
+    }
 }
 
 function Get-ChangedFilesForRanges {
@@ -142,13 +197,25 @@ $reportDir = Join-Path $workspaceRoot (Join-Path $ReportRoot "$timestamp-$safeRe
 New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 
 $hookLines = Get-PrePushHookLines
-$ranges = @(Get-CommitRangeFromHook -Lines $hookLines)
-if ($ranges.Count -eq 0) {
-    $upstreamRange = Get-CommitRangeFromUpstream
-    if ($null -ne $upstreamRange) {
-        $ranges = @($upstreamRange)
+$operations = @(Get-PrePushOperationsFromHook -Lines $hookLines)
+if ($operations.Count -eq 0) {
+    $upstreamOperation = Get-PrePushOperationFromUpstream
+    if ($null -ne $upstreamOperation) {
+        $operations = @($upstreamOperation)
     }
 }
+
+$updateOperations = @($operations | Where-Object { [string]$_.kind -eq "update-ref" })
+$deleteOperations = @($operations | Where-Object { [string]$_.kind -eq "delete-ref" })
+$ranges = @($updateOperations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.base) } | ForEach-Object {
+    [pscustomobject]@{
+        Base = [string]$_.base
+        Head = [string]$_.head
+        Source = [string]$_.source
+        LocalRef = [string]$_.local_ref
+        RemoteRef = [string]$_.remote_ref
+    }
+})
 
 $changedFiles = @()
 $rangeSource = ""
@@ -159,7 +226,7 @@ if ($ranges.Count -gt 0) {
     $rangeSource = ($ranges | Select-Object -First 1).Source
     $baseSha = ($ranges | Select-Object -First 1).Base
     $headSha = ($ranges | Select-Object -First 1).Head
-} else {
+} elseif ($deleteOperations.Count -eq 0) {
     $changedFiles = @(Expand-CommaSeparatedValues -Values $ChangedScope | ForEach-Object { ([string]$_).Replace('\', '/') } | Select-Object -Unique)
     if ($changedFiles.Count -eq 0) {
         Fail-PushGate "unable to determine pending push commit range from hook input or upstream; pass ChangedScope only for an explicit smoke run."
@@ -167,10 +234,24 @@ if ($ranges.Count -gt 0) {
     $rangeSource = "explicit-changed-scope-smoke"
     $baseSha = (git rev-parse HEAD).Trim()
     $headSha = $baseSha
+    $operations = @(
+        [pscustomobject]@{
+            kind = "update-ref"
+            source = $rangeSource
+            local_ref = "HEAD"
+            local_sha = $headSha
+            remote_ref = ""
+            remote_sha = ""
+            base = $baseSha
+            head = $headSha
+        }
+    )
+} else {
+    $rangeSource = "delete-ref-only"
 }
 
-if ($changedFiles.Count -eq 0) {
-    Fail-PushGate "pending push range produced no changed files; refusing to silently pass."
+if ($updateOperations.Count -gt 0 -and $changedFiles.Count -eq 0) {
+    Fail-PushGate "pending push update range produced no changed files; refusing to silently pass."
 }
 
 $dirtyFiles = @(git status --porcelain | ForEach-Object {
@@ -179,7 +260,9 @@ $dirtyFiles = @(git status --porcelain | ForEach-Object {
 } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 $dirtyWorktree = $dirtyFiles.Count -gt 0
 $dirtyPolicy = "clean-worktree"
-if ($dirtyWorktree) {
+if ($deleteOperations.Count -gt 0 -and $updateOperations.Count -eq 0) {
+    $dirtyPolicy = if ($dirtyWorktree) { "not-applicable-delete-ref-only; manifest records dirty files" } else { "not-applicable-delete-ref-only" }
+} elseif ($dirtyWorktree) {
     $overlap = @($dirtyFiles | Where-Object { $changedFiles -contains $_ })
     if ($overlap.Count -gt 0) {
         Fail-PushGate "dirty worktree overlaps pending push files: $($overlap -join ', '). Commit/stash those changes or run from an isolated worktree."
@@ -187,25 +270,37 @@ if ($dirtyWorktree) {
     $dirtyPolicy = "allowed-disjoint-dirty-worktree; manifest records dirty files"
 }
 
-$classificationPath = Join-Path $reportDir "pre-push-classification.json"
-& (Join-Path $workspaceRoot "scripts\validation\classify-change.ps1") `
-    -Mode pre-push `
-    -OutputPath $classificationPath `
-    -BaseSha $baseSha `
-    -HeadSha $headSha `
-    -ChangedFile $changedFiles
-if ($LASTEXITCODE -ne 0) {
-    Fail-PushGate "classify-change.ps1 failed with $LASTEXITCODE."
+$classificationPath = ""
+$classification = $null
+$selectedSteps = @()
+if ($changedFiles.Count -gt 0) {
+    $classificationPath = Join-Path $reportDir "pre-push-classification.json"
+    & (Join-Path $workspaceRoot "scripts\validation\classify-change.ps1") `
+        -Mode pre-push `
+        -OutputPath $classificationPath `
+        -BaseSha $baseSha `
+        -HeadSha $headSha `
+        -ChangedFile $changedFiles
+    if ($LASTEXITCODE -ne 0) {
+        Fail-PushGate "classify-change.ps1 failed with $LASTEXITCODE."
+    }
+    $classification = Get-Content -Raw -Path $classificationPath | ConvertFrom-Json
+    $selectedSteps = @($classification.selected_pre_push_steps)
+    if ($selectedSteps.Count -eq 0) {
+        Fail-PushGate "classification did not select any pre-push steps."
+    }
 }
-$classification = Get-Content -Raw -Path $classificationPath | ConvertFrom-Json
-$selectedSteps = @($classification.selected_pre_push_steps)
+if ($deleteOperations.Count -gt 0) {
+    $selectedSteps += "remote-branch-delete-safety"
+}
+$selectedSteps = @($selectedSteps | Select-Object -Unique)
 if ($selectedSteps.Count -eq 0) {
-    Fail-PushGate "classification did not select any pre-push steps."
+    Fail-PushGate "pre-push gate did not derive any executable steps."
 }
 
 $head = (git rev-parse HEAD).Trim()
 $manifest = [ordered]@{
-    schemaVersion = 2
+    schemaVersion = 3
     generated_at = (Get-Date).ToString("o")
     remote_name = $RemoteName
     remote_url = $RemoteUrl
@@ -216,6 +311,7 @@ $manifest = [ordered]@{
     desired_depth = $DesiredDepth
     suite = @($Suite)
     range_source = $rangeSource
+    operations = @($operations)
     ranges = @($ranges)
     base_sha = $baseSha
     head_sha = $headSha
@@ -223,9 +319,9 @@ $manifest = [ordered]@{
     dirty_worktree = $dirtyWorktree
     dirty_files = @($dirtyFiles)
     dirty_policy = $dirtyPolicy
-    categories = @($classification.categories)
-    requires_native_followup = [bool]$classification.requires_native_followup
-    requires_hil_followup = [bool]$classification.requires_hil_followup
+    categories = if ($null -eq $classification) { @() } else { @($classification.categories) }
+    requires_native_followup = if ($null -eq $classification) { $false } else { [bool]$classification.requires_native_followup }
+    requires_hil_followup = if ($null -eq $classification) { $false } else { [bool]$classification.requires_hil_followup }
     selected_pre_push_steps = @($selectedSteps)
     classification_path = $classificationPath
     skip_step = @($SkipStep)
@@ -235,7 +331,11 @@ $manifest | ConvertTo-Json -Depth 12 | Set-Content -Path (Join-Path $reportDir "
 
 Write-Output "pre-push gate: remote=$RemoteName head=$head"
 Write-Output "pre-push gate: range_source=$rangeSource base=$baseSha head=$headSha"
-Write-Output "pre-push gate: categories=$($classification.categories -join ',')"
+if ($null -eq $classification) {
+    Write-Output "pre-push gate: categories="
+} else {
+    Write-Output "pre-push gate: categories=$($classification.categories -join ',')"
+}
 Write-Output "pre-push gate: selected_steps=$($selectedSteps -join ',')"
 Write-Output "pre-push gate: report=$reportDir"
 

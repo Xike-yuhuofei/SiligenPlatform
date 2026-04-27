@@ -117,6 +117,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
         step_ids = {step["id"] for step in self._resolved_gate("pre-push")["steps"]}
 
         self.assertIn("contracts-quick", step_ids)
+        self.assertIn("remote-branch-delete-safety", step_ids)
         self.assertNotIn("build-ci", step_ids)
         self.assertNotIn("test-ci", step_ids)
         self.assertNotIn("controlled-hil", step_ids)
@@ -199,6 +200,13 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("{changedFileArgs}", tool_readiness["command"])
         self.assertIn("{stepReportDir}/pre-push-tool-readiness.json", tool_readiness["requiredArtifacts"])
 
+        remote_delete_safety = steps["remote-branch-delete-safety"]
+        self.assertEqual(
+            {tool["id"] for tool in remote_delete_safety.get("requiresTool", [])},
+            {"git", "gh", "powershell"},
+        )
+        self.assertIn("invoke-pre-push-remote-branch-delete-safety.ps1", " ".join(remote_delete_safety["command"]))
+
         self.assertEqual(
             {tool["id"] for tool in steps["pyright-static"].get("requiresTool", [])},
             {"pyright"},
@@ -228,6 +236,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn('-ModuleName "pytest"', readiness_script)
         self.assertIn('-ModuleName "jsonschema"', readiness_script)
         self.assertIn("python-module:yaml-parser", readiness_script)
+        self.assertIn('Install GitHub CLI and ensure gh authentication is available', readiness_script)
 
     def test_pre_push_categories_route_to_required_quick_steps(self) -> None:
         pre_push = self.classification["pre_push"]
@@ -505,9 +514,65 @@ class GateOrchestratorContractTest(unittest.TestCase):
     def test_new_remote_branch_hook_uses_main_merge_base(self) -> None:
         wrapper = _read(INVOKE_PRE_PUSH_GATE)
 
-        self.assertIn("git merge-base $defaultBaseRef $localSha", wrapper)
+        self.assertIn("git merge-base $defaultBaseRef $LocalSha", wrapper)
         self.assertIn('"origin/main"', wrapper)
         self.assertIn("rev-parse --verify --quiet $tracking", wrapper)
+
+    def test_delete_only_hook_selects_remote_delete_safety_without_changed_file_steps(self) -> None:
+        wrapper = _read(INVOKE_PRE_PUSH_GATE)
+
+        self.assertIn('kind = "delete-ref"', wrapper)
+        self.assertIn('$rangeSource = "delete-ref-only"', wrapper)
+        self.assertIn('$selectedSteps += "remote-branch-delete-safety"', wrapper)
+        self.assertIn('if ($updateOperations.Count -gt 0 -and $changedFiles.Count -eq 0)', wrapper)
+        self.assertIn("operations = @($operations)", wrapper)
+
+    def test_remote_delete_safety_blocks_protected_branch_delete(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pre-push-delete-protected-") as temp_dir:
+            report_dir = Path(temp_dir) / "report"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = report_dir / "pre-push-gate-manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 3,
+                        "remote_name": "origin",
+                        "operations": [
+                            {
+                                "kind": "delete-ref",
+                                "remote_ref": "refs/heads/main",
+                                "remote_sha": "a" * 40,
+                                "local_ref": "(delete)",
+                                "local_sha": "0" * 40,
+                                "source": "pre-push-hook",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(ROOT / "scripts" / "validation" / "invoke-pre-push-remote-branch-delete-safety.ps1"),
+                    "-ReportDir",
+                    str(report_dir / "remote-branch-delete-safety"),
+                ],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(completed.returncode, 0, msg=completed.stdout + completed.stderr)
+            summary_path = report_dir / "remote-branch-delete-safety" / "remote-branch-delete-safety.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8-sig"))
+            issue_ids = {issue["id"] for issue in summary["issues"]}
+            self.assertIn("default-branch-delete", issue_ids)
+            self.assertIn("protected-branch-pattern", issue_ids)
 
     def test_gate_orchestrator_is_published_as_authoritative_developer_doc(self) -> None:
         doc = _read(GATE_ORCHESTRATOR_DOC)
