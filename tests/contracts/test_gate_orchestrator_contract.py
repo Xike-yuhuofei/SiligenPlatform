@@ -22,6 +22,8 @@ INVOKE_SEMGREP = ROOT / "scripts" / "validation" / "invoke-semgrep.ps1"
 INVOKE_IMPORT_LINTER = ROOT / "scripts" / "validation" / "invoke-import-linter.ps1"
 INVOKE_CPPCHECK = ROOT / "scripts" / "validation" / "invoke-cppcheck.ps1"
 INVOKE_DEPENDENCY_GRAPH = ROOT / "scripts" / "validation" / "invoke-dependency-graph-export.ps1"
+INVOKE_MODULE_BOUNDARY_AUDIT = ROOT / "scripts" / "validation" / "invoke-module-boundary-audit.ps1"
+RUN_LOCAL_VALIDATION_GATE = ROOT / "scripts" / "validation" / "run-local-validation-gate.ps1"
 BUILD_VALIDATION = ROOT / "scripts" / "build" / "build-validation.ps1"
 PREPARE_STRICT_NATIVE_BUILD_CACHE = ROOT / "scripts" / "validation" / "prepare-strict-native-build-cache.ps1"
 ROOT_README = ROOT / "README.md"
@@ -139,7 +141,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
             "legacy-exit",
             "semgrep",
             "import-linter",
-            "module-boundary-bridges",
+            "module-boundary-audit",
             "pyright-static",
             "contracts-quick",
             "hmi-runtime-gateway-protocol-compat",
@@ -150,6 +152,7 @@ class GateOrchestratorContractTest(unittest.TestCase):
             "classification-evidence",
         }
         self.assertTrue(expected_quick_checks.issubset(step_ids))
+        self.assertNotIn("module-boundary-bridges", step_ids)
 
         forbidden_heavy_steps = {
             "build-ci",
@@ -177,6 +180,24 @@ class GateOrchestratorContractTest(unittest.TestCase):
         self.assertIn("$markerScanFiles", quick_check)
         self.assertIn("offline execution surfaces", quick_check)
         self.assertIn("scripts/(?!validation/)", quick_check)
+
+        pr_steps = {step["id"]: step for step in self._resolved_gate("pr")["steps"]}
+        boundary_step = pr_steps["module-boundary-audit"]
+        boundary_command = " ".join(boundary_step["command"])
+        self.assertIn("invoke-module-boundary-audit.ps1", boundary_command)
+        self.assertIn("-Mode pr", boundary_command)
+        self.assertIn("{changedFileArgs}", boundary_step["command"])
+        self.assertIn("{stepReportDir}/module-boundary-audit.json", boundary_step["requiredArtifacts"])
+        self.assertIn("{stepReportDir}/module-boundary-coverage.json", boundary_step["requiredArtifacts"])
+        self.assertIn("{stepReportDir}/bridge-registry-status.json", boundary_step["requiredArtifacts"])
+        self.assertIn("{stepReportDir}/logs/dependency-extractor.log", boundary_step["requiredArtifacts"])
+        self.assertNotIn("assert-module-boundary-bridges.ps1", boundary_command)
+
+        self.assertNotIn("assert-module-boundary-bridges.ps1", _read(GATES_PATH))
+        self.assertNotIn("module-boundary-bridges", _read(GATES_PATH))
+        self.assertNotIn("assert-module-boundary-bridges.ps1", _read(RUN_LOCAL_VALIDATION_GATE))
+        self.assertNotIn("module-boundary-bridges", _read(RUN_LOCAL_VALIDATION_GATE))
+        self.assertNotIn("assert-module-boundary-bridges.ps1", _read(INVOKE_MODULE_BOUNDARY_AUDIT))
 
     def test_pre_push_default_wrapper_uses_quick_semantics(self) -> None:
         wrapper = _read(INVOKE_PRE_PUSH_GATE)

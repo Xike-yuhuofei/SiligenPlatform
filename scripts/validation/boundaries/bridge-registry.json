@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "bridges": [
+    {
+      "id": "workflow-direct-target-runtime-service-bootstrap",
+      "owner": "modules.workflow",
+      "consumer": "apps.runtime-service",
+      "reason": "runtime-service still consumes the registered workflow public bridge while workflow owner exit is completed in governed slices",
+      "allowed_files": [
+        "apps/runtime-service/CMakeLists.txt"
+      ],
+      "allowed_targets": [
+        "siligen_workflow_adapters_public",
+        "siligen_workflow_runtime_consumer_public"
+      ],
+      "expiry_condition": "removed when runtime-service consumes only runtime-execution/process-path/diagnostics owner public targets",
+      "cleanup_ticket": "ARCH-BRIDGE-WORKFLOW-001"
+    },
+    {
+      "id": "workflow-direct-target-planner-cli",
+      "owner": "modules.workflow",
+      "consumer": "apps.planner-cli",
+      "reason": "planner-cli keeps an explicit registered bridge to workflow adapters until planner-facing use cases are owned by canonical modules",
+      "allowed_files": [
+        "apps/planner-cli/CMakeLists.txt"
+      ],
+      "allowed_targets": [
+        "siligen_workflow_adapters_public",
+        "siligen_workflow_runtime_consumer_public"
+      ],
+      "expiry_condition": "removed when planner-cli no longer links workflow public bridge targets",
+      "cleanup_ticket": "ARCH-BRIDGE-WORKFLOW-002"
+    },
+    {
+      "id": "workflow-direct-target-runtime-execution-root",
+      "owner": "modules.workflow",
+      "consumer": "modules.runtime-execution",
+      "reason": "runtime-execution root keeps a registered legacy workflow bridge only where owner migration has not yet removed the public bridge dependency",
+      "allowed_files": [
+        "modules/runtime-execution/CMakeLists.txt",
+        "modules/runtime-execution/runtime/host/CMakeLists.txt"
+      ],
+      "allowed_targets": [
+        "siligen_workflow_adapters_public",
+        "siligen_workflow_runtime_consumer_public"
+      ],
+      "expiry_condition": "removed when runtime-execution root and host link only canonical owner targets",
+      "cleanup_ticket": "ARCH-BRIDGE-WORKFLOW-003"
+    },
+    {
+      "id": "hardware-test-diagnostics-bootstrap-quarantine",
+      "owner": "modules.workflow",
+      "consumer": "apps.runtime-service",
+      "reason": "hardware-test diagnostics ports remain quarantined to runtime-service bootstrap until diagnostics contracts land under the final owner",
+      "allowed_files": [
+        "apps/runtime-service/bootstrap/ContainerBootstrap.cpp"
+      ],
+      "allowed_targets": [
+        "domain/diagnostics/ports/ITestRecordRepository.h",
+        "domain/diagnostics/ports/ITestConfigurationPort.h",
+        "domain/diagnostics/ports/ICMPTestPresetPort.h",
+        "ITestRecordRepository",
+        "ITestConfigurationPort",
+        "ICMPTestPresetPort"
+      ],
+      "expiry_condition": "removed when hardware-test diagnostics ports move behind a canonical diagnostics owner contract",
+      "cleanup_ticket": "ARCH-BRIDGE-DIAGNOSTICS-001"
+    },
+    {
+      "id": "hardware-test-diagnostics-types-quarantine",
+      "owner": "modules.workflow",
+      "consumer": "modules.workflow",
+      "reason": "TestDataTypes is quarantined behind workflow diagnostics hardware-test contracts until the landing owner is re-frozen",
+      "allowed_files": [
+        "modules/workflow/domain/include/domain/diagnostics/ports/ITestRecordRepository.h"
+      ],
+      "allowed_targets": [
+        "TestDataTypes",
+        "domain/diagnostics/TestDataTypes.h"
+      ],
+      "expiry_condition": "removed when TestDataTypes lands in a canonical diagnostics contract package",
+      "cleanup_ticket": "ARCH-BRIDGE-DIAGNOSTICS-002"
+    }
+  ]
+}

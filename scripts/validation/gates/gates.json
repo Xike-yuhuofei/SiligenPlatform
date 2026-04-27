@@ -688,8 +688,8 @@
           ]
         },
         {
-          "id": "module-boundary-bridges",
-          "name": "Validate module boundary bridges",
+          "id": "module-boundary-audit",
+          "name": "Run Module Boundary Audit",
           "blocking": true,
           "timeoutSeconds": 300,
           "command": [
@@ -698,15 +698,23 @@
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            "{workspaceRoot}/scripts/validation/assert-module-boundary-bridges.ps1",
+            "{workspaceRoot}/scripts/validation/invoke-module-boundary-audit.ps1",
+            "-Mode",
+            "pr",
             "-WorkspaceRoot",
             "{workspaceRoot}",
             "-ReportDir",
-            "{stepReportDir}"
+            "{stepReportDir}",
+            "{changedFileArgs}"
           ],
           "requiredArtifacts": [
-            "{stepReportDir}/module-boundary-bridges.json",
-            "{stepReportDir}/module-boundary-bridges.md"
+            "{stepReportDir}/module-boundary-audit.json",
+            "{stepReportDir}/module-boundary-audit.md",
+            "{stepReportDir}/module-boundary-coverage.json",
+            "{stepReportDir}/bridge-registry-status.json",
+            "{stepReportDir}/logs/model-loader.log",
+            "{stepReportDir}/logs/dependency-extractor.log",
+            "{stepReportDir}/logs/policy-evaluator.log"
           ],
           "requiresTool": [
             {
@@ -714,6 +722,12 @@
               "names": [
                 "powershell",
                 "pwsh"
+              ]
+            },
+            {
+              "id": "python",
+              "names": [
+                "python"
               ]
             }
           ]

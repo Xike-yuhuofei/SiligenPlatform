@@ -25,13 +25,14 @@
 .\scripts\validation\invoke-gate.ps1 -Gate pre-push
 .\scripts\validation\invoke-gate.ps1 -Gate pr
 .\scripts\validation\invoke-gate.ps1 -Gate full-offline
+.\scripts\validation\invoke-module-boundary-audit.ps1 -Mode pr
 .\build.ps1
 .\test.ps1
 .\ci.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\run-local-validation-gate.ps1
 ```
 
-门禁与自动化测试的权威入口是 `docs/validation/gate-orchestrator.md`。`ci.ps1` 保留为兼容包装，新的门禁编排应进入 `scripts/validation/gates/gates.json`，不要在 workflow 或临时脚本中复制测试清单。PR baseline、conditional Native/HIL、Nightly 和 Release 的职责边界都以该文档为准；PR passed 不等于 release ready。
+门禁与自动化测试的权威入口是 `docs/validation/gate-orchestrator.md`。`ci.ps1` 保留为兼容包装，新的门禁编排应进入 `scripts/validation/gates/gates.json`，Module Boundary Audit 模型应进入 `scripts/validation/boundaries/`，不要在 workflow 或临时脚本中复制测试清单。PR baseline、conditional Native/HIL、Nightly 和 Release 的职责边界都以该文档为准；PR passed 不等于 release ready。
 
 ## 先看哪里
 

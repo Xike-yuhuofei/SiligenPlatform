@@ -62,6 +62,8 @@
 - Gate 定义：`scripts/validation/gates/gates.json`
 - 变更分类：`scripts/validation/classify-change.ps1`
 - 分类规则：`scripts/validation/gates/change-classification.json`
+- 边界审计入口：`scripts/validation/invoke-module-boundary-audit.ps1`
+- 边界审计模型：`scripts/validation/boundaries/module-boundaries.json`、`scripts/validation/boundaries/bridge-registry.json`、`scripts/validation/boundaries/boundary-policy.json`
 - 开发者遵守文档：`docs/validation/gate-orchestrator.md`
 - PR / Native / HIL 合并策略：`docs/validation/pr-gate-and-hil-gate-policy.md`
 

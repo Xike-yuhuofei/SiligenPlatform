@@ -59,6 +59,9 @@
 - `scripts/validation/gates/gates.json`：gate 与 step 的唯一编排配置。
 - `scripts/validation/gates/change-classification.json`：pre-push quick route、native follow-up、HIL follow-up 的唯一分类规则。
 - `scripts/validation/classify-change.ps1`：读取分类规则并输出 `classification.json`，字段至少包含 `changed_files`、`categories`、`reasons`、`requires_native_followup`、`requires_hil_followup`、`selected_pre_push_steps`。
+- `scripts/validation/boundaries/module-boundaries.json`：Module Boundary Audit 的模块 owner、root、public/private surface 和允许/禁止依赖模型。
+- `scripts/validation/boundaries/bridge-registry.json`：唯一正式 bridge/quarantine 登记。未登记 bridge 一律按阻断项处理。
+- `scripts/validation/boundaries/boundary-policy.json`：Module Boundary Audit 在 `pr`、`full`、`nightly` 下的阻断项、观察项与覆盖要求。
 
 每个 step 必须显式声明：
 
@@ -94,7 +97,7 @@
 - `legacy-exit`
 - `semgrep`
 - `import-linter`
-- `module-boundary-bridges`
+- `module-boundary-audit`
 - `pyright-static`
 - `contracts-quick`
 - `hmi-runtime-gateway-protocol-compat`
@@ -105,6 +108,33 @@
 - `classification-evidence`
 
 `pr` gate 明确不包含 native full build、HIL、performance、release dry-run 或 long-running stability tests。这些由 `native`、`hil`、`nightly` 和 `release` gate 承接。
+
+### 3.1.1 Module Boundary Audit
+
+`module-boundary-audit` 是 PR 基线中的正式架构边界检查，替代旧 `module-boundary-bridges` 脚本。生产门禁不得再调用 `scripts/validation/assert-module-boundary-bridges.ps1`，也不得并行运行旧脚本作为 fallback。
+
+执行入口固定为：
+
+```powershell
+.\scripts\validation\invoke-module-boundary-audit.ps1 `
+  -Mode pr|full|nightly `
+  -ReportDir tests\reports\<target> `
+  -ChangedFile <changed-file-list>
+```
+
+审计数据流固定为：加载 `module-boundaries.json`、`bridge-registry.json`、`boundary-policy.json`；按 mode 选择 changed-file 或全仓扫描；抽取 CMake/C++/PowerShell 依赖；分类为 allowed、forbidden、registered bridge、unknown、external；按 policy 评估；输出证据；存在 blocking finding 时非零退出。
+
+PR 模式只审 changed files 相关依赖；但以下发现必须阻断：unknown dependency、private surface access、未登记 bridge、未授权 bridge、forbidden dependency、direct workflow target reference、required owner target 缺失、retired surface 重新出现。`full` 与 `nightly` 使用全仓扫描；`nightly` 额外输出 bridge expiry / unused bridge 状态。
+
+每次运行必须生成：
+
+- `module-boundary-audit.json`
+- `module-boundary-audit.md`
+- `module-boundary-coverage.json`
+- `bridge-registry-status.json`
+- `logs/model-loader.log`
+- `logs/dependency-extractor.log`
+- `logs/policy-evaluator.log`
 
 ## 3.2 Pre-push 自动分类与 quick checks
 

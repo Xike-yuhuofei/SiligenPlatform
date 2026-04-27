@@ -964,13 +964,16 @@ foreach ($step in $manifestSteps) {
     }
 }
 
-$gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
-    Expand-TemplateValue -Value $_ -Context @{
-        workspaceRoot = $workspaceRoot
-        gateReportDir = $gateReportDir
-        stepReportDir = $gateReportDir
-    }
-})
+$gateArtifactResults = @()
+if ($SelectedStep.Count -eq 0) {
+    $gateArtifactResults = Test-RequiredArtifacts -Patterns @(ConvertTo-StringArray -Value $gateConfig.requiredArtifacts | ForEach-Object {
+        Expand-TemplateValue -Value $_ -Context @{
+            workspaceRoot = $workspaceRoot
+            gateReportDir = $gateReportDir
+            stepReportDir = $gateReportDir
+        }
+    })
+}
 $missingGateArtifacts = @($gateArtifactResults | Where-Object { -not $_.exists } | ForEach-Object { $_.pattern })
 if (@($missingGateArtifacts).Count -gt 0) {
     $gateFailed = $true
