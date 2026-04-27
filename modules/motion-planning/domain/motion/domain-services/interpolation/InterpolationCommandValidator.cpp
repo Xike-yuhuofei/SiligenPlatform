@@ -2,7 +2,7 @@
 
 namespace Siligen::Domain::Motion::DomainServices {
 
-Result<void> InterpolationCommandValidator::ValidateInterpolationData(const InterpolationData& data) const noexcept {
+Result<void> InterpolationCommandValidator::ValidateInterpolationData(const InterpolationData& data) noexcept {
     if (data.positions.size() < 2) {
         return Result<void>::Failure(
             Error(ErrorCode::INVALID_PARAMETER,

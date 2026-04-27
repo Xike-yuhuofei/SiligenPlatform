@@ -50,14 +50,14 @@ class VelocityProfileService {
      * @param config 速度规划配置
      * @return 验证结果
      */
-    Result<void> ValidateConfig(const VelocityProfileConfig& config) const noexcept;
+    static Result<void> ValidateConfig(const VelocityProfileConfig& config) noexcept;
 
     /**
      * @brief 计算最小距离阈值（低于此距离需要降级曲线类型）
      * @param config 速度规划配置
      * @return 最小距离 (mm)
      */
-    float32 CalculateMinDistanceFor7Seg(const VelocityProfileConfig& config) const noexcept;
+    static float32 CalculateMinDistanceFor7Seg(const VelocityProfileConfig& config) noexcept;
 
    private:
     std::shared_ptr<IVelocityProfilePort> profile_port_;

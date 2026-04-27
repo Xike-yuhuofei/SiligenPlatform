@@ -16,7 +16,7 @@ using Siligen::RuntimeExecution::Contracts::Motion::InterpolationType;
 
 class InterpolationCommandValidator {
 public:
-    Result<void> ValidateInterpolationData(const InterpolationData& data) const noexcept;
+    static Result<void> ValidateInterpolationData(const InterpolationData& data) noexcept;
     Result<void> ValidateVelocityOverride(float32 override_percent) const noexcept;
     Result<void> ValidateSCurveJerk(float32 jerk) const noexcept;
     Result<void> ValidateCoordinateSystemMask(uint32 coord_sys_mask) const noexcept;
