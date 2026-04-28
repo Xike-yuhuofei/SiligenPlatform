@@ -8,6 +8,7 @@
 #include "runtime_execution/application/usecases/system/InitializeSystemUseCase.h"
 #include "runtime_execution/application/usecases/dispensing/DispensingExecutionUseCase.h"
 #include "runtime_execution/application/usecases/motion/MotionControlUseCase.h"
+#include "services/motion/SoftLimitMonitorService.h"
 #include "runtime_execution/contracts/safety/IInterlockSignalPort.h"
 #include "runtime/status/RuntimeStatusExportPort.h"
 #include "runtime/supervision/RuntimeExecutionSupervisionBackend.h"
@@ -60,10 +61,19 @@ void ApplicationContainer::ValidateDiagnosticsPorts() {
 }
 
 void ApplicationContainer::ConfigureSystemOwnerPorts() {
+    auto dispensing_execution_use_case = Resolve<UseCases::Dispensing::DispensingExecutionUseCase>();
+    if (auto soft_limit_monitor =
+            std::dynamic_pointer_cast<Siligen::Application::Services::Motion::SoftLimitMonitorService>(
+                soft_limit_monitor_);
+        soft_limit_monitor && dispensing_execution_use_case) {
+        soft_limit_monitor->SetActiveJobIdProvider([dispensing_execution_use_case]() {
+            return dispensing_execution_use_case->GetActiveJobId();
+        });
+    }
+
     auto runtime_supervision_port =
         ResolvePort<Siligen::RuntimeExecution::Contracts::System::IRuntimeSupervisionPort>();
     if (!runtime_supervision_port) {
-        auto dispensing_execution_use_case = Resolve<UseCases::Dispensing::DispensingExecutionUseCase>();
         auto terminal_job_sync =
             std::make_shared<Siligen::Runtime::Service::Supervision::RuntimeJobTerminalSync>(
                 Resolve<UseCases::Dispensing::DispensingWorkflowUseCase>());
@@ -152,7 +162,8 @@ ApplicationContainer::CreateInstance<UseCases::System::InitializeSystemUseCase>(
         home_axes_usecase,
         diagnostics_port_,
         event_port_,
-        hard_limit_monitor_);
+        hard_limit_monitor_,
+        soft_limit_monitor_);
 }
 
 template<>

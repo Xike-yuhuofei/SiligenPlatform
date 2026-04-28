@@ -17,8 +17,13 @@ using EventType = Siligen::Domain::System::Ports::EventType;
 using IEventPublisherPort = Siligen::Domain::System::Ports::IEventPublisherPort;
 using IMotionStatePort = Siligen::Domain::Motion::Ports::IMotionStatePort;
 using IPositionControlPort = Siligen::Domain::Motion::Ports::IPositionControlPort;
+using ITriggerControllerPort = Siligen::Domain::Dispensing::Ports::ITriggerControllerPort;
+using IMachineExecutionStatePort = Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort;
+using MachineExecutionSnapshot = Siligen::RuntimeExecution::Contracts::System::MachineExecutionSnapshot;
 using MotionCommand = Siligen::Domain::Motion::Ports::MotionCommand;
 using MotionStatus = Siligen::Domain::Motion::Ports::MotionStatus;
+using TriggerConfig = Siligen::Domain::Dispensing::Ports::TriggerConfig;
+using TriggerStatus = Siligen::Domain::Dispensing::Ports::TriggerStatus;
 using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
 using Point2D = Siligen::Shared::Types::Point2D;
 using Error = Siligen::Shared::Types::Error;
@@ -140,6 +145,59 @@ class CountingPositionControlPort final : public IPositionControlPort {
     std::optional<Error> emergency_stop_error;
 };
 
+class CountingTriggerControllerPort final : public ITriggerControllerPort {
+   public:
+    ResultVoid ConfigureTrigger(const TriggerConfig&) override { return ResultVoid::Success(); }
+    Result<TriggerConfig> GetTriggerConfig() const override { return Result<TriggerConfig>::Success(TriggerConfig{}); }
+    ResultVoid SetSingleTrigger(LogicalAxisId, float32, int32) override { return ResultVoid::Success(); }
+    ResultVoid SetContinuousTrigger(LogicalAxisId, float32, float32, float32, int32) override { return ResultVoid::Success(); }
+    ResultVoid SetRangeTrigger(LogicalAxisId, float32, float32, int32) override { return ResultVoid::Success(); }
+    ResultVoid SetSequenceTrigger(LogicalAxisId, const std::vector<float32>&, int32) override { return ResultVoid::Success(); }
+    ResultVoid EnableTrigger(LogicalAxisId) override { return ResultVoid::Success(); }
+
+    ResultVoid DisableTrigger(LogicalAxisId axis) override {
+        ++disable_trigger_calls;
+        last_disabled_axis = axis;
+        return ResultVoid::Success();
+    }
+
+    ResultVoid ClearTrigger(LogicalAxisId) override { return ResultVoid::Success(); }
+    Result<TriggerStatus> GetTriggerStatus(LogicalAxisId) const override { return Result<TriggerStatus>::Success(TriggerStatus{}); }
+    Result<bool> IsTriggerEnabled(LogicalAxisId) const override { return Result<bool>::Success(false); }
+    Result<int32> GetTriggerCount(LogicalAxisId) const override { return Result<int32>::Success(0); }
+
+    int disable_trigger_calls = 0;
+    LogicalAxisId last_disabled_axis = LogicalAxisId::INVALID;
+};
+
+class CountingMachineExecutionStatePort final : public IMachineExecutionStatePort {
+   public:
+    Result<MachineExecutionSnapshot> ReadSnapshot() const override {
+        return Result<MachineExecutionSnapshot>::Success(snapshot);
+    }
+
+    ResultVoid ClearPendingTasks() override {
+        ++clear_pending_tasks_calls;
+        snapshot.pending_task_count = 0;
+        return ResultVoid::Success();
+    }
+
+    ResultVoid TransitionToEmergencyStop() override {
+        ++transition_to_emergency_stop_calls;
+        snapshot.emergency_stopped = true;
+        return ResultVoid::Success();
+    }
+
+    ResultVoid RecoverToUninitialized() override {
+        snapshot.emergency_stopped = false;
+        return ResultVoid::Success();
+    }
+
+    mutable MachineExecutionSnapshot snapshot{};
+    int clear_pending_tasks_calls = 0;
+    int transition_to_emergency_stop_calls = 0;
+};
+
 TEST(SoftLimitMonitorServiceTest, PublishesAxisPositionAndTaskIdSnapshot) {
     auto motion_state_port = std::make_shared<StubMotionStatePort>();
     motion_state_port->y_status.soft_limit_negative = true;
@@ -156,6 +214,9 @@ TEST(SoftLimitMonitorServiceTest, PublishesAxisPositionAndTaskIdSnapshot) {
 
     SoftLimitMonitorService service(motion_state_port, event_port, position_control_port, config);
     service.SetCurrentTaskId("task-42");
+    service.SetActiveJobIdProvider([]() {
+        return std::string("job-7");
+    });
 
     float32 callback_position = 0.0f;
     service.SetTriggerCallback([&callback_position](LogicalAxisId, float32 position, bool) {
@@ -170,11 +231,69 @@ TEST(SoftLimitMonitorServiceTest, PublishesAxisPositionAndTaskIdSnapshot) {
     const auto& event = event_port->soft_limit_events.front();
     EXPECT_EQ(event.axis, LogicalAxisId::Y);
     EXPECT_EQ(event.task_id, "task-42");
+    EXPECT_EQ(event.job_id, "job-7");
     EXPECT_FLOAT_EQ(event.position, 33.0f);
     EXPECT_FALSE(event.is_positive_limit);
+    EXPECT_EQ(event.reason_code, "soft_limit_negative");
+    EXPECT_EQ(event.error_code, 1104);
     EXPECT_FLOAT_EQ(callback_position, 33.0f);
     EXPECT_EQ(position_control_port->stop_all_axes_calls, 1);
     EXPECT_EQ(position_control_port->emergency_stop_calls, 0);
+}
+
+TEST(SoftLimitMonitorServiceTest, UsesEmergencySafetyPathAndSuppressesDuplicateSoftLimitEvents) {
+    auto motion_state_port = std::make_shared<StubMotionStatePort>();
+    motion_state_port->y_status.soft_limit_negative = true;
+    motion_state_port->y_status.axis_position_mm = 33.0f;
+
+    auto event_port = std::make_shared<CapturingEventPublisher>();
+    auto position_control_port = std::make_shared<CountingPositionControlPort>();
+    auto trigger_port = std::make_shared<CountingTriggerControllerPort>();
+    auto machine_execution_state_port = std::make_shared<CountingMachineExecutionStatePort>();
+    machine_execution_state_port->snapshot.pending_task_count = 3;
+
+    SoftLimitMonitorConfig config;
+    config.monitored_axes = {LogicalAxisId::Y};
+    config.auto_stop_on_trigger = true;
+    config.emergency_stop_on_trigger = true;
+
+    SoftLimitMonitorService service(
+        motion_state_port,
+        event_port,
+        position_control_port,
+        trigger_port,
+        machine_execution_state_port,
+        config);
+
+    auto first_check_result = service.CheckSoftLimits();
+    ASSERT_TRUE(first_check_result.IsSuccess()) << first_check_result.GetError().GetMessage();
+    EXPECT_TRUE(first_check_result.Value());
+    ASSERT_EQ(event_port->soft_limit_events.size(), 1U);
+    EXPECT_EQ(position_control_port->emergency_stop_calls, 1);
+    EXPECT_EQ(position_control_port->stop_all_axes_calls, 1);
+    EXPECT_EQ(trigger_port->disable_trigger_calls, 1);
+    EXPECT_EQ(trigger_port->last_disabled_axis, LogicalAxisId::X);
+    EXPECT_EQ(machine_execution_state_port->clear_pending_tasks_calls, 1);
+    EXPECT_EQ(machine_execution_state_port->transition_to_emergency_stop_calls, 1);
+    EXPECT_TRUE(machine_execution_state_port->snapshot.emergency_stopped);
+
+    auto second_check_result = service.CheckSoftLimits();
+    ASSERT_TRUE(second_check_result.IsSuccess()) << second_check_result.GetError().GetMessage();
+    EXPECT_FALSE(second_check_result.Value());
+    EXPECT_EQ(event_port->soft_limit_events.size(), 1U);
+    EXPECT_EQ(position_control_port->emergency_stop_calls, 1);
+
+    motion_state_port->y_status.soft_limit_negative = false;
+    auto clear_check_result = service.CheckSoftLimits();
+    ASSERT_TRUE(clear_check_result.IsSuccess()) << clear_check_result.GetError().GetMessage();
+    EXPECT_FALSE(clear_check_result.Value());
+
+    motion_state_port->y_status.soft_limit_negative = true;
+    auto retrigger_check_result = service.CheckSoftLimits();
+    ASSERT_TRUE(retrigger_check_result.IsSuccess()) << retrigger_check_result.GetError().GetMessage();
+    EXPECT_TRUE(retrigger_check_result.Value());
+    EXPECT_EQ(event_port->soft_limit_events.size(), 2U);
+    EXPECT_EQ(position_control_port->emergency_stop_calls, 2);
 }
 
 TEST(SoftLimitMonitorServiceTest, PublishFailureIsReturnedButCallbackAndStopStillRun) {
@@ -241,6 +360,10 @@ TEST(SoftLimitMonitorServiceTest, StopFailureIsReturnedAfterEventPublishAndCallb
     EXPECT_FLOAT_EQ(callback_position, 33.0f);
     EXPECT_EQ(position_control_port->stop_all_axes_calls, 1);
     EXPECT_EQ(position_control_port->emergency_stop_calls, 0);
+
+    auto retry_result = service.CheckSoftLimits();
+    ASSERT_TRUE(retry_result.IsError());
+    EXPECT_EQ(position_control_port->stop_all_axes_calls, 2);
 }
 
 }  // namespace

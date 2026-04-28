@@ -206,6 +206,7 @@ private:
     std::shared_ptr<Domain::Motion::DomainServices::JogController> jog_controller_;
     std::shared_ptr<Domain::Motion::DomainServices::VelocityProfileService> velocity_profile_service_;
     std::shared_ptr<Siligen::Application::UseCases::System::IHardLimitMonitor> hard_limit_monitor_;
+    std::shared_ptr<Siligen::Application::UseCases::System::ISoftLimitMonitor> soft_limit_monitor_;
 
     // 配置数据
     Domain::Configuration::Ports::ValveSupplyConfig valve_supply_config_;  ///< 供胶阀配置

@@ -2347,6 +2347,86 @@ TEST(DispensingWorkflowUseCaseTest, StartJobRejectsSafetyDoor) {
     EXPECT_FALSE(result.GetError().GetMessage().empty());
 }
 
+TEST(DispensingWorkflowUseCaseTest, StartJobRejectsExecutionTrajectoryOutsideMachineSoftLimit) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    config_port->machine_config.max_speed = 300.0f;
+    config_port->machine_config.max_acceleration = 1000.0f;
+    config_port->machine_config.soft_limits.x_min = 0.0f;
+    config_port->machine_config.soft_limits.x_max = 10.0f;
+    config_port->machine_config.soft_limits.y_min = 0.0f;
+    config_port->machine_config.soft_limits.y_max = 10.0f;
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    auto use_case = CreateUseCaseWithPlanningAndExecutionPort(
+        MakeDummyShared<PlanningUseCase>(),
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        std::make_shared<FakeProductionBaselinePort>(),
+        config_port);
+    SeedPlan(use_case, "plan-soft-limit");
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-soft-limit";
+    request.plan_fingerprint = "fp-plan-soft-limit";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::POSITION_OUT_OF_RANGE);
+    EXPECT_NE(result.GetError().GetMessage().find("SOFT_LIMIT_VIOLATION"), std::string::npos);
+}
+
+TEST(DispensingWorkflowUseCaseTest, StartJobSoftLimitViolationDoesNotCallRuntimeExecutionPort) {
+    auto connection_port = std::make_shared<FakeHardwareConnectionPort>();
+    auto motion_state_port = std::make_shared<FakeMotionStatePort>();
+    auto homing_port = std::make_shared<FakeHomingPort>();
+    auto interlock_port = std::make_shared<FakeInterlockSignalPort>();
+    auto execution_port = std::make_shared<SpyWorkflowExecutionPort>();
+    auto config_port = std::make_shared<FakeConfigurationPort>();
+    config_port->machine_config.max_speed = 300.0f;
+    config_port->machine_config.max_acceleration = 1000.0f;
+    config_port->machine_config.soft_limits.x_min = 0.0f;
+    config_port->machine_config.soft_limits.x_max = 10.0f;
+    config_port->machine_config.soft_limits.y_min = 0.0f;
+    config_port->machine_config.soft_limits.y_max = 10.0f;
+    motion_state_port->statuses[LogicalAxisId::X] = ReadyAxisStatus();
+    motion_state_port->statuses[LogicalAxisId::Y] = ReadyAxisStatus();
+    homing_port->homed[LogicalAxisId::X] = true;
+    homing_port->homed[LogicalAxisId::Y] = true;
+
+    auto use_case = CreateUseCaseWithPlanningAndExecutionPort(
+        MakeDummyShared<PlanningUseCase>(),
+        execution_port,
+        connection_port,
+        motion_state_port,
+        homing_port,
+        interlock_port,
+        std::make_shared<FakeProductionBaselinePort>(),
+        config_port);
+    SeedPlan(use_case, "plan-soft-limit-no-launch");
+
+    Siligen::Application::UseCases::Dispensing::StartJobRequest request;
+    request.plan_id = "plan-soft-limit-no-launch";
+    request.plan_fingerprint = "fp-plan-soft-limit-no-launch";
+    request.target_count = 1;
+    const auto result = use_case.StartJob(request);
+
+    ASSERT_TRUE(result.IsError());
+    EXPECT_EQ(result.GetError().GetCode(), ErrorCode::POSITION_OUT_OF_RANGE);
+    EXPECT_EQ(execution_port->start_calls, 0U);
+}
+
 TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRuntimeOverrides) {
     ScopedTempPbFile temp_pb_file;
     auto planning_use_case = CreateRealPlanningUseCase();

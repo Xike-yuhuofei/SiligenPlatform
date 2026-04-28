@@ -1,8 +1,11 @@
 #pragma once
 
 #include "runtime/contracts/system/IEventPublisherPort.h"
+#include "runtime_execution/application/usecases/system/ISoftLimitMonitor.h"
+#include "runtime_execution/contracts/dispensing/ITriggerControllerPort.h"
 #include "runtime_execution/contracts/motion/IMotionStatePort.h"
 #include "runtime_execution/contracts/motion/IPositionControlPort.h"
+#include "runtime_execution/contracts/system/IMachineExecutionStatePort.h"
 #include "shared/types/Result.h"
 
 #include <atomic>
@@ -23,6 +26,7 @@ using Shared::Types::LogicalAxisId;
 using Shared::Types::float32;
 using Shared::Types::uint32;
 using RuntimeEventPublisherPort = Siligen::Domain::System::Ports::IEventPublisherPort;
+using ActiveJobIdProvider = std::function<std::string()>;
 
 /**
  * @brief 软限位监控配置
@@ -60,7 +64,7 @@ using SoftLimitTriggerCallback = std::function<void(
  * - 线程安全：独立mutex保护共享数据
  * - RAII：析构时自动停止监控
  */
-class SoftLimitMonitorService {
+class SoftLimitMonitorService : public UseCases::System::ISoftLimitMonitor {
    public:
     /**
      * @brief 构造函数
@@ -73,6 +77,15 @@ class SoftLimitMonitorService {
         std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
         std::shared_ptr<RuntimeEventPublisherPort> event_port,
         std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
+        const SoftLimitMonitorConfig& config = SoftLimitMonitorConfig{});
+
+    SoftLimitMonitorService(
+        std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port,
+        std::shared_ptr<RuntimeEventPublisherPort> event_port,
+        std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port,
+        std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port,
+        std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>
+            machine_execution_state_port,
         const SoftLimitMonitorConfig& config = SoftLimitMonitorConfig{});
 
     /**
@@ -89,19 +102,19 @@ class SoftLimitMonitorService {
      *
      * @return Result<void> 成功返回Success，失败返回错误信息
      */
-    Result<void> Start() noexcept;
+    Result<void> Start() noexcept override;
 
     /**
      * @brief 停止监控
      *
      * @return Result<void> 成功返回Success
      */
-    Result<void> Stop() noexcept;
+    Result<void> Stop() noexcept override;
 
     /**
      * @brief 检查监控是否运行中
      */
-    bool IsRunning() const noexcept {
+    bool IsRunning() const noexcept override {
         return is_running_.load();
     }
 
@@ -140,7 +153,17 @@ class SoftLimitMonitorService {
         current_task_id_.clear();
     }
 
+    void SetActiveJobIdProvider(ActiveJobIdProvider provider) noexcept {
+        std::lock_guard<std::mutex> lock(job_provider_mutex_);
+        active_job_id_provider_ = std::move(provider);
+    }
+
    private:
+    struct SoftLimitSignalState {
+        bool positive = false;
+        bool negative = false;
+    };
+
     /**
      * @brief 监控循环（后台线程执行）
      */
@@ -172,6 +195,9 @@ class SoftLimitMonitorService {
     std::shared_ptr<Domain::Motion::Ports::IMotionStatePort> motion_state_port_;
     std::shared_ptr<RuntimeEventPublisherPort> event_port_;
     std::shared_ptr<Domain::Motion::Ports::IPositionControlPort> position_control_port_;
+    std::shared_ptr<Domain::Dispensing::Ports::ITriggerControllerPort> trigger_port_;
+    std::shared_ptr<Siligen::RuntimeExecution::Contracts::System::IMachineExecutionStatePort>
+        machine_execution_state_port_;
 
     // 配置
     SoftLimitMonitorConfig config_;
@@ -188,6 +214,9 @@ class SoftLimitMonitorService {
     // 任务追踪
     std::string current_task_id_;
     std::mutex task_mutex_;
+    ActiveJobIdProvider active_job_id_provider_;
+    std::mutex job_provider_mutex_;
+    std::vector<SoftLimitSignalState> last_triggered_;
 };
 
 }  // namespace Siligen::Application::Services::Motion

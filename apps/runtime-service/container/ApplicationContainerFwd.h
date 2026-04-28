@@ -51,9 +51,10 @@ class VelocityProfileService;
 }
 
 namespace Siligen::Application::UseCases::System {
-class IHardLimitMonitor;
-class InitializeSystemUseCase;
-class EmergencyStopUseCase;
+    class IHardLimitMonitor;
+    class ISoftLimitMonitor;
+    class InitializeSystemUseCase;
+    class EmergencyStopUseCase;
 }
 
 namespace Siligen::Application::UseCases::Motion::Homing {
