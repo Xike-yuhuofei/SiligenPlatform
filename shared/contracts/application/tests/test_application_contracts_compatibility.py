@@ -156,7 +156,10 @@ def test_dxf_preview_and_job_contract():
 
     artifact_create = operations["dxf.artifact.create"]
     assert "formal_compare_gate" not in artifact_create["resultSchema"]["required"]
-    assert "input_quality" in artifact_create["resultSchema"]["required"]
+    assert "input_quality" not in artifact_create["resultSchema"]["required"]
+    assert "validation_report" in artifact_create["resultSchema"]["required"]
+    assert "prepared_filepath" not in artifact_create["resultSchema"]["required"]
+    assert {"source_drawing_ref", "source_hash"}.issubset(set(artifact_create["resultSchema"]["required"]))
 
     preview = operations["dxf.preview.snapshot"]
     preview_params = preview["paramsSchema"]
@@ -284,7 +287,8 @@ def test_dxf_preview_and_job_contract():
     assert "recipe_id" not in prepare_request_fixture["params"]
     assert "version_id" not in prepare_request_fixture["params"]
     assert "formal_compare_gate" not in artifact_fixture["result"]
-    assert artifact_fixture["result"]["input_quality"]["classification"] == "success"
+    assert artifact_fixture["result"]["validation_report"]["result_classification"] == "success"
+    assert artifact_fixture["result"]["validation_report"]["stage_id"] == "S1"
     assert prepare_fixture["result"]["formal_compare_gate"] is None
     assert prepare_fixture["result"]["production_baseline"]["baseline_id"]
     assert prepare_fixture["result"]["production_baseline"]["baseline_fingerprint"]

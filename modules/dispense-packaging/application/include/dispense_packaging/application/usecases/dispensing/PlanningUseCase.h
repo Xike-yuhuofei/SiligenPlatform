@@ -73,10 +73,14 @@ struct ExecutionProfile {
 struct PreparedAuthorityPreview {
     bool success = false;
     std::string source_path;
+    std::string source_drawing_ref;
+    std::string source_hash;
     std::string prepared_pb_path;
+    Siligen::Application::Ports::Dispensing::PlanningInputQualityProjection input_quality_projection;
     Siligen::ProcessPath::Contracts::ProcessPath authority_process_path;
     Siligen::ProcessPath::Contracts::ProcessPath canonical_execution_process_path;
     int discontinuity_count = 0;
+    bool fragmentation_suspected = false;
     std::string preview_diagnostic_code;
     Siligen::Application::Services::Dispensing::WorkflowAuthorityPreviewArtifacts artifacts;
     AuthorityProfile authority_profile;
@@ -130,6 +134,8 @@ struct ExecutionAssemblyArtifacts {
 
 struct PlanningRequest {
     std::string dxf_filepath;
+    std::string source_drawing_ref;
+    std::string source_hash;
     std::string baseline_fingerprint;
     TrajectoryConfig trajectory_config;
     bool optimize_path = true;

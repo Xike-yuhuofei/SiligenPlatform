@@ -13,8 +13,8 @@
 namespace Siligen::Application::Facades::Tcp {
 
 using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
 
 class TcpDispensingFacade {
    public:
@@ -37,7 +37,7 @@ class TcpDispensingFacade {
     Shared::Types::Result<Domain::Dispensing::Ports::DispenserValveState> GetDispenserStatus();
     Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveStatusDetail> GetSupplyStatus();
 
-    Shared::Types::Result<UploadResponse> UploadDxf(
+    Shared::Types::Result<SourceDrawing> UploadDxf(
         const UploadRequest& request);
     Shared::Types::Result<UseCases::Dispensing::PlanningResponse> PlanDxf(
         const UseCases::Dispensing::PlanningRequest& request);

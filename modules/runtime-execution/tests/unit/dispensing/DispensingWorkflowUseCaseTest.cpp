@@ -65,11 +65,9 @@ using Siligen::Application::Services::DXF::DxfPbPreparationService;
 using Siligen::Infrastructure::Adapters::ConfigFileAdapter;
 using Siligen::JobIngest::Contracts::DxfInputQuality;
 using Siligen::JobIngest::Contracts::IUploadFilePort;
+using Siligen::JobIngest::Contracts::SourceDrawing;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
-using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
 using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
-using Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact;
 using Siligen::JobIngest::Application::UseCases::Dispensing::UploadFileUseCase;
 using Siligen::Device::Contracts::Commands::DeviceConnection;
 using Siligen::Device::Contracts::Ports::DispenserDevicePort;
@@ -312,14 +310,60 @@ DxfInputQuality BuildProductionReadyInputQuality() {
     return input_quality;
 }
 
+std::filesystem::path ValidationReportPathForPb(const std::filesystem::path& pb_path) {
+    auto report_path = pb_path;
+    report_path.replace_extension(".validation.json");
+    return report_path;
+}
+
+void WriteProductionReadyValidationReport(
+    const std::filesystem::path& pb_path,
+    const std::string& source_hash = "test-source-hash") {
+    const std::string source_drawing_ref = "sha256:" + source_hash;
+    std::ofstream output(ValidationReportPathForPb(pb_path), std::ios::trunc);
+    output << "{\n"
+           << "  \"report_id\": \"test-validation-report\",\n"
+           << "  \"schema_version\": \"DXFValidationReport.v1\",\n"
+           << "  \"file\": {\n"
+           << "    \"file_hash\": \"" << source_hash << "\",\n"
+           << "    \"source_drawing_ref\": \"" << source_drawing_ref << "\"\n"
+           << "  },\n"
+           << "  \"summary\": {\"gate_result\": \"PASS\"},\n"
+           << "  \"preview_ready\": true,\n"
+           << "  \"production_ready\": true,\n"
+           << "  \"classification\": \"success\",\n"
+           << "  \"operator_summary\": \"DXF import succeeded and is ready for production.\",\n"
+           << "  \"primary_code\": \"\",\n"
+           << "  \"warning_codes\": [],\n"
+           << "  \"error_codes\": [],\n"
+           << "  \"resolved_units\": \"mm\",\n"
+           << "  \"resolved_unit_scale\": 1.0\n"
+           << "}\n";
+}
+
 void SeedProductionReadyInputQuality(DispensingWorkflowUseCase::PlanRecord& plan_record) {
     plan_record.response.input_quality = BuildProductionReadyInputQuality();
 }
 
-void SeedProductionReadyInputQuality(DispensingWorkflowUseCase::ArtifactRecord& artifact_record) {
-    const auto input_quality = BuildProductionReadyInputQuality();
-    artifact_record.response.input_quality = input_quality;
-    artifact_record.upload_response.input_quality = input_quality;
+void SeedArtifactSourceDrawing(
+    DispensingWorkflowUseCase::ArtifactRecord& artifact_record,
+    const std::string& filepath,
+    const std::string& source_hash = "test-source-hash") {
+    const std::string source_drawing_ref = "sha256:" + source_hash;
+    artifact_record.response.source_drawing_ref = source_drawing_ref;
+    artifact_record.response.filepath = filepath;
+    artifact_record.response.source_hash = source_hash;
+    artifact_record.response.validation_report.schema_version = "DXFValidationReport.v1";
+    artifact_record.response.validation_report.stage_id = "S1";
+    artifact_record.response.validation_report.owner_module = "M1";
+    artifact_record.response.validation_report.source_ref = source_drawing_ref;
+    artifact_record.response.validation_report.source_hash = source_hash;
+    artifact_record.response.validation_report.gate_result = "PASS";
+    artifact_record.response.validation_report.result_classification = "source_drawing_accepted";
+    artifact_record.source_drawing.source_drawing_ref = source_drawing_ref;
+    artifact_record.source_drawing.filepath = filepath;
+    artifact_record.source_drawing.source_hash = source_hash;
+    artifact_record.source_drawing.validation_report = artifact_record.response.validation_report;
 }
 
 class FakeProductionBaselinePort final : public IProductionBaselinePort {
@@ -457,11 +501,13 @@ class ScopedTempPbFile {
             fixture_path,
             path_,
             std::filesystem::copy_options::overwrite_existing);
+        WriteProductionReadyValidationReport(path_);
     }
 
     ~ScopedTempPbFile() {
         std::error_code ec;
         std::filesystem::remove(path_, ec);
+        std::filesystem::remove(ValidationReportPathForPb(path_), ec);
     }
 
     const std::string string() const { return path_.string(); }
@@ -696,52 +742,25 @@ class TempUploadStoragePort final : public IUploadStoragePort {
     std::filesystem::path root_;
 };
 
-class TempDxfPreparationPort final : public IUploadPreparationPort {
-   public:
-    explicit TempDxfPreparationPort(std::shared_ptr<IConfigurationPort> config_port)
-        : service_(std::move(config_port)) {}
-
-    Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const override {
-        auto result = service_.PrepareInputArtifact(source_path);
-        if (result.IsError()) {
-            return Result<PreparedInputArtifact>::Failure(result.GetError());
-        }
-
-        PreparedInputArtifact artifact;
-        artifact.prepared_path = result.Value().prepared_path;
-        artifact.input_quality = ToUploadInputQuality(result.Value().input_quality);
-        return Result<PreparedInputArtifact>::Success(std::move(artifact));
-    }
-
-    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
-        return service_.CleanupPreparedInput(source_path);
-    }
-
-   private:
-    DxfPbPreparationService service_;
-};
-
 class RuntimeLikeUploadPort final : public IUploadFilePort {
    public:
-    explicit RuntimeLikeUploadPort(const std::shared_ptr<IConfigurationPort>& config_port)
+    explicit RuntimeLikeUploadPort(const std::shared_ptr<IConfigurationPort>&)
         : root_(std::filesystem::temp_directory_path() / ("siligen-upload-" + std::to_string(std::rand()))),
           storage_port_(std::make_shared<TempUploadStoragePort>(root_ / "uploads" / "dxf")),
-          preparation_port_(std::make_shared<TempDxfPreparationPort>(config_port)),
-          use_case_(storage_port_, preparation_port_, 10) {}
+          use_case_(storage_port_, 10) {}
 
     ~RuntimeLikeUploadPort() override {
         std::error_code ec;
         std::filesystem::remove_all(root_, ec);
     }
 
-    Result<UploadResponse> Execute(const UploadRequest& request) override {
+    Result<SourceDrawing> Execute(const UploadRequest& request) override {
         return use_case_.Execute(request);
     }
 
    private:
     std::filesystem::path root_;
     std::shared_ptr<TempUploadStoragePort> storage_port_;
-    std::shared_ptr<TempDxfPreparationPort> preparation_port_;
     UploadFileUseCase use_case_;
 };
 
@@ -2347,9 +2366,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCanonicalPlanningInputAndRunt
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-prepare";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2395,9 +2412,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanUsesCurrentProductionBaselineWith
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-missing-legacy-identifiers";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     const auto result = use_case.PreparePlan(BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id));
@@ -2530,9 +2545,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanReusesLatestPlanForIdenticalAutho
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-cache-hit";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2575,9 +2588,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanSingleFlightsConcurrentAuthorityP
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-single-flight";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2634,9 +2645,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobReturnsStructuredResponseWithExecuti
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-start-profile";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2734,9 +2743,7 @@ TEST(DispensingWorkflowUseCaseTest, EnsureExecutionAssemblySingleFlightsConcurre
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-exec-single-flight";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -2812,9 +2819,7 @@ TEST(DispensingWorkflowUseCaseTest, GetPreviewSnapshotResolvesExecutionAssemblyF
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-preview-execution-alignment";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -3733,9 +3738,7 @@ TEST(DispensingWorkflowUseCaseTest, StartJobPreservesAuthorityFingerprintAndGlue
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-consistency";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -3797,9 +3800,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanParameterChangeInvalidatesPreviou
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-preview-stale";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -3859,9 +3860,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanExecutionStrategyPresenceUpdatesP
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-strategy-fingerprint";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest first_prepare_request =
@@ -3905,9 +3904,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBaselinePolicyUpdatesPlanFingerpr
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-policy-fingerprint";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     const auto first_prepare = use_case.PreparePlan(
@@ -4141,12 +4138,7 @@ TEST(DispensingWorkflowUseCaseTest, PreparePlanBuildsProfileCompareOwnerContract
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-owner-gate";
-    artifact_record.response.filepath = rect_diag_pb.string();
-    artifact_record.response.prepared_filepath = rect_diag_pb.string();
-    artifact_record.upload_response.filepath = rect_diag_pb.string();
-    artifact_record.upload_response.prepared_filepath = rect_diag_pb.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, rect_diag_pb.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     auto request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -4191,12 +4183,7 @@ TEST(DispensingWorkflowUseCaseTest, ProfileCompareOwnerContractKeepsPreviewFlowR
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-owner-gate-preview";
-    artifact_record.response.filepath = rect_diag_pb.string();
-    artifact_record.response.prepared_filepath = rect_diag_pb.string();
-    artifact_record.upload_response.filepath = rect_diag_pb.string();
-    artifact_record.upload_response.prepared_filepath = rect_diag_pb.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, rect_diag_pb.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     auto prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);
@@ -4583,9 +4570,7 @@ TEST(DispensingWorkflowUseCaseTest, ReleaseConfirmedPreviewDropsRetainedExecutio
 
     DispensingWorkflowUseCase::ArtifactRecord artifact_record;
     artifact_record.response.artifact_id = "artifact-release-rebuild";
-    artifact_record.upload_response.filepath = temp_pb_file.string();
-    artifact_record.upload_response.success = true;
-    SeedProductionReadyInputQuality(artifact_record);
+    SeedArtifactSourceDrawing(artifact_record, temp_pb_file.string());
     use_case.artifacts_[artifact_record.response.artifact_id] = artifact_record;
 
     PreparePlanRequest prepare_request = BuildCanonicalPreparePlanRequest(artifact_record.response.artifact_id);

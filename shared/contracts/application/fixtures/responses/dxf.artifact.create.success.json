@@ -4,29 +4,30 @@
   "success": true,
   "result": {
     "created": true,
-    "artifact_id": "artifact-20260321-001",
+    "artifact_id": "sha256:sha256-sample",
+    "source_drawing_ref": "sha256:sha256-sample",
     "filepath": "D:/runtime/uploads/sample.dxf",
-    "prepared_filepath": "D:/runtime/uploads/sample.pb",
+    "source_hash": "sha256-sample",
     "original_name": "sample.dxf",
     "generated_filename": "20260321_sample.dxf",
     "size": 128,
     "timestamp": 1774070400000,
-    "input_quality": {
-      "report_id": "dxf-report-20260321-001",
-      "report_path": "D:/runtime/uploads/sample.validation.json",
+    "validation_report": {
       "schema_version": "DXFValidationReport.v1",
-      "dxf_hash": "sha256-sample",
-      "source_drawing_ref": "sha256:sha256-sample",
+      "stage_id": "S1",
+      "owner_module": "M1",
+      "source_ref": "sha256:sha256-sample",
+      "source_hash": "sha256-sample",
       "gate_result": "PASS",
-      "classification": "success",
+      "result_classification": "success",
       "preview_ready": true,
       "production_ready": true,
-      "summary": "DXF import succeeded and is ready for production.",
+      "summary": "DXF source file passed S1 validation.",
       "primary_code": "",
       "warning_codes": [],
       "error_codes": [],
-      "resolved_units": "mm",
-      "resolved_unit_scale": 1.0
+      "resolved_units": "",
+      "resolved_unit_scale": 0.0
     }
   }
 }

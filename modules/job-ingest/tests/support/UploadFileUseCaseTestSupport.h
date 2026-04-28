@@ -11,19 +11,14 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace Siligen::JobIngest::Tests::Support {
 
-using Siligen::JobIngest::Application::Ports::Dispensing::IUploadPreparationPort;
 using Siligen::JobIngest::Application::Ports::Dispensing::IUploadStoragePort;
-using Siligen::JobIngest::Application::Ports::Dispensing::PreparedInputArtifact;
 using Siligen::JobIngest::Contracts::UploadRequest;
-using Siligen::JobIngest::Contracts::UploadResponse;
 using Siligen::Shared::Types::Error;
 using Siligen::Shared::Types::ErrorCode;
 using Siligen::Shared::Types::Result;
@@ -128,11 +123,6 @@ inline std::string ReadTextFile(const std::filesystem::path& path) {
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-inline std::filesystem::path PbPathFor(std::filesystem::path dxf_path) {
-    dxf_path.replace_extension(".pb");
-    return dxf_path;
-}
-
 inline std::string NormalizeExtension(std::string extension) {
     if (!extension.empty() && extension.front() == '.') {
         extension.erase(extension.begin());
@@ -215,52 +205,6 @@ class TestUploadStoragePort final : public IUploadStoragePort {
 
    private:
     std::filesystem::path base_dir_;
-};
-
-class FakeUploadPreparationPort final : public IUploadPreparationPort {
-   public:
-    using EnsureHandler = std::function<Result<PreparedInputArtifact>(const std::string&)>;
-    using CleanupHandler = std::function<Result<void>(const std::string&)>;
-
-    FakeUploadPreparationPort(EnsureHandler ensure_handler = {}, CleanupHandler cleanup_handler = {})
-        : ensure_handler_(std::move(ensure_handler)),
-          cleanup_handler_(std::move(cleanup_handler)) {}
-
-    Result<PreparedInputArtifact> EnsurePreparedInput(const std::string& source_path) const override {
-        if (ensure_handler_) {
-            return ensure_handler_(source_path);
-        }
-
-        const auto pb_path = PbPathFor(source_path);
-        WriteTextFile(pb_path, "pb");
-        PreparedInputArtifact artifact;
-        artifact.prepared_path = pb_path.string();
-        artifact.input_quality.classification = "success";
-        artifact.input_quality.preview_ready = true;
-        artifact.input_quality.production_ready = true;
-        artifact.input_quality.summary = "DXF import succeeded and is ready for production.";
-        artifact.input_quality.resolved_units = "mm";
-        artifact.input_quality.resolved_unit_scale = 1.0;
-        return Result<PreparedInputArtifact>::Success(std::move(artifact));
-    }
-
-    Result<void> CleanupPreparedInput(const std::string& source_path) const override {
-        if (cleanup_handler_) {
-            return cleanup_handler_(source_path);
-        }
-
-        std::error_code ec;
-        std::filesystem::remove(PbPathFor(source_path), ec);
-        if (ec) {
-            return Result<void>::Failure(
-                Error(ErrorCode::FILE_IO_ERROR, "cleanup failed", "FakeUploadPreparationPort"));
-        }
-        return Result<void>::Success();
-    }
-
-   private:
-    EnsureHandler ensure_handler_;
-    CleanupHandler cleanup_handler_;
 };
 
 inline UploadRequest MakeUploadRequest(const std::string& original_filename = "unit_test.dxf") {

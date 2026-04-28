@@ -47,6 +47,7 @@ namespace TcpFacades = Siligen::Application::Facades::Tcp;
 using Siligen::Shared::Types::LogicalAxisId;
 using Siligen::Domain::Dispensing::Contracts::FormalCompareGateDiagnostic;
 using Siligen::Shared::Types::float32;
+using Siligen::Engineering::Contracts::DxfValidationReport;
 using Siligen::JobIngest::Contracts::DxfInputQuality;
 using GatewayJsonProtocol = Siligen::Adapters::Tcp::JsonProtocol;
 
@@ -247,6 +248,26 @@ nlohmann::json BuildInputQualityJson(const DxfInputQuality& input_quality) {
         {"error_codes", input_quality.error_codes},
         {"resolved_units", input_quality.resolved_units},
         {"resolved_unit_scale", input_quality.resolved_unit_scale},
+    };
+}
+
+nlohmann::json BuildValidationReportJson(const DxfValidationReport& report) {
+    return {
+        {"schema_version", report.schema_version},
+        {"stage_id", report.stage_id},
+        {"owner_module", report.owner_module},
+        {"source_ref", report.source_ref},
+        {"source_hash", report.source_hash},
+        {"gate_result", report.gate_result},
+        {"result_classification", report.result_classification},
+        {"preview_ready", report.preview_ready},
+        {"production_ready", report.production_ready},
+        {"summary", report.summary},
+        {"primary_code", report.primary_code},
+        {"warning_codes", report.warning_codes},
+        {"error_codes", report.error_codes},
+        {"resolved_units", report.resolved_units},
+        {"resolved_unit_scale", report.resolved_unit_scale},
     };
 }
 
@@ -2129,37 +2150,24 @@ std::string TcpCommandDispatcher::HandleDxfArtifactCreate(const std::string& id,
         dxf_cache_ = DxfCache{};
         dxf_cache_.loaded = true;
         dxf_cache_.artifact_id = artifact.artifact_id;
+        dxf_cache_.source_drawing_ref = artifact.source_drawing_ref;
         dxf_cache_.filepath = artifact.filepath;
-        dxf_cache_.prepared_filepath = artifact.prepared_filepath;
-        dxf_cache_.input_quality_report_id = artifact.input_quality.report_id;
-        dxf_cache_.input_quality_report_path = artifact.input_quality.report_path;
-        dxf_cache_.input_quality_schema_version = artifact.input_quality.schema_version;
-        dxf_cache_.input_quality_dxf_hash = artifact.input_quality.dxf_hash;
-        dxf_cache_.input_quality_source_drawing_ref = artifact.input_quality.source_drawing_ref;
-        dxf_cache_.input_quality_gate_result = artifact.input_quality.gate_result;
-        dxf_cache_.input_quality_classification = artifact.input_quality.classification;
-        dxf_cache_.input_quality_preview_ready = artifact.input_quality.preview_ready;
-        dxf_cache_.input_quality_production_ready = artifact.input_quality.production_ready;
-        dxf_cache_.input_quality_summary = artifact.input_quality.summary;
-        dxf_cache_.input_quality_primary_code = artifact.input_quality.primary_code;
-        dxf_cache_.input_quality_warning_codes = artifact.input_quality.warning_codes;
-        dxf_cache_.input_quality_error_codes = artifact.input_quality.error_codes;
-        dxf_cache_.input_quality_resolved_units = artifact.input_quality.resolved_units;
-        dxf_cache_.input_quality_resolved_unit_scale = artifact.input_quality.resolved_unit_scale;
+        dxf_cache_.source_hash = artifact.source_hash;
         active_dxf_job_id_.clear();
     }
 
     auto result = nlohmann::json{
         {"created", true},
         {"artifact_id", artifact.artifact_id},
+        {"source_drawing_ref", artifact.source_drawing_ref},
         {"filepath", artifact.filepath},
+        {"source_hash", artifact.source_hash},
         {"original_name", artifact.original_name},
         {"generated_filename", artifact.generated_filename},
         {"size", artifact.size},
         {"timestamp", artifact.timestamp},
     };
-    result["prepared_filepath"] = artifact.prepared_filepath;
-    result["input_quality"] = BuildInputQualityJson(artifact.input_quality);
+    result["validation_report"] = BuildValidationReportJson(artifact.validation_report);
     return GatewayJsonProtocol::MakeSuccessResponse(id, result);
 }
 

@@ -1,0 +1,20 @@
+{
+  "report_id": "rect-diag-validation-report",
+  "schema_version": "DXFValidationReport.v1",
+  "file": {
+    "file_hash": "test-source-hash",
+    "source_drawing_ref": "sha256:test-source-hash"
+  },
+  "summary": {
+    "gate_result": "PASS"
+  },
+  "preview_ready": true,
+  "production_ready": true,
+  "classification": "success",
+  "operator_summary": "DXF import succeeded and is ready for production.",
+  "primary_code": "",
+  "warning_codes": [],
+  "error_codes": [],
+  "resolved_units": "mm",
+  "resolved_unit_scale": 1.0
+}

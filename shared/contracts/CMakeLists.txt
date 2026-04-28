@@ -37,6 +37,9 @@ if(NOT TARGET siligen_engineering_contracts)
     add_library(siligen_engineering_contracts INTERFACE)
     target_compile_features(siligen_engineering_contracts INTERFACE cxx_std_17)
 endif()
+target_include_directories(siligen_engineering_contracts INTERFACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/engineering/include"
+)
 set_target_properties(siligen_engineering_contracts PROPERTIES
     SILIGEN_MIGRATION_SOURCE_ROOT "legacy-archive/engineering-contracts"
     SILIGEN_TARGET_TOPOLOGY_OWNER_ROOT "shared/contracts/engineering"

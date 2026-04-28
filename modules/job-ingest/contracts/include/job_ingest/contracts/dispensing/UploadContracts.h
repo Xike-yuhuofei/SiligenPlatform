@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engineering/contracts/DxfValidationReport.h"
 #include "shared/types/Result.h"
 
 #include <cstddef>
@@ -9,7 +10,19 @@
 
 namespace Siligen::JobIngest::Contracts {
 
+using Siligen::Engineering::Contracts::DxfValidationReport;
 using Siligen::Shared::Types::Result;
+
+struct SourceDrawing {
+    std::string source_drawing_ref;
+    std::string filepath;
+    std::string original_name;
+    size_t size = 0;
+    std::string generated_filename;
+    int64_t timestamp = 0;
+    std::string source_hash;
+    DxfValidationReport validation_report;
+};
 
 struct DxfInputQuality {
     std::string report_id;
@@ -40,22 +53,11 @@ struct UploadRequest {
     }
 };
 
-struct UploadResponse {
-    bool success = false;
-    std::string filepath;
-    std::string prepared_filepath;
-    std::string original_name;
-    size_t size = 0;
-    std::string generated_filename;
-    int64_t timestamp = 0;
-    DxfInputQuality input_quality;
-};
-
 class IUploadFilePort {
    public:
     virtual ~IUploadFilePort() = default;
 
-    virtual Result<UploadResponse> Execute(const UploadRequest& request) = 0;
+    virtual Result<SourceDrawing> Execute(const UploadRequest& request) = 0;
 };
 
 }  // namespace Siligen::JobIngest::Contracts

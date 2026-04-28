@@ -1,15 +1,15 @@
 # Job-Ingest Upload Semantic Freeze
 
-更新时间：`2026-04-09`
+更新时间：`2026-04-27`
 
 ## 1. 决策结论
 
-- `modules/job-ingest/` 当前冻结为 upload-centric owner；本阶段不再把 `M1` 重新解释为泛化 `JobDefinition` owner。
-- `module.yaml` 中的 `owner_artifact` 固定为 `UploadResponse`。它表示 M1 已完成文件接入、归档与下游交接后对外公开的 authority fact。
+- `modules/job-ingest/` 当前冻结为 source drawing ingest owner；本阶段不再把 `M1` 重新解释为泛化 `JobDefinition` owner。
+- `module.yaml` 中的 `owner_artifact` 固定为 `SourceDrawing`。它表示 M1 已完成 source drawing 接入、hash、封存与文件级校验后的 authority fact。
 - `UploadRequest` 是 ingress 输入 DTO，不是 authority artifact；它只承载上传入口所需的最小输入字段。
-- live contracts 固定为 `UploadRequest`、`UploadResponse`、`IUploadFilePort`，命名空间固定为 `Siligen::JobIngest::Contracts`。
-- live application seam 固定为 `UploadFileUseCase`、`IUploadStoragePort`、`IUploadPreparationPort`，authoritative include path 固定为 `job_ingest/application/...`。
-- foreign storage owner 与 PB preparation owner 不迁回 `job-ingest`。M1 只通过 `IUploadStoragePort` 与 `IUploadPreparationPort` 观察它们；storage seam 当前归位到 `runtime_process_bootstrap/storage/ports/IFileStoragePort.h` app-local quarantine surface，PB concrete owner 当前归位到 `dxf-geometry/application/services/dxf/DxfPbPreparationService.h`。
+- live contracts 固定为 `UploadRequest`、`SourceDrawing`、`IUploadFilePort`，命名空间固定为 `Siligen::JobIngest::Contracts`。
+- live application seam 固定为 `UploadFileUseCase`、`IUploadStoragePort`，authoritative include path 固定为 `job_ingest/application/...`。
+- foreign storage owner 与 PB preparation owner 不迁回 `job-ingest`。M1 只通过 `IUploadStoragePort` 观察存储能力；PB preparation 与 input-quality projection 属于 planning owner，不通过 job-ingest seam 暴露。
 - `tests/regression/` 与 `domain/`、`services/`、`adapters/`、`examples/` 当前都属于 canonical skeleton，不是 live implementation / live test lane。
 
 ## 2. 最终处置结果
@@ -24,7 +24,7 @@
   - `modules/job-ingest/contracts/include/job_ingest/contracts/storage/IFileStoragePort.h`
 - `deferred-outside-M1`
   - runtime-service 组合根中的 `RuntimeUploadStorageAdapter`
-  - runtime-service 组合根中的 `DxfPreparationAdapter`
+  - planning owner 中的 `.pb` preparation 与 input-quality projection
   - 若后续要把 app-local storage seam 再上提到更稳定 contract，需要单独立题
 
 ## 3. Consumer 收口证据
@@ -38,7 +38,7 @@
 
 ## 4. 验证焦点
 
-- `owner_artifact: UploadResponse` 与 `allowed_dependencies: [shared]` 不得漂移。
+- `owner_artifact: SourceDrawing` 与 `allowed_dependencies: [shared]` 不得漂移。
 - `UploadContracts.h` 不得回退到 `Siligen::Application::UseCases::Dispensing` 命名空间。
 - `UploadFileUseCase` public header 不得重新暴露 `IFileStoragePort`、`IConfigurationPort` 或 `DxfPbPreparationService`。
 - direct consumers 不得重新使用 legacy upload namespace / include seam。
@@ -46,8 +46,8 @@
 
 ## 5. 禁止回退
 
-- 禁止把 `owner_artifact` 改回 `JobDefinition` 或其它新的公开命名，除非单独立题做跨 consumer 迁移。
+- 禁止把 `owner_artifact` 改回 `UploadResponse`、`JobDefinition` 或其它新的公开命名，除非单独立题做跨 consumer 迁移。
 - 禁止恢复 `modules/job-ingest/application/include/application/usecases/dispensing/UploadFileUseCase.h` legacy wrapper。
 - 禁止恢复 `modules/job-ingest/contracts/include/job_ingest/contracts/storage/IFileStoragePort.h` 或在 `job-ingest` contracts 内重新维护第二套 storage seam。
 - 禁止把 foreign storage / configuration / PB concrete 类型重新暴露到 `UploadFileUseCase` public header。
-- 禁止 direct consumers 回退到 `Siligen::Application::UseCases::Dispensing::{UploadRequest, UploadResponse, IUploadFilePort}`。
+- 禁止 direct consumers 回退到 `Siligen::Application::UseCases::Dispensing::{UploadRequest, UploadResponse, IUploadFilePort}` 或重新把 `UploadResponse` 当作 M1 authority。

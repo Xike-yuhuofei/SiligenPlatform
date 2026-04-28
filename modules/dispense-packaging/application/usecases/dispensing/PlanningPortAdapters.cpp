@@ -59,8 +59,30 @@ public:
         }
     }
 
-    Result<PreparedPlanningInputPath> EnsurePreparedInput(const std::string& source_path) const override {
-        return service_->EnsurePbReady(source_path);
+    Result<PreparedPlanningInput> EnsurePreparedInput(const PlanningInputPreparationRequest& request) const override {
+        auto result = service_->PrepareInputArtifact(request.source_path);
+        if (result.IsError()) {
+            return Result<PreparedPlanningInput>::Failure(result.GetError());
+        }
+
+        PreparedPlanningInput prepared;
+        prepared.prepared_path = result.Value().prepared_path;
+        prepared.input_quality_projection.report_id = result.Value().input_quality.report_id;
+        prepared.input_quality_projection.report_path = result.Value().input_quality.report_path;
+        prepared.input_quality_projection.schema_version = result.Value().input_quality.schema_version;
+        prepared.input_quality_projection.dxf_hash = request.source_hash;
+        prepared.input_quality_projection.source_drawing_ref = request.source_ref;
+        prepared.input_quality_projection.gate_result = result.Value().input_quality.gate_result;
+        prepared.input_quality_projection.classification = result.Value().input_quality.classification;
+        prepared.input_quality_projection.preview_ready = result.Value().input_quality.preview_ready;
+        prepared.input_quality_projection.production_ready = result.Value().input_quality.production_ready;
+        prepared.input_quality_projection.summary = result.Value().input_quality.summary;
+        prepared.input_quality_projection.primary_code = result.Value().input_quality.primary_code;
+        prepared.input_quality_projection.warning_codes = result.Value().input_quality.warning_codes;
+        prepared.input_quality_projection.error_codes = result.Value().input_quality.error_codes;
+        prepared.input_quality_projection.resolved_units = result.Value().input_quality.resolved_units;
+        prepared.input_quality_projection.resolved_unit_scale = result.Value().input_quality.resolved_unit_scale;
+        return Result<PreparedPlanningInput>::Success(std::move(prepared));
     }
 
 private:

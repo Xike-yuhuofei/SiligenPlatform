@@ -1,5 +1,7 @@
 # job-ingest Residue Ledger
 
+> Current truth note (2026-04-27): this ledger is historical phase-3 evidence. The active `ARCH-215` owner truth has superseded `UploadResponse` / `IUploadPreparationPort`: `job-ingest` now owns `SourceDrawing` only, while `.pb` preparation and input-quality projection belong to the planning owner.
+
 更新时间：`2026-04-09`
 
 ## 1. Executive Verdict

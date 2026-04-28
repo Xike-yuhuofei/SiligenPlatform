@@ -59,6 +59,27 @@ std::uint64_t Fnv1a64(const std::string& text) {
     return hash;
 }
 
+Siligen::JobIngest::Contracts::DxfInputQuality MapPlanningProjectionToJobIngestInputQuality(
+    const Siligen::Application::Ports::Dispensing::PlanningInputQualityProjection& projection) {
+    Siligen::JobIngest::Contracts::DxfInputQuality input_quality;
+    input_quality.report_id = projection.report_id;
+    input_quality.report_path = projection.report_path;
+    input_quality.schema_version = projection.schema_version;
+    input_quality.dxf_hash = projection.dxf_hash;
+    input_quality.source_drawing_ref = projection.source_drawing_ref;
+    input_quality.gate_result = projection.gate_result;
+    input_quality.classification = projection.classification;
+    input_quality.preview_ready = projection.preview_ready;
+    input_quality.production_ready = projection.production_ready;
+    input_quality.summary = projection.summary;
+    input_quality.primary_code = projection.primary_code;
+    input_quality.warning_codes = projection.warning_codes;
+    input_quality.error_codes = projection.error_codes;
+    input_quality.resolved_units = projection.resolved_units;
+    input_quality.resolved_unit_scale = projection.resolved_unit_scale;
+    return input_quality;
+}
+
 bool IsRuntimeTerminalState(const std::string& state) {
     return state == "completed" || state == "failed" || state == "cancelled";
 }
@@ -255,18 +276,19 @@ Result<CreateArtifactResponse> DispensingWorkflowUseCase::CreateArtifact(const U
     const auto& upload = upload_result.Value();
     CreateArtifactResponse response;
     response.success = true;
-    response.artifact_id = GenerateId("artifact");
+    response.artifact_id = upload.source_drawing_ref;
+    response.source_drawing_ref = upload.source_drawing_ref;
     response.filepath = upload.filepath;
-    response.prepared_filepath = upload.prepared_filepath;
+    response.source_hash = upload.source_hash;
     response.original_name = upload.original_name;
     response.generated_filename = upload.generated_filename;
     response.size = upload.size;
     response.timestamp = upload.timestamp;
-    response.input_quality = upload.input_quality;
+    response.validation_report = upload.validation_report;
 
     ArtifactRecord record;
     record.response = response;
-    record.upload_response = upload;
+    record.source_drawing = upload;
 
     {
         std::lock_guard<std::mutex> lock(artifacts_mutex_);
@@ -298,7 +320,31 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     planning_request.baseline_fingerprint = baseline.baseline_fingerprint;
     planning_request.point_flying_carrier_policy = baseline.point_flying_carrier_policy;
     if (planning_request.dxf_filepath.empty()) {
-        planning_request.dxf_filepath = artifact.upload_response.filepath;
+        planning_request.dxf_filepath = artifact.source_drawing.filepath;
+    } else if (planning_request.dxf_filepath != artifact.source_drawing.filepath) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "planning request source path must match artifact authority",
+                "DispensingWorkflowUseCase"));
+    }
+    if (planning_request.source_drawing_ref.empty()) {
+        planning_request.source_drawing_ref = artifact.source_drawing.source_drawing_ref;
+    } else if (planning_request.source_drawing_ref != artifact.source_drawing.source_drawing_ref) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "planning request source_drawing_ref must match artifact authority",
+                "DispensingWorkflowUseCase"));
+    }
+    if (planning_request.source_hash.empty()) {
+        planning_request.source_hash = artifact.source_drawing.source_hash;
+    } else if (planning_request.source_hash != artifact.source_drawing.source_hash) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "planning request source_hash must match artifact authority",
+                "DispensingWorkflowUseCase"));
     }
     const auto authority_cache_key = planning_use_case_->BuildAuthorityCacheKey(planning_request);
     auto authority_resolve_result = ResolveAuthorityPreview(authority_cache_key, planning_request);
@@ -314,7 +360,13 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     execution_launch.authority_cache_key = authority_cache_key;
     execution_launch.runtime_overrides = request.runtime_overrides;
     if (execution_launch.runtime_overrides.source_path.empty()) {
-        execution_launch.runtime_overrides.source_path = artifact.upload_response.filepath;
+        execution_launch.runtime_overrides.source_path = artifact.source_drawing.filepath;
+    } else if (execution_launch.runtime_overrides.source_path != artifact.source_drawing.filepath) {
+        return Result<PreparePlanResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_PARAMETER,
+                "runtime source_path must match artifact authority",
+                "DispensingWorkflowUseCase"));
     }
 
     PreparePlanResponse response;
@@ -322,12 +374,12 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
     response.artifact_id = request.artifact_id;
     response.plan_id = GenerateId("plan");
     response.plan_fingerprint = BuildPlanFingerprint(request.artifact_id, authority_preview, execution_launch);
-    response.filepath = artifact.upload_response.filepath;
-    response.prepared_filepath = artifact.upload_response.prepared_filepath;
+    response.filepath = artifact.source_drawing.filepath;
+    response.prepared_filepath = authority_preview.prepared_pb_path;
     response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
     response.point_count = static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
     response.total_length_mm = authority_preview.artifacts.total_length;
-    response.input_quality = artifact.upload_response.input_quality;
+    response.input_quality = MapPlanningProjectionToJobIngestInputQuality(authority_preview.input_quality_projection);
     response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
     response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
     response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
@@ -419,16 +471,17 @@ Result<PreparePlanResponse> DispensingWorkflowUseCase::PreparePlan(const Prepare
             reusable->execution_launch.authority_cache_key = authority_cache_key;
             reusable->execution_launch.runtime_overrides = request.runtime_overrides;
             if (reusable->execution_launch.runtime_overrides.source_path.empty()) {
-                reusable->execution_launch.runtime_overrides.source_path = artifact.upload_response.filepath;
+                reusable->execution_launch.runtime_overrides.source_path = artifact.source_drawing.filepath;
             }
-            reusable->response.filepath = artifact.upload_response.filepath;
-            reusable->response.prepared_filepath = artifact.upload_response.prepared_filepath;
+            reusable->response.filepath = artifact.source_drawing.filepath;
+            reusable->response.prepared_filepath = authority_preview.prepared_pb_path;
             reusable->response.segment_count = static_cast<std::uint32_t>(std::max(0, authority_preview.artifacts.segment_count));
             reusable->response.point_count =
                 static_cast<std::uint32_t>(authority_preview.artifacts.preview_trajectory_points.size());
             reusable->response.total_length_mm = authority_preview.artifacts.total_length;
             reusable->response.generated_at = response.generated_at;
-            reusable->response.input_quality = artifact.upload_response.input_quality;
+            reusable->response.input_quality =
+                MapPlanningProjectionToJobIngestInputQuality(authority_preview.input_quality_projection);
             reusable->response.preview_validation_classification = authority_preview.artifacts.preview_validation_classification;
             reusable->response.preview_exception_reason = authority_preview.artifacts.preview_exception_reason;
             reusable->response.preview_failure_reason = authority_preview.artifacts.preview_failure_reason;
