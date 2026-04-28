@@ -47,7 +47,7 @@ class PreviewPreflightServiceTest(unittest.TestCase):
         self.assertNotIn("span spacing outside configured window", notice.detail)
 
     def test_current_preview_diagnostic_notice_suppresses_fragmentation_notice_when_path_quality_blocks(self) -> None:
-        payload = valid_payload(path_quality_blocking=True, path_quality_reason_codes=["process_path_fragmentation"])
+        payload = valid_payload(path_quality_blocking=True, path_quality_reason_codes=("process_path_fragmentation",))
         payload["preview_validation_classification"] = "pass_with_exception"
         payload["preview_diagnostic_code"] = "process_path_fragmentation"
 
@@ -145,7 +145,7 @@ class PreviewPreflightServiceTest(unittest.TestCase):
         self.assertIn("执行快照不一致", decision.message)
 
     def test_build_preflight_decision_rejects_blocking_path_quality(self) -> None:
-        payload = valid_payload(path_quality_blocking=True, path_quality_reason_codes=["process_path_fragmentation"])
+        payload = valid_payload(path_quality_blocking=True, path_quality_reason_codes=("process_path_fragmentation",))
         result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
         self.assertTrue(result.ok)
         self.state.gate.confirm_current_snapshot()
