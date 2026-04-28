@@ -137,7 +137,7 @@
         void StopProfileCompareWorker() noexcept;
         void ProfileCompareWorkerLoop() noexcept;
         bool UseAbsoluteProfileComparePositioning() const noexcept;
-        std::string BuildProfileCompareContext(
+        static std::string BuildProfileCompareContext(
             const Domain::Dispensing::Ports::ProfileCompareArmRequest& request,
             short compare_source_axis,
             short cmp_channel,
@@ -146,7 +146,7 @@
             short abs_position_flag,
             short timer_flag,
             short sdk_pulse_type,
-            const std::vector<long>* compare_positions) const;
+            const std::vector<long>* compare_positions);
         Shared::Types::Result<void> ValidateProfileCompareRequestForHardware(
             const Domain::Dispensing::Ports::ProfileCompareArmRequest& request,
             short compare_source_axis,
@@ -182,6 +182,7 @@
 
         void StopPathTriggeredDispenserThread() noexcept;
         void JoinPathTriggeredDispenserThreadIfFinished() noexcept;
+        Shared::Types::Result<void> StopDispenserInternal(const char* operation) noexcept;
         void PathTriggeredDispenserLoop() noexcept;
         bool ReadCoordinateSystemPositionPulse(short coordinate_system,
                                                long& x_position_pulse,
@@ -193,11 +194,13 @@
          * @param operation 操作名称
          * @return 错误字符串
          */
-        std::string CreateErrorMessage(int errorCode, const std::string& operation) const;
+        static std::string CreateErrorMessage(int errorCode, const std::string& operation);
 
         void TimedDispenserLoop() noexcept;
         void StopTimedDispenserThread() noexcept;
         void JoinTimedDispenserThreadIfFinished() noexcept;
+        Shared::Types::Result<Domain::Dispensing::Ports::SupplyValveState> CloseSupplyInternal(
+            const char* operation) noexcept;
 
        private:
         enum class DispenserRunMode {
