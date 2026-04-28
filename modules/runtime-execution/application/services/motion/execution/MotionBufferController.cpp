@@ -59,7 +59,7 @@ bool MotionBufferController::CheckBufferHealth(short crd_num, uint32& underflow_
         underflow_count++;
         return HandleBufferUnderflow(crd_num);
     }
-    return space >= 0;
+    return true;
 }
 
 bool MotionBufferController::HandleBufferOverflow(short crd_num) {

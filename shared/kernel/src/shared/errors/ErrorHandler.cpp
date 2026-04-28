@@ -88,8 +88,13 @@ ErrorHandler& ErrorHandler::GetInstance() {
 ErrorInfo ErrorHandler::Success() {
     ErrorInfo info;
     info.system_code = SystemErrorCode::SUCCESS;
+    info.hardware_code = HardwareErrorCode::CARD_OPEN_FAIL;
     info.severity = ErrorSeverity::INFO;
     info.message = "操作成功完成";
+    info.context.clear();
+    info.function.clear();
+    info.line = 0;
+    info.file.clear();
     return info;
 }
 

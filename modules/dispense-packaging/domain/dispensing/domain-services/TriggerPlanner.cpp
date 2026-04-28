@@ -142,7 +142,6 @@ std::vector<TriggerCommandPlan> TriggerPlanner::BuildSegmentedCommands(float32 l
 
     if (is_triangular) {
         float32 peak_vel = std::sqrt(length_mm * acceleration_mm_s2);
-        float32 ramp_time_s = peak_vel / acceleration_mm_s2;
         float32 avg_vel = peak_vel / 2.0f;
 
         float32 interval_mm = ResolveSpatialInterval(spatial_interval_mm, avg_vel, min_interval_ms);
@@ -151,6 +150,7 @@ std::vector<TriggerCommandPlan> TriggerPlanner::BuildSegmentedCommands(float32 l
 
         uint32 count = static_cast<uint32>((length_mm / 2.0f) / interval_mm);
         if (count > 0) {
+            float32 ramp_time_s = peak_vel / acceleration_mm_s2;
             commands.push_back({count, interval_ms, ramp_time_s * 1000.0f});
             commands.push_back({count, interval_ms, ramp_time_s * 1000.0f});
         }

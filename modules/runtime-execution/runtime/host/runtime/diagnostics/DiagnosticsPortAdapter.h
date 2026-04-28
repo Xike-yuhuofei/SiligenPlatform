@@ -50,8 +50,8 @@ class DiagnosticsPortAdapter final : public IDiagnosticsPort {
     static bool IsAtLeast(DiagnosticLevel level, DiagnosticLevel min_level);
     static int LevelRank(DiagnosticLevel level);
     static DiagnosticLevel ToDiagnosticLevel(DeviceFaultSeverity severity);
-    HealthState EvaluateHealthState(const MachineHealthSnapshot& health) const;
-    void AppendHardwareDiagnostics(const MachineHealthSnapshot& health, std::vector<DiagnosticInfo>& output) const;
+    static HealthState EvaluateHealthState(const MachineHealthSnapshot& health);
+    static void AppendHardwareDiagnostics(const MachineHealthSnapshot& health, std::vector<DiagnosticInfo>& output);
 };
 
 }  // namespace Siligen::Infrastructure::Adapters::Diagnostics

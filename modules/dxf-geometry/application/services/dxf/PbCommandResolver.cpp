@@ -147,14 +147,7 @@ std::filesystem::path ResolveCanonicalEngineeringDataPythonPath(const std::files
 
 std::string DescribeDefaultPbScriptLocations() {
     std::ostringstream out;
-    out << "未找到本地 DXF->PB 脚本(已搜索: ";
-    for (size_t index = 0; index < kDefaultPbScriptRelativePaths.size(); ++index) {
-        if (index > 0) {
-            out << ", ";
-        }
-        out << kDefaultPbScriptRelativePaths[index];
-    }
-    out << ")";
+    out << "未找到本地 DXF->PB 脚本(已搜索: " << kDefaultPbScriptRelativePaths.front() << ")";
     return out.str();
 }
 

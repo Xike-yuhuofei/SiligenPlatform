@@ -68,7 +68,7 @@ Result<TaskStatusInfo> TaskSchedulerAdapter::GetTaskStatus(const std::string& ta
             "TaskSchedulerAdapter::GetTaskStatus"));
     }
 
-    auto& context = it->second;
+    const auto& context = it->second;
     TaskStatusInfo info(
         context->task_id,
         context->status.load(),
@@ -89,7 +89,7 @@ Result<void> TaskSchedulerAdapter::CancelTask(const std::string& task_id) {
             "TaskSchedulerAdapter::CancelTask"));
     }
 
-    auto& context = it->second;
+    const auto& context = it->second;
     auto current_status = context->status.load();
 
     // 只能取消PENDING状态的任务

@@ -28,7 +28,7 @@ class UploadFileUseCase : public IUploadFilePort {
                       std::shared_ptr<IUploadPreparationPort> preparation_port,
                       size_t max_file_size_mb = 10);
 
-    ~UploadFileUseCase() = default;
+    ~UploadFileUseCase() override = default;
 
     UploadFileUseCase(const UploadFileUseCase&) = delete;
     UploadFileUseCase& operator=(const UploadFileUseCase&) = delete;
