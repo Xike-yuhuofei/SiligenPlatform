@@ -1,12 +1,32 @@
 # 《点胶机端到端流程规格说明：全套冻结版目录索引 v1.0》
 
+Status: Frozen
+Authority: Primary Spec Axis S10 Index
+Applies To: dsp-e2e-spec directory navigation and cross-document consistency
+Owns / Covers: reading order, consistency axes, formal axis list, supplement standard list
+Must Not Override: S01-S09 domain rules; supplement standards cannot override S01-S10
+Read When: choosing which frozen document to read first, validating cross-document consistency, resolving docset scope
+Conflict Priority: use S10 for index and navigation only; defer domain decisions to the referenced authority document
+Codex Keywords: frozen index, S01-S10, supplement standard, consistency axis, reading order, authority routing
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决冻结目录的正式轴、补充标准、阅读顺序与一致性主轴。
+- 本文不裁决具体对象字段、模块 owner、状态机或测试细节；这些必须回到对应 S 轴文档。
+- 不得继续使用旧数量口径；正式结构统一为 S01-S10 正式规格轴加冻结补充标准。
+
+---
 适用范围：
 - 点胶机端到端方案架构设计
 - 规划链 / 执行链 / 追溯链协同设计
 - 模块拆分、接口定义、状态机设计、测试设计、联调与验收
 - 项目启动、方案评审、研发拆解、测试冻结、上线前审查
 
-本索引对应的 9 份正式规格文档为：
+本索引对应的正式结构为：`S01-S10` 正式规格轴 + 冻结补充标准。
+
+`S01-S10` 正式规格轴：
 
 1. s01《阶段输入输出矩阵（修订版）》
 2. s02《阶段职责与验收准则表（修订版）》
@@ -17,6 +37,7 @@
 7. s07《状态机与命令总线模板（修订版）》
 8. s08《系统时序图模板（修订版）》
 9. s09《测试矩阵与验收基线（修订版）》
+10. s10《全套冻结版目录索引》
 
 冻结补充标准：
 
@@ -31,9 +52,9 @@
 
 # 1. 整体定位
 
-这 9 份文档不是彼此独立的说明材料，而是一套必须联动使用的“架构冻结模板”。
+`S01-S10` 不是彼此独立的说明材料，而是一套必须联动使用的“架构冻结模板”。
 
-它们共同回答 9 个问题：
+其中 `S01-S09` 共同回答 9 个领域问题，`S10` 负责目录索引、阅读顺序与一致性主轴：
 
 - s01：系统一共有哪些阶段，每阶段输入输出是什么
 - s02：每阶段到底负责什么，什么算通过，什么算失败
@@ -90,7 +111,7 @@
 
 ---
 
-# 3. 9 份文档的一致性主轴
+# 3. S01-S10 的一致性主轴
 
 整套模板必须围绕以下 8 条主轴保持一致，不允许任一文档单独变更口径。
 
@@ -573,7 +594,7 @@
 
 # 9. 交付团队时的建议附件清单
 
-建议把这 9 份文档连同以下附件一起交付：
+建议把 `S01-S10` 正式规格轴与冻结补充标准连同以下附件一起交付：
 
 1. 一页式总览图  
    内容：阶段链 + 模块链 + 对象链
@@ -645,7 +666,7 @@
 
 # 11. 最终冻结结论
 
-这套 9 份文档已经构成一套完整、可执行、可联调、可验收的点胶机端到端架构模板。
+`S01-S10` 正式规格轴与冻结补充标准已经构成一套完整、可执行、可联调、可验收的点胶机端到端架构模板。
 
 它最核心的价值不在于“文档多”，而在于它已经把以下 9 件事闭合了：
 

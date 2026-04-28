@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s09：测试矩阵与验收基线（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S09
+Applies To: test matrix and acceptance baseline
+Owns / Covers: L1-L6 test layering, acceptance assertions, regression baseline, failure injection, traceability requirements
+Must Not Override: S01-S08 behavior contracts; S04 object schema; S05 owner boundaries
+Read When: designing tests, acceptance checks, regression gates, evidence requirements, or traceability assertions
+Conflict Priority: use S09 for test and acceptance baseline; defer behavior truth to S01-S08
+Codex Keywords: test matrix, acceptance baseline, L1, L2, L3, L4, L5, L6, golden sample, failure injection
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决测试分层、验收基线、回归样本、故障注入与规格回链要求。
+- 本文不改变被测业务行为；行为真值以 S01-S08 对应契约为准。
+- 不得用 UI 人工观察替代核心验收；归档验收必须能回链对象、事件、状态和证据。
+
+---
 本版目标是把前面已经确定的：
 - 阶段链
 - 对象链

@@ -626,6 +626,9 @@ class MainWindowTabsTest(unittest.TestCase):
         preview_validation_classification: str = "pass",
         preview_exception_reason: str = "",
         preview_failure_reason: str = "",
+        path_quality_verdict: str = "pass",
+        path_quality_blocking: bool = False,
+        path_quality_reason_codes: tuple[str, ...] = (),
         expect_ok: bool = True,
     ):
         glue_point_payload = (
@@ -662,6 +665,9 @@ class MainWindowTabsTest(unittest.TestCase):
             preview_validation_classification=preview_validation_classification,
             preview_exception_reason=preview_exception_reason,
             preview_failure_reason=preview_failure_reason,
+            path_quality_verdict=path_quality_verdict,
+            path_quality_blocking=path_quality_blocking,
+            path_quality_reason_codes=path_quality_reason_codes,
             preview_binding_layout_id="layout-preview-test",
         )
         result = self.window._preview_session.process_snapshot_payload(
@@ -697,6 +703,9 @@ class MainWindowTabsTest(unittest.TestCase):
         preview_exception_reason: str = "",
         preview_failure_reason: str = "",
         preview_diagnostic_code: str = "",
+        path_quality_verdict: str = "pass",
+        path_quality_blocking: bool = False,
+        path_quality_reason_codes: tuple[str, ...] = (),
         preview_binding_layout_id: str = "layout-preview-test",
     ) -> dict:
         resolved_execution_point_count = (
@@ -724,6 +733,9 @@ class MainWindowTabsTest(unittest.TestCase):
             preview_exception_reason=preview_exception_reason,
             preview_failure_reason=preview_failure_reason,
             preview_diagnostic_code=preview_diagnostic_code,
+            path_quality_verdict=path_quality_verdict,
+            path_quality_blocking=path_quality_blocking,
+            path_quality_reason_codes=path_quality_reason_codes,
             preview_binding_layout_id=preview_binding_layout_id,
         )
 
@@ -1925,9 +1937,30 @@ class MainWindowTabsTest(unittest.TestCase):
         summary = self.window._preview_session.build_confirmation_summary()
 
         self.assertIn("路径碎片化提示", summary)
-        self.assertIn("按例外规则放行", summary)
+        self.assertIn("正式生产门禁", summary)
         self.assertNotIn("span spacing outside configured window", summary)
         self.assertNotIn("非阻断提示", summary)
+
+    def test_check_production_preconditions_rejects_blocking_path_quality(self) -> None:
+        status = self._make_status(x_homed=True, y_homed=True)
+        self.window._require_online_mode = lambda capability: True
+        self.window._is_online_ready = lambda: True
+        self.window._protocol = FakeProtocol(status)
+        self._set_launch_connectivity(connected=True, hardware_connected=True)
+        self.window._runtime_status_fault = False
+        self._arm_confirmed_preview(
+            path_quality_verdict="blocked",
+            path_quality_blocking=True,
+            path_quality_reason_codes=("process_path_fragmentation", "path_discontinuity"),
+        )
+        warnings = []
+        self.window._show_preflight_warning = warnings.append
+
+        result = self.window._check_production_preconditions(dry_run=False)
+
+        self.assertFalse(result)
+        self.assertIn("不可启动生产", warnings[-1])
+        self.assertIn("process_path_fragmentation", warnings[-1])
 
     def test_check_production_preconditions_rejects_mock_preview_source(self) -> None:
         status = self._make_status(x_homed=True, y_homed=True)
@@ -3038,10 +3071,41 @@ class MainWindowTabsTest(unittest.TestCase):
 
         self.assertEqual(self.window._preview_session.state.preview_diagnostic_code, "process_path_fragmentation")
         self.assertIn("路径碎片化提示", self.window._dxf_view.html)
-        self.assertIn("按例外规则放行", self.window._dxf_view.html)
+        self.assertIn("正式生产门禁", self.window._dxf_view.html)
         self.assertNotIn("span spacing outside configured window", self.window._dxf_view.html)
         self.assertNotIn("<strong>非阻断提示。</strong>", self.window._dxf_view.html)
         self.assertIn("process_path_fragmentation", self.window._preview_debug_view.toPlainText())
+
+    def test_preview_snapshot_renders_blocking_path_quality_banner(self) -> None:
+        self.window._dxf_view = _FakePreviewView()
+
+        self.window._on_preview_snapshot_completed(
+            True,
+            self._build_preview_snapshot_payload(
+                snapshot_id="snapshot-blocked",
+                snapshot_hash="hash-blocked",
+                plan_id="plan-blocked",
+                glue_points=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+                motion_preview=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+                motion_preview_source_point_count=8,
+                execution_point_count=8,
+                total_length_mm=10.0,
+                estimated_time_s=0.5,
+                generated_at="2026-03-29T00:00:00Z",
+                dry_run=False,
+                preview_validation_classification="pass_with_exception",
+                preview_exception_reason="span spacing outside configured window but accepted as explicit exception",
+                preview_diagnostic_code="process_path_fragmentation",
+                path_quality_verdict="blocked",
+                path_quality_blocking=True,
+                path_quality_reason_codes=("process_path_fragmentation", "path_discontinuity"),
+            ),
+            "",
+        )
+
+        self.assertIn("生产阻断", self.window._dxf_view.html)
+        self.assertIn("path_quality 阻断", self.window._dxf_view.html)
+        self.assertNotIn("路径碎片化提示", self.window._dxf_view.html)
 
     def test_preview_snapshot_rejects_non_authoritative_preview_source(self) -> None:
         messages = []

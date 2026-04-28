@@ -233,7 +233,25 @@ class PreviewPayloadAuthorityServiceTest(unittest.TestCase):
         self.assertIn("按例外规则放行", notice.detail)
         self.assertNotIn("span spacing outside configured window", notice.detail)
         self.assertIn("路径碎片化提示", self.preflight.build_confirmation_summary())
-        self.assertIn("按例外规则放行", self.preflight.build_confirmation_summary())
+        self.assertIn("正式生产门禁", self.preflight.build_confirmation_summary())
+
+    def test_process_snapshot_payload_stores_path_quality_state(self) -> None:
+        payload = valid_payload(
+            path_quality_verdict="blocked",
+            path_quality_blocking=True,
+            path_quality_reason_codes=("process_path_fragmentation", "path_discontinuity"),
+        )
+
+        result = self.authority.process_snapshot_payload(payload, current_dry_run=False)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(self.state.path_quality_verdict, "blocked")
+        self.assertTrue(self.state.path_quality_blocking)
+        self.assertEqual(
+            self.state.path_quality_reason_codes,
+            ("process_path_fragmentation", "path_discontinuity"),
+        )
+        self.assertIn("不可启动生产", self.state.path_quality_summary)
 
     def test_process_snapshot_payload_builds_local_playback_model_from_motion_preview(self) -> None:
         result = self.authority.process_snapshot_payload(valid_payload(), current_dry_run=False)

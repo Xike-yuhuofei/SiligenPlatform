@@ -1,5 +1,23 @@
 # 项目链路标准 V1
 
+Status: Frozen Supplement Standard
+Authority: Supplement to S01/S02/S05/S07
+Applies To: project chain classification, formal object chain, current live chain, observation and engineering support chain
+Owns / Covers: chain taxonomy and distinction between formal manufacturing object chain and current live control chain
+Must Not Override: S01-S10 formal spec axes; current code contracts remain evidence for live chain only
+Read When: judging whether a flow is formal object chain, live control chain, or observation/support chain
+Conflict Priority: use this document for chain classification; defer formal object and owner conflicts to S01-S10
+Codex Keywords: project chain, formal object chain, live chain, support chain, HMI, TCP, preview, runtime supervision
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决项目内“链路”的分类口径，区分正式制造对象链、当前 live 控制交互链和观测工程支撑链。
+- 本文不把 live 链升级为正式对象链，也不把协议方法名、模块、阶段或算法单独定义成链路。
+- 不得混写 as-is 与 target-state；若要推动目标态迁移，必须另立正式迁移规格。
+
+---
 更新时间：`2026-03-31`
 
 ## 1. 目的

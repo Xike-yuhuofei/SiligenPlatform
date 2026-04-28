@@ -162,7 +162,7 @@ def test_dxf_preview_and_job_contract():
 
     artifact_create = operations["dxf.artifact.create"]
     assert "formal_compare_gate" not in artifact_create["resultSchema"]["required"]
-    assert "input_quality" in artifact_create["resultSchema"]["required"]
+    assert "input_quality" not in artifact_create["resultSchema"]["required"]
 
     preview = operations["dxf.preview.snapshot"]
     preview_params = preview["paramsSchema"]
@@ -246,7 +246,7 @@ def test_dxf_preview_and_job_contract():
     preview_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.preview.snapshot.success.json")
     start_fixture = load_json(CONTRACTS / "fixtures" / "responses" / "dxf.job.start.success.json")
     assert "formal_compare_gate" not in artifact_fixture["result"]
-    assert artifact_fixture["result"]["input_quality"]["classification"] == "success"
+    assert "input_quality" not in artifact_fixture["result"]
     assert prepare_fixture["result"]["formal_compare_gate"] is None
     assert "estimated_time_s" not in prepare_fixture["result"]
     assert "execution_nominal_time_s" in prepare_fixture["result"]

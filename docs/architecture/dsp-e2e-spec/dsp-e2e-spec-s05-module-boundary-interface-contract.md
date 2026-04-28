@@ -1,5 +1,23 @@
 # 《点胶机端到端流程规格说明 s05：模块边界与接口契约表（修订版）》
 
+Status: Frozen
+Authority: Primary Spec Axis S05
+Applies To: M0-M11 module ownership and interface contracts
+Owns / Covers: module owner, produced artifacts, consumed artifacts, command/event interfaces, forbidden access, failure responsibility
+Must Not Override: S01 stage chain; S04 object schema; S07/S08 state and sequence semantics
+Read When: judging module owner, dependency direction, interface boundary, or cross-module violation
+Conflict Priority: use S05 for owner and boundary decisions; defer object fields to S04 and stage acceptance to S02
+Codex Keywords: M0-M11, module owner, interface contract, artifact_ref, forbidden access, HMI not source of truth
+
+---
+
+## Codex Decision Summary
+
+- 本文裁决 M0-M11 的唯一 owner、接口契约、消费关系、输出事件与越权边界。
+- 本文不改变对象字段定义或状态机细节；对象字段以 S04 为准，状态命令闭环以 S07/S08 为准。
+- HMI 不是事实源模块；运行时模块不得越权重算规划对象；回退、失效、归档必须有 owner 级接口闭环。
+
+---
 本版以“联调可闭环、状态可落地、测试可追溯”为目标，重点修正原稿中的以下关键问题：
 
 - M8 存在 `ValidateExecutionPackage(...)` 输入，但没有 `ExecutionPackageValidated` 成功事件闭环。
