@@ -178,8 +178,7 @@ Result<bool> SoftLimitMonitorService::CheckSoftLimits() noexcept {
         const bool negative_rising = negative_limit && !previous_state.negative;
         if (positive_rising || negative_rising) {
             auto handle_result = HandleSoftLimitTrigger(axis_id, status, positive_rising);
-            if (handle_result.IsSuccess() ||
-                handle_result.GetError().GetMessage().find("failure_stage=soft_limit_publish") != std::string::npos) {
+            if (handle_result.IsSuccess()) {
                 if (index < last_triggered_.size()) {
                     last_triggered_[index] = current_state;
                 }
