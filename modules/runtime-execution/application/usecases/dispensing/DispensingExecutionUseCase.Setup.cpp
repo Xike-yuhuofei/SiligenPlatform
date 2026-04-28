@@ -76,6 +76,22 @@ Result<void> DispensingExecutionUseCase::Impl::ValidateExecutionPreconditions(bo
             return Result<void>::Failure(
                 Error(ErrorCode::AXIS_NOT_HOMED, "required axis not homed", "DispensingExecutionUseCase"));
         }
+        bool soft_limit_positive = false;
+        bool soft_limit_negative = false;
+        if (InterlockPolicy::IsSoftLimitTriggered(status, &soft_limit_positive, &soft_limit_negative)) {
+            std::string direction = "positive/negative";
+            if (soft_limit_positive && !soft_limit_negative) {
+                direction = "positive";
+            } else if (!soft_limit_positive && soft_limit_negative) {
+                direction = "negative";
+            }
+            return Result<void>::Failure(
+                Error(
+                    ErrorCode::POSITION_OUT_OF_RANGE,
+                    "SOFT_LIMIT_ACTIVE: axis " + std::string(AxisName(axis)) +
+                        " " + direction + " soft limit already triggered",
+                    "DispensingExecutionUseCase"));
+        }
         if (status.has_error || status.servo_alarm || status.following_error) {
             return Result<void>::Failure(
                 Error(ErrorCode::HARDWARE_ERROR, "required axis has active error", "DispensingExecutionUseCase"));

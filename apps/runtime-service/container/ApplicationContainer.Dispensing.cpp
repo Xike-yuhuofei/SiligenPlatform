@@ -71,8 +71,6 @@ class RuntimeWorkflowExecutionPortAdapter final : public IWorkflowExecutionPort 
         runtime_request.plan_fingerprint = request.plan_fingerprint;
         runtime_request.target_count = request.target_count;
         runtime_request.cycle_advance_mode = request.cycle_advance_mode;
-        runtime_request.production_baseline = request.production_baseline;
-        runtime_request.input_quality = request.input_quality;
         runtime_request.execution_request.execution_package = request.execution_request.execution_package;
         runtime_request.execution_request.profile_compare_schedule = request.execution_request.profile_compare_schedule;
         runtime_request.execution_request.expected_trace = request.execution_request.expected_trace;

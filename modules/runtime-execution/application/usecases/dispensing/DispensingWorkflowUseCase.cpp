@@ -2,6 +2,7 @@
 
 #include "runtime_execution/application/usecases/dispensing/DispensingWorkflowUseCase.h"
 
+#include "domain/safety/domain-services/SoftLimitValidator.h"
 #include "runtime_execution/contracts/dispensing/ProfileCompareExecutionCompiler.h"
 #include "shared/interfaces/ILoggingService.h"
 #include "shared/logging/PrintfLogFormatter.h"
@@ -23,6 +24,7 @@ using Siligen::Device::Contracts::Ports::DispenserDevicePort;
 using Siligen::Device::Contracts::Ports::MotionDevicePort;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTrace;
 using Siligen::Domain::Dispensing::ValueObjects::ProfileCompareExpectedTraceItem;
+using Siligen::Domain::Safety::DomainServices::SoftLimitValidator;
 using Siligen::Shared::Types::DispensingExecutionGeometryKind;
 using Siligen::Shared::Types::DispensingExecutionStrategy;
 using Siligen::Shared::Types::Error;
@@ -206,6 +208,84 @@ bool DetectSmallBacktrack(
     }
 
     return false;
+}
+
+Siligen::Domain::Configuration::ValueObjects::MotionConfiguration BuildSoftLimitMotionConfiguration(
+    const Siligen::Domain::Configuration::Ports::MachineConfig& machine_config) {
+    using AxisConfiguration = Siligen::Domain::Configuration::ValueObjects::AxisConfiguration;
+    using LogicalAxisId = Siligen::Shared::Types::LogicalAxisId;
+    using MotionConfiguration = Siligen::Domain::Configuration::ValueObjects::MotionConfiguration;
+
+    MotionConfiguration config;
+    config.maxVelocity = machine_config.max_speed;
+    config.maxAcceleration = machine_config.max_acceleration;
+    config.axes.reserve(2);
+
+    AxisConfiguration axis_x;
+    axis_x.axisId = LogicalAxisId::X;
+    axis_x.enabled = true;
+    axis_x.maxVelocity = machine_config.max_speed;
+    axis_x.maxAcceleration = machine_config.max_acceleration;
+    axis_x.softLimits.enabled = true;
+    axis_x.softLimits.min = machine_config.soft_limits.x_min;
+    axis_x.softLimits.max = machine_config.soft_limits.x_max;
+    config.axes.push_back(axis_x);
+
+    AxisConfiguration axis_y;
+    axis_y.axisId = LogicalAxisId::Y;
+    axis_y.enabled = true;
+    axis_y.maxVelocity = machine_config.max_speed;
+    axis_y.maxAcceleration = machine_config.max_acceleration;
+    axis_y.softLimits.enabled = true;
+    axis_y.softLimits.min = machine_config.soft_limits.y_min;
+    axis_y.softLimits.max = machine_config.soft_limits.y_max;
+    config.axes.push_back(axis_y);
+
+    return config;
+}
+
+std::vector<Siligen::TrajectoryPoint> ResolveSoftLimitValidationTrajectory(
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package) {
+    if (!execution_package.execution_plan.interpolation_points.empty()) {
+        return execution_package.execution_plan.interpolation_points;
+    }
+
+    std::vector<Siligen::TrajectoryPoint> trajectory_points;
+    trajectory_points.reserve(execution_package.execution_plan.motion_trajectory.points.size());
+    for (const auto& motion_point : execution_package.execution_plan.motion_trajectory.points) {
+        Siligen::TrajectoryPoint point;
+        point.position = {motion_point.position.x, motion_point.position.y};
+        point.timestamp = motion_point.t;
+        point.velocity = std::hypot(motion_point.velocity.x, motion_point.velocity.y);
+        trajectory_points.push_back(point);
+    }
+    return trajectory_points;
+}
+
+Siligen::Shared::Types::Result<void> ValidateExecutionSoftLimits(
+    const Siligen::Domain::Dispensing::Contracts::ExecutionPackageValidated& execution_package,
+    const Siligen::Domain::Configuration::Ports::MachineConfig& machine_config) {
+    const auto trajectory_points = ResolveSoftLimitValidationTrajectory(execution_package);
+    if (trajectory_points.empty()) {
+        return Siligen::Shared::Types::Result<void>::Failure(
+            Error(
+                ErrorCode::INVALID_STATE,
+                "execution trajectory unavailable for soft limit validation",
+                "DispensingWorkflowUseCase"));
+    }
+
+    const auto motion_config = BuildSoftLimitMotionConfiguration(machine_config);
+    const auto validation_result =
+        SoftLimitValidator::ValidateTrajectory(trajectory_points.data(), trajectory_points.size(), motion_config);
+    if (validation_result.IsError()) {
+        return Siligen::Shared::Types::Result<void>::Failure(
+            Error(
+                validation_result.GetError().GetCode(),
+                "SOFT_LIMIT_VIOLATION: " + validation_result.GetError().GetMessage(),
+                "DispensingWorkflowUseCase"));
+    }
+
+    return Siligen::Shared::Types::Result<void>::Success();
 }
 
 }  // namespace
@@ -684,6 +764,7 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
     auto execution_launch = execution_launch_result.Value();
     StartJobResponse::ProductionBaselineContext production_baseline;
     DxfInputQuality input_quality;
+    std::shared_ptr<Domain::Dispensing::Contracts::ExecutionPackageValidated> execution_package;
 
     {
         std::lock_guard<std::mutex> lock(plans_mutex_);
@@ -697,8 +778,25 @@ Result<StartJobResponse> DispensingWorkflowUseCase::StartJob(const StartJobReque
             return Result<StartJobResponse>::Failure(materialize_result.GetError());
         }
         execution_launch = it->second.execution_launch;
+        execution_package = it->second.execution_launch.execution_package;
         production_baseline = it->second.response.production_baseline;
         input_quality = it->second.response.input_quality;
+    }
+
+    if (!execution_package) {
+        return Result<StartJobResponse>::Failure(
+            Error(
+                ErrorCode::INVALID_STATE,
+                "execution package unavailable for soft limit validation",
+                "DispensingWorkflowUseCase"));
+    }
+    const auto machine_config_result = config_port_->GetMachineConfig();
+    if (machine_config_result.IsError()) {
+        return Result<StartJobResponse>::Failure(machine_config_result.GetError());
+    }
+    const auto soft_limit_result = ValidateExecutionSoftLimits(*execution_package, machine_config_result.Value());
+    if (soft_limit_result.IsError()) {
+        return Result<StartJobResponse>::Failure(soft_limit_result.GetError());
     }
 
     Siligen::Application::Ports::Dispensing::WorkflowRuntimeStartJobRequest runtime_request;

@@ -1,6 +1,7 @@
 #include "ApplicationContainer.h"
 
 #include "runtime_execution/application/usecases/system/IHardLimitMonitor.h"
+#include "runtime_execution/application/usecases/system/ISoftLimitMonitor.h"
 #include "shared/di/LoggingServiceLocator.h"
 #include "shared/interfaces/ILoggingService.h"
 
@@ -27,6 +28,11 @@ ApplicationContainer::ApplicationContainer(
       log_file_path_(log_file_path) {}
 
 ApplicationContainer::~ApplicationContainer() {
+    if (soft_limit_monitor_) {
+        soft_limit_monitor_->Stop();
+        soft_limit_monitor_.reset();
+    }
+
     if (hard_limit_monitor_) {
         hard_limit_monitor_->Stop();
         hard_limit_monitor_.reset();
