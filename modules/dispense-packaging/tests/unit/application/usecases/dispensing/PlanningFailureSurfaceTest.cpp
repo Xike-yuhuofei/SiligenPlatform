@@ -108,7 +108,6 @@ class FakePathSourcePort final : public IPathSourcePort {
 public:
     ResultT<PathSourceResult> LoadFromFile(const std::string&) override {
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine({0.0f, 0.0f}, {10.0f, 0.0f}));
         result.metadata.push_back({});
         return ResultT<PathSourceResult>::Success(result);

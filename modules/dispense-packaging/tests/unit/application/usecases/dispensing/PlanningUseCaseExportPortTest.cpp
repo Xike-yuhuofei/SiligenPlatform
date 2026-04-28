@@ -149,7 +149,6 @@ public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
         loaded_paths.push_back(filepath);
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{10.0f, 0.0f}));
         result.metadata.push_back({});
         return ResultT<PathSourceResult>::Success(result);
@@ -163,7 +162,6 @@ public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
         loaded_paths.push_back(filepath);
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{9.0f, 0.0f}));
         result.primitives.push_back(Primitive::MakeLine(Point2D{9.0f, 0.0f}, Point2D{9.0f, 9.0f}));
         result.metadata.push_back({});
@@ -179,7 +177,6 @@ public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
         loaded_paths.push_back(filepath);
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{5.0f, 0.0f}));
         result.primitives.push_back(Primitive::MakeLine(Point2D{5.0f, 0.0f}, Point2D{10.0f, 0.0f}));
         result.metadata.push_back({});
@@ -195,7 +192,6 @@ public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
         loaded_paths.push_back(filepath);
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{10.0f, 0.0f}));
         result.primitives.push_back(Primitive::MakePoint(Point2D{5.0f, 5.0f}));
         result.metadata.push_back({});
@@ -211,7 +207,6 @@ public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
         loaded_paths.push_back(filepath);
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakePoint(Point2D{5.0f, 5.0f}));
         result.metadata.push_back({});
         return ResultT<PathSourceResult>::Success(result);
@@ -225,7 +220,6 @@ public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
         loaded_paths.push_back(filepath);
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D{2468.813f, 1788.400f}, Point2D{2597.143f, 1788.400f}));
         result.primitives.push_back(Primitive::MakeLine(Point2D{2597.143f, 1788.400f}, Point2D{2597.143f, 1922.596f}));
         result.primitives.push_back(Primitive::MakeLine(Point2D{2597.143f, 1922.596f}, Point2D{2468.813f, 1922.596f}));
@@ -242,7 +236,6 @@ public:
     ResultT<PathSourceResult> LoadFromFile(const std::string& filepath) override {
         loaded_paths.push_back(filepath);
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D{0.0f, 0.0f}, Point2D{520.0f, 0.0f}));
         result.metadata.push_back({});
         return ResultT<PathSourceResult>::Success(result);

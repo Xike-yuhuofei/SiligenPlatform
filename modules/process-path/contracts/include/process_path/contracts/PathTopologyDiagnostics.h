@@ -12,8 +12,11 @@ struct PathTopologyDiagnostics {
     int contour_count = 0;
     int discontinuity_before = 0;
     int discontinuity_after = 0;
+    int intersection_candidate_pairs = 0;
+    int intersection_tested_pairs = 0;
     int intersection_pairs = 0;
     int collinear_pairs = 0;
+    int split_segment_count = 0;
     int pre_shape_rapid_segment_count = 0;
     int pre_shape_dispense_fragment_count = 0;
     int rapid_segment_count = 0;

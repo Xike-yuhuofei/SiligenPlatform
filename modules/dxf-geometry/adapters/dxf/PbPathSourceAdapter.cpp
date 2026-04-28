@@ -166,7 +166,6 @@ Result<PathSourceResult> PbPathSourceAdapter::LoadFromFile(const std::string& fi
     }
 
     PathSourceResult result;
-    result.success = true;
     result.primitives.reserve(bundle.primitives_size());
     result.metadata.reserve(bundle.primitives_size());
 

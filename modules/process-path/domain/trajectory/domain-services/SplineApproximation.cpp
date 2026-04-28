@@ -1,5 +1,7 @@
 #include "SplineApproximation.h"
 
+#include "process_path/contracts/GeometryUtils.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -9,7 +11,7 @@ namespace Siligen::Domain::Trajectory::DomainServices {
 using Siligen::Shared::Types::Point2D;
 
 namespace {
-constexpr float32 kEpsilon = 1e-6f;
+using Siligen::ProcessPath::Contracts::kGeometryEpsilon;
 constexpr float32 kDefaultSplineStepMm = 1.0f;
 
 float32 ClampValue(float32 value, float32 min_value, float32 max_value) {
@@ -22,18 +24,18 @@ float32 ComputeCircumradius(const Point2D& prev,
     float32 a = prev.DistanceTo(curr);
     float32 b = curr.DistanceTo(next);
     float32 c = prev.DistanceTo(next);
-    if (a <= kEpsilon || b <= kEpsilon || c <= kEpsilon) {
+    if (a <= kGeometryEpsilon || b <= kGeometryEpsilon || c <= kGeometryEpsilon) {
         return std::numeric_limits<float32>::infinity();
     }
 
     Point2D v0 = curr - prev;
     Point2D v1 = next - prev;
     float32 area2 = std::abs(v0.Cross(v1));
-    if (area2 <= kEpsilon) {
+    if (area2 <= kGeometryEpsilon) {
         return std::numeric_limits<float32>::infinity();
     }
     float32 radius = (a * b * c) / (2.0f * area2);
-    if (!std::isfinite(radius) || radius <= kEpsilon) {
+    if (!std::isfinite(radius) || radius <= kGeometryEpsilon) {
         return std::numeric_limits<float32>::infinity();
     }
     return radius;
@@ -42,7 +44,7 @@ float32 ComputeCircumradius(const Point2D& prev,
 float32 ComputeAdaptiveSplineStep(const std::vector<Point2D>& points,
                                   size_t index,
                                   float32 base_step) {
-    if (base_step <= kEpsilon) {
+    if (base_step <= kGeometryEpsilon) {
         return 0.0f;
     }
     if (index == 0 || index + 1 >= points.size()) {
@@ -54,7 +56,7 @@ float32 ComputeAdaptiveSplineStep(const std::vector<Point2D>& points,
     const auto& next = points[index + 1];
     float32 len1 = prev.DistanceTo(curr);
     float32 len2 = curr.DistanceTo(next);
-    if (len1 <= kEpsilon || len2 <= kEpsilon) {
+    if (len1 <= kGeometryEpsilon || len2 <= kGeometryEpsilon) {
         return base_step;
     }
 
@@ -74,7 +76,7 @@ float32 ComputeAdaptiveSplineStep(const std::vector<Point2D>& points,
 float32 ComputeErrorBoundSplineStep(const std::vector<Point2D>& points,
                                     size_t index,
                                     float32 max_error_mm) {
-    if (max_error_mm <= kEpsilon || points.size() < 3) {
+    if (max_error_mm <= kGeometryEpsilon || points.size() < 3) {
         return 0.0f;
     }
 
@@ -92,7 +94,7 @@ float32 ComputeErrorBoundSplineStep(const std::vector<Point2D>& points,
     }
 
     float32 step = std::sqrt(8.0f * radius * max_error_mm);
-    if (!std::isfinite(step) || step <= kEpsilon) {
+    if (!std::isfinite(step) || step <= kGeometryEpsilon) {
         return 0.0f;
     }
     return step;
@@ -124,7 +126,7 @@ void AppendLineSegment(const Point2D& start,
     seg.line.start = start;
     seg.line.end = end;
     seg.length = start.DistanceTo(end);
-    if (seg.length <= kEpsilon || (min_segment_mm > kEpsilon && seg.length < min_segment_mm)) {
+    if (seg.length <= kGeometryEpsilon || (min_segment_mm > kGeometryEpsilon && seg.length < min_segment_mm)) {
         return;
     }
     seg.curvature_radius = curvature_radius;
@@ -139,10 +141,10 @@ void AppendAdaptiveLineSegments(const Point2D& start,
                                 float32 min_segment_mm,
                                 std::vector<Segment>& segments) {
     float32 length = start.DistanceTo(end);
-    if (length <= kEpsilon) {
+    if (length <= kGeometryEpsilon) {
         return;
     }
-    if (step_mm <= kEpsilon || length <= step_mm) {
+    if (step_mm <= kGeometryEpsilon || length <= step_mm) {
         AppendLineSegment(start, end, curvature_radius, min_segment_mm, segments);
         return;
     }
@@ -171,16 +173,16 @@ std::vector<Segment> SplineApproximation::Approximate(const SplinePrimitive& spl
         return segments;
     }
 
-    float32 base_step = (config.max_step_mm > kEpsilon) ? config.max_step_mm : kDefaultSplineStepMm;
+    float32 base_step = (config.max_step_mm > kGeometryEpsilon) ? config.max_step_mm : kDefaultSplineStepMm;
 
     for (size_t i = 0; i + 1 < points.size(); ++i) {
         float32 step = 0.0f;
-        if (config.max_step_mm > kEpsilon) {
+        if (config.max_step_mm > kGeometryEpsilon) {
             step = ComputeAdaptiveSplineStep(points, i, base_step);
         }
         float32 error_step = ComputeErrorBoundSplineStep(points, i, config.max_error_mm);
-        if (error_step > kEpsilon) {
-            step = (step > kEpsilon) ? std::min(step, error_step) : error_step;
+        if (error_step > kGeometryEpsilon) {
+            step = (step > kGeometryEpsilon) ? std::min(step, error_step) : error_step;
         }
 
         float32 curvature_radius = ComputeSplineRadius(points, i);

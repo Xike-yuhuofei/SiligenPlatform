@@ -217,7 +217,6 @@ class LinePathSourceStub final : public Siligen::ProcessPath::Contracts::IPathSo
         using Siligen::ProcessPath::Contracts::Primitive;
 
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(20.0f, 0.0f)));
         result.metadata.push_back(PathPrimitiveMeta{});
         return Result<PathSourceResult>::Success(result);
@@ -239,7 +238,6 @@ class SlowCountingLinePathSourceStub final : public Siligen::ProcessPath::Contra
         using Siligen::ProcessPath::Contracts::Primitive;
 
         PathSourceResult result;
-        result.success = true;
         result.primitives.push_back(Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(20.0f, 0.0f)));
         result.metadata.push_back(PathPrimitiveMeta{});
         return Result<PathSourceResult>::Success(result);
@@ -258,7 +256,6 @@ class RectDiagPathSourceStub final : public Siligen::ProcessPath::Contracts::IPa
         using Siligen::ProcessPath::Contracts::Primitive;
 
         PathSourceResult result;
-        result.success = true;
         result.primitives = {
             Primitive::MakeLine(Point2D(0.0f, 0.0f), Point2D(10.0f, 0.0f)),
             Primitive::MakeLine(Point2D(10.0f, 0.0f), Point2D(10.0f, 10.0f)),
