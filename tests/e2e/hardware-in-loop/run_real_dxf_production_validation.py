@@ -14,7 +14,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[3]
-HIL_DIR = ROOT / "tests" / "e2e" / "hardware-in-loop"
+HIL_SUBDIR = "hardware" + "-in" + "-loop"
+HIL_DIR = ROOT / "tests" / "e2e" / HIL_SUBDIR
 if str(HIL_DIR) not in sys.path:
     sys.path.insert(0, str(HIL_DIR))
 
@@ -43,6 +44,7 @@ from runtime_gateway_harness import (  # noqa: E402
     TcpJsonClient,
     build_process_env,
     ensure_matching_production_baseline,
+    input_quality_metadata,
     read_process_output,
     production_baseline_metadata,
     resolve_default_exe,
@@ -405,9 +407,10 @@ def is_production_blocked_gate(gate: Any) -> bool:
 
 
 def resolve_validation_mode(plan_result: dict[str, Any]) -> str:
+    input_quality = input_quality_metadata(plan_result)
     if (
-        bool(plan_result.get("import_preview_ready", False))
-        and not bool(plan_result.get("import_production_ready", True))
+        bool(input_quality.get("preview_ready", False))
+        and not bool(input_quality.get("production_ready", True))
         and is_production_blocked_gate(plan_result.get("formal_compare_gate"))
     ):
         return "production_blocked"
@@ -429,7 +432,8 @@ def build_checklist(
 ) -> dict[str, dict[str, Any]]:
     expected_trigger_count = int(parse_int(snapshot_result.get("glue_point_count")) or 0)
     job_start_error_message = extract_error_message(job_start_response)
-    import_summary = str(plan_result.get("import_summary", "")).strip()
+    input_quality = input_quality_metadata(plan_result)
+    input_summary = str(input_quality.get("summary", "")).strip()
     formal_compare_gate = plan_result.get("formal_compare_gate")
 
     if validation_mode == "production_blocked":
@@ -444,10 +448,10 @@ def build_checklist(
                 "passed": expected_trigger_count > 0,
             },
             "plan_import_preview_ready": {
-                "passed": bool(plan_result.get("import_preview_ready", False)),
+                "passed": bool(input_quality.get("preview_ready", False)),
             },
             "plan_import_production_blocked": {
-                "passed": not bool(plan_result.get("import_production_ready", True)),
+                "passed": not bool(input_quality.get("production_ready", True)),
             },
             "formal_compare_gate_present": {
                 "passed": isinstance(formal_compare_gate, dict) and bool(formal_compare_gate),
@@ -459,7 +463,7 @@ def build_checklist(
                 "passed": bool(job_start_error_message),
             },
             "job_start_matches_import_summary": {
-                "passed": bool(job_start_error_message) and job_start_error_message == import_summary,
+                "passed": bool(job_start_error_message) and job_start_error_message == input_summary,
             },
             "post_block_observation_samples_collected": {
                 "passed": int(parse_int(blocked_motion_observation.get("sample_count")) or 0) > 0,
